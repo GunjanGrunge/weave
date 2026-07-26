@@ -1,13 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
-const { signInMock } = vi.hoisted(() => ({ signInMock: vi.fn() }));
+const { signInMock, signOutMock, authenticatedFetchMock } = vi.hoisted(() => ({
+  signInMock: vi.fn(),
+  signOutMock: vi.fn(),
+  authenticatedFetchMock: vi.fn(),
+}));
 
 vi.mock("firebase/auth", async () => {
   const actual = await vi.importActual<typeof import("firebase/auth")>("firebase/auth");
   return {
     ...actual,
     signInWithEmailAndPassword: signInMock,
+    signOut: signOutMock,
   };
 });
 
@@ -15,14 +20,21 @@ vi.mock("@/lib/firebase", () => ({
   auth: {},
 }));
 
+vi.mock("@/lib/api", () => ({
+  authenticatedFetch: authenticatedFetchMock,
+}));
+
 import { LoginForm } from "./login";
 
 describe("LoginForm", () => {
   beforeEach(() => {
     signInMock.mockReset();
+    signOutMock.mockReset();
+    authenticatedFetchMock.mockReset();
+    authenticatedFetchMock.mockResolvedValue(new Response(JSON.stringify({ uid: "user-a" })));
   });
 
-  it("calls signInWithEmailAndPassword with the entered credentials on submit", async () => {
+  it("signs in, verifies whoami, and calls onSuccess on submit", async () => {
     signInMock.mockResolvedValue({ user: { uid: "user-a" } });
     const onSuccess = vi.fn();
 
@@ -39,6 +51,7 @@ describe("LoginForm", () => {
         "correct-horse",
       ),
     );
+    await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledWith("/whoami"));
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
   });
 
@@ -52,6 +65,23 @@ describe("LoginForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
     await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+  });
+
+  it("does not call onSuccess when whoami verification fails", async () => {
+    signInMock.mockResolvedValue({ user: { uid: "user-a" } });
+    authenticatedFetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ code: "bad" }), { status: 401 }),
+    );
+    const onSuccess = vi.fn();
+
+    render(<LoginForm onSuccess={onSuccess} />);
+
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: "writer@example.com" } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: "correct-horse" } });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+    expect(onSuccess).not.toHaveBeenCalled();
   });
 
   it("does not render any signup or self-registration affordance", () => {

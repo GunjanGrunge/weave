@@ -1,7 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
-import { signInWithEmailAndPassword, type AuthError } from "firebase/auth";
+import { useEffect, useState, type FormEvent } from "react";
+import { signInWithEmailAndPassword, signOut, type AuthError } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { authenticatedFetch } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -30,6 +32,13 @@ function friendlyAuthError(error: unknown): string {
   }
 }
 
+async function verifySignedInUser(): Promise<void> {
+  const response = await authenticatedFetch("/whoami");
+  if (!response.ok) {
+    throw new Error("Unable to verify the signed-in account.");
+  }
+}
+
 export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -42,8 +51,12 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
     setSubmitting(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
+      await verifySignedInUser();
       onSuccess();
     } catch (err) {
+      if (auth.currentUser) {
+        await signOut(auth);
+      }
       setError(friendlyAuthError(err));
     } finally {
       setSubmitting(false);
@@ -98,6 +111,13 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
 
 function LoginRoute() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (user) {
+      navigate({ to: "/" });
+    }
+  }, [navigate, user]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
