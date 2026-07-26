@@ -45,3 +45,6 @@ functions/node_modules
 .github/agents/
 _bmad-output/
 _bmad/
+
+# Local reference checkouts
+claude-cookbooks-temp/
