@@ -30,8 +30,10 @@ export const Route = createFileRoute("/")({
 });
 
 function Dashboard() {
-  const goalPct = Math.min(1, currentBook.wordsToday / currentBook.dailyGoal);
-  const activeChapter = chapters.find((c) => c.number === 12)!;
+  const hasActiveBook = books.length > 0;
+  const goalPct =
+    currentBook.dailyGoal > 0 ? Math.min(1, currentBook.wordsToday / currentBook.dailyGoal) : 0;
+  const activeChapter = chapters[0];
   const [health, setHealth] = useState<HealthCheckResult>({
     status: "idle",
     message: "Checking Cloud Functions health",
@@ -56,13 +58,13 @@ function Dashboard() {
     <div className="mx-auto max-w-7xl animate-reveal px-6 py-10 lg:px-10">
       <header className="flex flex-wrap items-end justify-between gap-6 border-b border-border pb-8">
         <div>
-          <SectionLabel>Good evening, Elias</SectionLabel>
+          <SectionLabel>Workspace</SectionLabel>
           <h1 className="mt-2 font-display text-4xl italic text-foreground lg:text-5xl">
-            The desk is waiting.
+            Start with a manuscript.
           </h1>
           <p className="mt-3 max-w-lg text-sm text-muted-foreground">
-            You are twelve days into your longest streak of the year. One page tonight keeps it
-            alive.
+            Create or connect a book to populate the dashboard with writing progress, chapters, and
+            activity.
           </p>
           <div className="mt-4 inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
             <span
@@ -104,19 +106,18 @@ function Dashboard() {
             <Flame className="size-4" />
           </div>
           <div className="mt-6 flex items-baseline gap-2">
-            <div className="font-display text-6xl italic leading-none">{currentBook.streak}</div>
+            <div className="font-display text-6xl italic leading-none">
+              {hasActiveBook ? currentBook.streak : 0}
+            </div>
             <div className="text-sm text-accent-foreground/80">days</div>
           </div>
           <div className="mt-6 flex gap-1">
             {Array.from({ length: 14 }).map((_, i) => (
-              <div
-                key={i}
-                className={`h-6 flex-1 rounded-sm ${i < 12 ? "bg-accent-foreground/80" : "bg-accent-foreground/20"}`}
-              />
+              <div key={i} className="h-6 flex-1 rounded-sm bg-accent-foreground/20" />
             ))}
           </div>
           <p className="mt-4 text-xs text-accent-foreground/80">
-            Longest streak this year. Two days from your record.
+            Writing activity will appear here after a manuscript is active.
           </p>
         </div>
 
@@ -130,13 +131,13 @@ function Dashboard() {
             <RingGauge value={goalPct} />
             <div>
               <div className="font-display text-3xl italic">
-                {currentBook.wordsToday.toLocaleString()}
+                {hasActiveBook ? currentBook.wordsToday.toLocaleString() : "0"}
               </div>
               <div className="mt-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                of {currentBook.dailyGoal.toLocaleString()} words
+                of {hasActiveBook ? currentBook.dailyGoal.toLocaleString() : "0"} words
               </div>
               <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
-                +15% vs yesterday
+                No activity yet
               </div>
             </div>
           </div>
@@ -148,26 +149,29 @@ function Dashboard() {
             <SectionLabel>Current chapter</SectionLabel>
             <BookOpen className="size-4 text-muted-foreground" />
           </div>
-          <div className="mt-3 text-xs text-muted-foreground">Chapter {activeChapter.number}</div>
+          <div className="mt-3 text-xs text-muted-foreground">
+            {activeChapter ? `Chapter ${activeChapter.number}` : "No chapter selected"}
+          </div>
           <div className="mt-1 font-display text-2xl italic leading-tight">
-            {activeChapter.title}
+            {activeChapter?.title || "No active chapter"}
           </div>
           <p className="mt-3 line-clamp-2 font-serif text-sm text-muted-foreground">
-            {activeChapter.summary}
+            Chapter progress will appear after chapters are added.
           </p>
           <div className="mt-4 h-1 overflow-hidden rounded-full bg-foreground/5">
             <div
               className="h-full bg-accent"
               style={{
-                width: `${Math.round((activeChapter.wordCount / activeChapter.target) * 100)}%`,
+                width: `${activeChapter ? Math.round((activeChapter.wordCount / activeChapter.target) * 100) : 0}%`,
               }}
             />
           </div>
           <div className="mt-2 flex justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
             <span>
-              {activeChapter.wordCount} / {activeChapter.target} words
+              {activeChapter ? `${activeChapter.wordCount} / ${activeChapter.target}` : "0 / 0"}{" "}
+              words
             </span>
-            <span>{activeChapter.status}</span>
+            <span>{activeChapter?.status || "Idle"}</span>
           </div>
         </div>
 
@@ -216,6 +220,11 @@ function Dashboard() {
                 <div className="mt-2 text-xs">New book</div>
               </div>
             </Link>
+            {books.length === 0 && (
+              <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                No books yet.
+              </div>
+            )}
           </div>
         </div>
 
@@ -240,6 +249,9 @@ function Dashboard() {
                 </div>
               </div>
             ))}
+            {timelineEvents.length === 0 && (
+              <div className="text-sm text-muted-foreground">No activity yet.</div>
+            )}
           </div>
         </div>
       </div>

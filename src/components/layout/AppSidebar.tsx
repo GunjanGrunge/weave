@@ -31,9 +31,7 @@ const sections: Array<{ heading: string; items: Item[] }> = [
   },
   {
     heading: "Production",
-    items: [
-      { to: "/settings", label: "Settings", icon: Settings },
-    ],
+    items: [{ to: "/settings", label: "Settings", icon: Settings }],
   },
 ];
 
@@ -70,9 +68,7 @@ export function AppSidebar({
               S
             </span>
             {!collapsed && (
-              <span className="truncate text-sm font-semibold tracking-tight">
-                Story Platform
-              </span>
+              <span className="truncate text-sm font-semibold tracking-tight">Story Platform</span>
             )}
           </Link>
           <button
@@ -124,13 +120,13 @@ export function AppSidebar({
         <div className="border-t border-border p-3">
           <div className="flex items-center gap-2.5">
             <div className="grid size-8 shrink-0 place-items-center rounded-full bg-foreground/10 font-mono text-[10px] font-bold text-foreground">
-              ET
+              SP
             </div>
             {!collapsed && (
               <div className="min-w-0 flex-1">
-                <div className="truncate text-xs font-semibold">Elias Thorne</div>
+                <div className="truncate text-xs font-semibold">Story Platform</div>
                 <div className="truncate font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                  Pro Author
+                  Workspace
                 </div>
               </div>
             )}

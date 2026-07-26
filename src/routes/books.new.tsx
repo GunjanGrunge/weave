@@ -7,7 +7,10 @@ export const Route = createFileRoute("/books/new")({
   head: () => ({
     meta: [
       { title: "New Book · Story Platform" },
-      { name: "description", content: "A conversational wizard to shape your next manuscript, one question at a time." },
+      {
+        name: "description",
+        content: "A conversational wizard to shape your next manuscript, one question at a time.",
+      },
       { property: "og:title", content: "Begin a new book · Story Platform" },
       { property: "og:description", content: "Concept, cast, structure — a calm way to start." },
     ],
@@ -16,9 +19,22 @@ export const Route = createFileRoute("/books/new")({
 });
 
 const steps = [
-  { id: "concept", title: "The seed", prompt: "In one sentence, what is this book about? Don't overthink it. Instinct now, precision later." },
-  { id: "tone", title: "Genre & tone", prompt: "Where does it live on the shelf, and what does it feel like at 2 a.m.?" },
-  { id: "cast", title: "The cast", prompt: "Who walks onto the page first? Two or three names is plenty." },
+  {
+    id: "concept",
+    title: "The seed",
+    prompt:
+      "In one sentence, what is this book about? Don't overthink it. Instinct now, precision later.",
+  },
+  {
+    id: "tone",
+    title: "Genre & tone",
+    prompt: "Where does it live on the shelf, and what does it feel like at 2 a.m.?",
+  },
+  {
+    id: "cast",
+    title: "The cast",
+    prompt: "Who walks onto the page first? Two or three names is plenty.",
+  },
   { id: "structure", title: "Shape", prompt: "How long, how many acts, and where does it end?" },
   { id: "review", title: "Review", prompt: "Here is what we'll build the workspace around." },
 ];
@@ -31,7 +47,10 @@ export default function NewBook() {
 
   return (
     <div className="mx-auto max-w-3xl animate-reveal px-6 py-10 lg:px-10">
-      <Link to="/books" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+      <Link
+        to="/books"
+        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+      >
         <ArrowLeft className="size-3" /> Back to shelf
       </Link>
 
@@ -43,8 +62,8 @@ export default function NewBook() {
                 i < step
                   ? "bg-accent text-accent-foreground"
                   : i === step
-                  ? "border border-accent text-accent"
-                  : "border border-border text-muted-foreground"
+                    ? "border border-accent text-accent"
+                    : "border border-border text-muted-foreground"
               }`}
             >
               {i < step ? <Check className="size-3" /> : i + 1}
@@ -55,16 +74,20 @@ export default function NewBook() {
       </div>
 
       <div className="mt-10">
-        <SectionLabel>Step {step + 1} of {steps.length} · {current.title}</SectionLabel>
-        <h1 className="mt-3 font-display text-3xl italic leading-tight lg:text-4xl">{current.prompt}</h1>
+        <SectionLabel>
+          Step {step + 1} of {steps.length} · {current.title}
+        </SectionLabel>
+        <h1 className="mt-3 font-display text-3xl italic leading-tight lg:text-4xl">
+          {current.prompt}
+        </h1>
 
         <div className="mt-8 rounded-2xl border border-border bg-card p-6">
           {step < 4 ? (
             <textarea
               value={answers[current.id] ?? ""}
               onChange={(e) => setAnswers({ ...answers, [current.id]: e.target.value })}
-              placeholder="Write freely..."
-              className="min-h-[140px] w-full resize-none bg-transparent font-serif text-lg leading-relaxed outline-none placeholder:text-muted-foreground/60"
+              aria-label={current.title}
+              className="min-h-[140px] w-full resize-none bg-transparent font-serif text-lg leading-relaxed outline-none"
             />
           ) : (
             <div className="space-y-4">
@@ -72,7 +95,11 @@ export default function NewBook() {
                 <div key={s.id} className="border-l-2 border-accent/40 pl-4">
                   <SectionLabel>{s.title}</SectionLabel>
                   <p className="mt-1 font-serif text-sm text-foreground/90">
-                    {answers[s.id] || <span className="italic text-muted-foreground">Left blank — we'll ask later.</span>}
+                    {answers[s.id] || (
+                      <span className="italic text-muted-foreground">
+                        Left blank — we'll ask later.
+                      </span>
+                    )}
                   </p>
                 </div>
               ))}

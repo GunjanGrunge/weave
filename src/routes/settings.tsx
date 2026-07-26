@@ -22,7 +22,11 @@ function SettingsPage() {
   function setTheme(v: boolean) {
     setDark(v);
     document.documentElement.classList.toggle("dark", v);
-    try { localStorage.setItem("story:theme", v ? "dark" : "light"); } catch {}
+    try {
+      localStorage.setItem("story:theme", v ? "dark" : "light");
+    } catch {
+      // localStorage can be unavailable in restricted browser contexts.
+    }
   }
 
   return (
@@ -34,27 +38,35 @@ function SettingsPage() {
 
       <div className="mt-8 space-y-6">
         <Panel title="Profile">
-          <Row label="Name" value="Elias Thorne" />
-          <Row label="Handle" value="@thorneink" />
-          <Row label="Timezone" value="Europe / London" />
+          <Row label="Name" value="Not set" />
+          <Row label="Handle" value="Not set" />
+          <Row label="Timezone" value="Not set" />
         </Panel>
 
         <Panel title="Appearance">
           <div className="flex items-center justify-between">
             <div>
               <div className="font-serif text-sm">Theme</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">Light for daylight drafts, dark for late nights.</div>
+              <div className="mt-0.5 text-xs text-muted-foreground">
+                Light for daylight drafts, dark for late nights.
+              </div>
             </div>
             <div className="flex rounded-full border border-border bg-background p-0.5">
               <button
                 onClick={() => setTheme(false)}
-                className={cn("rounded-full px-3 py-1 text-xs", !dark && "bg-accent text-accent-foreground")}
+                className={cn(
+                  "rounded-full px-3 py-1 text-xs",
+                  !dark && "bg-accent text-accent-foreground",
+                )}
               >
                 Light
               </button>
               <button
                 onClick={() => setTheme(true)}
-                className={cn("rounded-full px-3 py-1 text-xs", dark && "bg-accent text-accent-foreground")}
+                className={cn(
+                  "rounded-full px-3 py-1 text-xs",
+                  dark && "bg-accent text-accent-foreground",
+                )}
               >
                 Dark
               </button>
@@ -70,7 +82,7 @@ function SettingsPage() {
 
         <Panel title="Keyboard shortcuts">
           <ShortcutRow k="⌘ K" label="Open command palette" />
-          <ShortcutRow k="⌘ /" label="Ask the Muse" />
+          <ShortcutRow k="⌘ /" label="Ask assistant" />
           <ShortcutRow k="⌘ ⇧ R" label="Story Refactor" />
           <ShortcutRow k="⌘ ⇧ D" label="Toggle dark mode" />
         </Panel>
@@ -101,7 +113,9 @@ function ShortcutRow({ k, label }: { k: string; label: string }) {
   return (
     <div className="flex items-center justify-between">
       <div className="text-sm text-muted-foreground">{label}</div>
-      <kbd className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[10px]">{k}</kbd>
+      <kbd className="rounded-md border border-border bg-background px-2 py-1 font-mono text-[10px]">
+        {k}
+      </kbd>
     </div>
   );
 }
