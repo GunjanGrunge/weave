@@ -5,7 +5,7 @@ const publicDir = join(process.cwd(), ".output", "public");
 const assetsDir = join(publicDir, "assets");
 const assets = await readdir(assetsDir);
 
-const entry = assets.find((asset) => /^index-.+\.js$/.test(asset));
+const entry = assets.find((asset) => /^spa-.+\.js$/.test(asset));
 const stylesheet = assets.find((asset) => /^styles-.+\.css$/.test(asset));
 
 if (!entry) {
@@ -33,7 +33,9 @@ const html = `<!doctype html>
     />
 ${styleLink}    <script type="module" src="/assets/${entry}"></script>
   </head>
-  <body></body>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>
 `;
 
