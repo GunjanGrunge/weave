@@ -1,10 +1,10 @@
 import { onRequest } from "firebase-functions/v2/https";
 
-import { GOOGLE_API_KEY } from "../config/secrets.js";
+import { GOOGLE_API_KEY, OPENAI_API_KEY } from "../config/secrets.js";
 import { runIntakeOpeningSuggestion } from "../pipelines/intake.js";
 import { verifyIdToken, AuthError } from "../services/auth.js";
 import { createBookWithIntake, type CreateBookInput } from "../services/books.js";
-import type { OpeningSuggestion } from "../services/gemini.js";
+import type { AIProviderKeys, OpeningSuggestion } from "../services/gemini.js";
 
 const OPENING_SUGGESTION_TIMEOUT_MS = 12_000;
 
@@ -58,13 +58,13 @@ function parseCreateBookInput(body: unknown): CreateBookInput | undefined {
 
 function runOpeningSuggestionWithTimeout(
   bookId: string,
-  apiKey: string,
+  apiKeys: AIProviderKeys,
   timeoutMs: number,
 ): Promise<{ status: "ok" | "failed"; openings: OpeningSuggestion[] }> {
   return new Promise((resolve) => {
     const timeout = setTimeout(() => resolve({ status: "failed", openings: [] }), timeoutMs);
 
-    runIntakeOpeningSuggestion(bookId, apiKey)
+    runIntakeOpeningSuggestion(bookId, apiKeys)
       .then((result) => {
         clearTimeout(timeout);
         resolve(result);
@@ -79,7 +79,7 @@ function runOpeningSuggestionWithTimeout(
 export async function buildCreateBookResponse(
   authorizationHeader: string | undefined,
   body: unknown,
-  apiKey: string,
+  apiKeys: AIProviderKeys,
   openingSuggestionTimeoutMs = OPENING_SUGGESTION_TIMEOUT_MS,
 ): Promise<CreateBookResult> {
   try {
@@ -98,7 +98,7 @@ export async function buildCreateBookResponse(
     const { bookId } = await createBookWithIntake(decoded.uid, input);
     const openingSuggestion = await runOpeningSuggestionWithTimeout(
       bookId,
-      apiKey,
+      apiKeys,
       openingSuggestionTimeoutMs,
     );
 
@@ -118,14 +118,14 @@ export const createBook = onRequest(
   {
     cors: ["https://backupapp-bbf71.web.app"],
     region: "us-central1",
-    secrets: [GOOGLE_API_KEY],
+    secrets: [GOOGLE_API_KEY, OPENAI_API_KEY],
   },
   async (request, response) => {
     try {
       const result = await buildCreateBookResponse(
         request.headers.authorization,
         request.body,
-        GOOGLE_API_KEY.value(),
+        { gemini: GOOGLE_API_KEY.value(), openai: OPENAI_API_KEY.value() },
       );
       response.status(result.statusCode).json(result.body);
     } catch (error) {

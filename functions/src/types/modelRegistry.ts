@@ -1,8 +1,15 @@
+export type AIProvider = "openai" | "gemini";
+
+export type TextModelConfig = {
+  primary: { provider: AIProvider; model: string };
+  fallback?: { provider: AIProvider; model: string };
+};
+
 export type ModelRegistry = {
-  generate: { model: string; fallback: string };
-  openingSuggestion: { model: string; fallback: string };
-  museNote: { model: string };
-  chapterSummary: { model: string };
-  entityExtraction: { model: string };
-  embedding: { model: string; outputDimensionality: number };
+  generate: TextModelConfig;
+  openingSuggestion: TextModelConfig;
+  museNote: TextModelConfig;
+  chapterSummary: TextModelConfig;
+  entityExtraction: TextModelConfig;
+  embedding: { provider: "gemini"; model: string; outputDimensionality: number };
 };

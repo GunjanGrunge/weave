@@ -1,11 +1,15 @@
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 
 import { getVisionDocument, upsertOpeningSuggestionMessage } from "../services/books.js";
-import { generateOpeningSuggestions, type OpeningSuggestion } from "../services/gemini.js";
+import {
+  generateOpeningSuggestions,
+  type AIProviderKeys,
+  type OpeningSuggestion,
+} from "../services/gemini.js";
 
 const IntakeState = Annotation.Root({
   bookId: Annotation<string>,
-  apiKey: Annotation<string>,
+  apiKeys: Annotation<AIProviderKeys>,
   status: Annotation<"ok" | "failed">,
   openings: Annotation<OpeningSuggestion[]>,
 });
@@ -24,7 +28,7 @@ async function openingSuggestionNode(
     return { status: "failed", openings: [] };
   }
 
-  const { openings } = await generateOpeningSuggestions(state.bookId, vision, state.apiKey);
+  const { openings } = await generateOpeningSuggestions(state.bookId, vision, state.apiKeys);
   await upsertOpeningSuggestionMessage(state.bookId, formatOpenings(openings));
 
   return { status: "ok", openings };
@@ -38,10 +42,10 @@ const graph = new StateGraph(IntakeState)
 
 export async function runIntakeOpeningSuggestion(
   bookId: string,
-  apiKey: string,
+  apiKeys: AIProviderKeys,
 ): Promise<{ status: "ok" | "failed"; openings: OpeningSuggestion[] }> {
   try {
-    const result = await graph.invoke({ bookId, apiKey, status: "failed", openings: [] });
+    const result = await graph.invoke({ bookId, apiKeys, status: "failed", openings: [] });
     return { status: result.status, openings: result.openings };
   } catch {
     return { status: "failed", openings: [] };

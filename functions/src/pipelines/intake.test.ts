@@ -27,6 +27,8 @@ const vision = {
   threads: [] as [],
 };
 
+const apiKeys = { openai: "fake-openai-key", gemini: "fake-gemini-key" };
+
 describe("runIntakeOpeningSuggestion", () => {
   beforeEach(() => {
     getVisionDocumentMock.mockReset();
@@ -40,11 +42,11 @@ describe("runIntakeOpeningSuggestion", () => {
       openings: [{ text: "Open mid-heist.", rationale: "Immediate stakes." }],
     });
 
-    const result = await runIntakeOpeningSuggestion("book-1", "fake-key");
+    const result = await runIntakeOpeningSuggestion("book-1", apiKeys);
 
     expect(result.status).toBe("ok");
     expect(result.openings).toEqual([{ text: "Open mid-heist.", rationale: "Immediate stakes." }]);
-    expect(generateOpeningSuggestionsMock).toHaveBeenCalledWith("book-1", vision, "fake-key");
+    expect(generateOpeningSuggestionsMock).toHaveBeenCalledWith("book-1", vision, apiKeys);
     expect(upsertOpeningSuggestionMessageMock).toHaveBeenCalledWith(
       "book-1",
       expect.stringContaining("Open mid-heist."),
@@ -54,7 +56,7 @@ describe("runIntakeOpeningSuggestion", () => {
   it("returns {status: 'failed'} without throwing when the vision document is missing", async () => {
     getVisionDocumentMock.mockResolvedValue(undefined);
 
-    const result = await runIntakeOpeningSuggestion("book-1", "fake-key");
+    const result = await runIntakeOpeningSuggestion("book-1", apiKeys);
 
     expect(result).toEqual({ status: "failed", openings: [] });
     expect(generateOpeningSuggestionsMock).not.toHaveBeenCalled();
@@ -65,7 +67,7 @@ describe("runIntakeOpeningSuggestion", () => {
     getVisionDocumentMock.mockResolvedValue(vision);
     generateOpeningSuggestionsMock.mockRejectedValue(new Error("Gemini unavailable"));
 
-    const result = await runIntakeOpeningSuggestion("book-1", "fake-key");
+    const result = await runIntakeOpeningSuggestion("book-1", apiKeys);
 
     expect(result).toEqual({ status: "failed", openings: [] });
     expect(upsertOpeningSuggestionMessageMock).not.toHaveBeenCalled();

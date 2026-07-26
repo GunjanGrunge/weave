@@ -1,10 +1,10 @@
 import { onRequest } from "firebase-functions/v2/https";
 
-import { GOOGLE_API_KEY } from "../config/secrets.js";
+import { GOOGLE_API_KEY, OPENAI_API_KEY } from "../config/secrets.js";
 import { runIntakeOpeningSuggestion } from "../pipelines/intake.js";
 import { verifyIdToken, assertOwnership, AuthError } from "../services/auth.js";
 import { getBook } from "../services/books.js";
-import type { OpeningSuggestion } from "../services/gemini.js";
+import type { AIProviderKeys, OpeningSuggestion } from "../services/gemini.js";
 
 export type RetryOpeningSuggestionSuccess = {
   status: "ok" | "failed";
@@ -29,7 +29,7 @@ function parseBookId(body: unknown): string | undefined {
 export async function buildRetryOpeningSuggestionResponse(
   authorizationHeader: string | undefined,
   body: unknown,
-  apiKey: string,
+  apiKeys: AIProviderKeys,
 ): Promise<RetryOpeningSuggestionResult> {
   try {
     const decoded = await verifyIdToken(authorizationHeader);
@@ -48,7 +48,7 @@ export async function buildRetryOpeningSuggestionResponse(
 
     assertOwnership(decoded.uid, book.uid);
 
-    const result = await runIntakeOpeningSuggestion(bookId, apiKey);
+    const result = await runIntakeOpeningSuggestion(bookId, apiKeys);
     return { statusCode: 200, body: { status: result.status, openings: result.openings } };
   } catch (error) {
     if (error instanceof AuthError) {
@@ -62,14 +62,14 @@ export const retryOpeningSuggestion = onRequest(
   {
     cors: ["https://backupapp-bbf71.web.app"],
     region: "us-central1",
-    secrets: [GOOGLE_API_KEY],
+    secrets: [GOOGLE_API_KEY, OPENAI_API_KEY],
   },
   async (request, response) => {
     try {
       const result = await buildRetryOpeningSuggestionResponse(
         request.headers.authorization,
         request.body,
-        GOOGLE_API_KEY.value(),
+        { gemini: GOOGLE_API_KEY.value(), openai: OPENAI_API_KEY.value() },
       );
       response.status(result.statusCode).json(result.body);
     } catch (error) {

@@ -24,6 +24,8 @@ vi.mock("../pipelines/intake.js", () => ({
 import { buildCreateBookResponse } from "./createBook.js";
 import { AuthError } from "../services/auth.js";
 
+const apiKeys = { openai: "fake-openai-key", gemini: "fake-gemini-key" };
+
 describe("buildCreateBookResponse", () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -50,7 +52,7 @@ describe("buildCreateBookResponse", () => {
         premiseAnswers: { whatToWrite: "A heist" },
         style: { presetIds: ["sparse-cinematic"] },
       },
-      "fake-api-key",
+      apiKeys,
     );
 
     expect(result).toEqual({
@@ -65,7 +67,7 @@ describe("buildCreateBookResponse", () => {
       premiseAnswers: { whatToWrite: "A heist" },
       style: { presetIds: ["sparse-cinematic"] },
     });
-    expect(runIntakeOpeningSuggestionMock).toHaveBeenCalledWith("book-1", "fake-api-key");
+    expect(runIntakeOpeningSuggestionMock).toHaveBeenCalledWith("book-1", apiKeys);
   });
 
   it("still returns 200 {bookId, openingSuggestion: 'failed'} when the opening-suggestion pipeline fails", async () => {
@@ -79,7 +81,7 @@ describe("buildCreateBookResponse", () => {
         premiseAnswers: {},
         style: { presetIds: [] },
       },
-      "fake-api-key",
+      apiKeys,
     );
 
     expect(result).toEqual({
@@ -100,7 +102,7 @@ describe("buildCreateBookResponse", () => {
         premiseAnswers: {},
         style: { presetIds: [] },
       },
-      "fake-api-key",
+      apiKeys,
       5,
     );
 
@@ -120,7 +122,7 @@ describe("buildCreateBookResponse", () => {
     const result = await buildCreateBookResponse(
       undefined,
       { premiseAnswers: {}, style: { presetIds: [] } },
-      "fake-api-key",
+      apiKeys,
     );
 
     expect(result.statusCode).toBe(401);
@@ -135,7 +137,7 @@ describe("buildCreateBookResponse", () => {
     const result = await buildCreateBookResponse(
       "Bearer bad",
       { premiseAnswers: {}, style: { presetIds: [] } },
-      "fake-api-key",
+      apiKeys,
     );
 
     expect(result.statusCode).toBe(401);
@@ -148,7 +150,7 @@ describe("buildCreateBookResponse", () => {
     const result = await buildCreateBookResponse(
       "Bearer valid",
       { premiseAnswers: null },
-      "fake-api-key",
+      apiKeys,
     );
 
     expect(result.statusCode).toBe(400);

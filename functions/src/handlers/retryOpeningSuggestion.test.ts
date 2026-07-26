@@ -22,6 +22,8 @@ vi.mock("../pipelines/intake.js", () => ({
 import { buildRetryOpeningSuggestionResponse } from "./retryOpeningSuggestion.js";
 import { AuthError } from "../services/auth.js";
 
+const apiKeys = { openai: "fake-openai-key", gemini: "fake-gemini-key" };
+
 describe("buildRetryOpeningSuggestionResponse", () => {
   beforeEach(() => {
     verifyIdTokenMock.mockReset();
@@ -40,7 +42,7 @@ describe("buildRetryOpeningSuggestionResponse", () => {
     const result = await buildRetryOpeningSuggestionResponse(
       "Bearer valid",
       { bookId: "book-1" },
-      "fake-api-key",
+      apiKeys,
     );
 
     expect(result).toEqual({
@@ -50,7 +52,7 @@ describe("buildRetryOpeningSuggestionResponse", () => {
         openings: [{ text: "Open on the storm.", rationale: "Immediate stakes." }],
       },
     });
-    expect(runIntakeOpeningSuggestionMock).toHaveBeenCalledWith("book-1", "fake-api-key");
+    expect(runIntakeOpeningSuggestionMock).toHaveBeenCalledWith("book-1", apiKeys);
   });
 
   it("returns 401 for a missing token", async () => {
@@ -61,7 +63,7 @@ describe("buildRetryOpeningSuggestionResponse", () => {
     const result = await buildRetryOpeningSuggestionResponse(
       undefined,
       { bookId: "book-1" },
-      "fake-api-key",
+      apiKeys,
     );
 
     expect(result.statusCode).toBe(401);
@@ -71,7 +73,7 @@ describe("buildRetryOpeningSuggestionResponse", () => {
   it("returns 400 when bookId is missing from the body", async () => {
     verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
 
-    const result = await buildRetryOpeningSuggestionResponse("Bearer valid", {}, "fake-api-key");
+    const result = await buildRetryOpeningSuggestionResponse("Bearer valid", {}, apiKeys);
 
     expect(result.statusCode).toBe(400);
     expect(result.body).toMatchObject({ code: "invalid-argument" });
@@ -84,7 +86,7 @@ describe("buildRetryOpeningSuggestionResponse", () => {
     const result = await buildRetryOpeningSuggestionResponse(
       "Bearer valid",
       { bookId: "missing-book" },
-      "fake-api-key",
+      apiKeys,
     );
 
     expect(result.statusCode).toBe(404);
@@ -98,7 +100,7 @@ describe("buildRetryOpeningSuggestionResponse", () => {
     const result = await buildRetryOpeningSuggestionResponse(
       "Bearer valid",
       { bookId: "book-1" },
-      "fake-api-key",
+      apiKeys,
     );
 
     expect(result.statusCode).toBe(401);

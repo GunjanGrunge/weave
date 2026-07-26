@@ -65,7 +65,6 @@ import {
   createBookWithIntake,
   getBook,
   getVisionDocument,
-  appendStructuralNoteMessage,
   upsertOpeningSuggestionMessage,
 } from "./books.js";
 import { DEFAULT_STYLE_PRESET_ID } from "../config/stylePresets.js";
@@ -222,34 +221,6 @@ describe("getVisionDocument", () => {
     const vision = await getVisionDocument("missing-book");
 
     expect(vision).toBeUndefined();
-  });
-});
-
-describe("appendStructuralNoteMessage", () => {
-  beforeEach(() => {
-    setCalls.length = 0;
-    docStore = {};
-    messagesStore = {};
-  });
-
-  it("writes a structural_note message at order 0 when no messages exist yet", async () => {
-    await appendStructuralNoteMessage("book-1", "2-3 opening suggestions");
-
-    const write = setCalls.find((call) => call.path.startsWith("books/book-1/messages/"));
-    expect(write?.data).toMatchObject({
-      type: "structural_note",
-      text: "2-3 opening suggestions",
-      order: 0,
-    });
-  });
-
-  it("writes at order = previous max + 1 when messages already exist", async () => {
-    messagesStore["books/book-1/messages"] = [{ order: 0 }, { order: 1 }, { order: 7 }];
-
-    await appendStructuralNoteMessage("book-1", "The Muse suggests...");
-
-    const write = setCalls.find((call) => call.path.startsWith("books/book-1/messages/"));
-    expect(write?.data).toMatchObject({ order: 8, type: "structural_note" });
   });
 });
 

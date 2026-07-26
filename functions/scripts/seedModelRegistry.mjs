@@ -1,17 +1,32 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
-// One-time admin script (Story 1.4, AD-9): writes the pinned Gemini model
-// registry into config/geminiModels. Not called by app code — run manually
+// One-time admin script (Story 1.4, AD-9): writes the pinned AI model
+// registry into config/geminiModels. Not called by app code - run manually
 // once per Firebase project (e.g. `node scripts/seedModelRegistry.mjs`) with
 // credentials that can write to that project's Firestore.
 const registry = {
-  generate: { model: "gemini-3.1-pro-preview", fallback: "gemini-2.5-pro" },
-  openingSuggestion: { model: "gemini-3.1-pro-preview", fallback: "gemini-2.5-pro" },
-  museNote: { model: "gemini-3.6-flash" },
-  chapterSummary: { model: "gemini-3.6-flash" },
-  entityExtraction: { model: "gemini-3.5-flash-lite" },
-  embedding: { model: "gemini-embedding-2", outputDimensionality: 768 },
+  generate: {
+    primary: { provider: "openai", model: "gpt-5.6-sol" },
+    fallback: { provider: "gemini", model: "gemini-2.5-pro" },
+  },
+  openingSuggestion: {
+    primary: { provider: "openai", model: "gpt-5.6-terra" },
+    fallback: { provider: "gemini", model: "gemini-2.5-pro" },
+  },
+  museNote: {
+    primary: { provider: "openai", model: "gpt-5.6-luna" },
+    fallback: { provider: "gemini", model: "gemini-3.6-flash" },
+  },
+  chapterSummary: {
+    primary: { provider: "openai", model: "gpt-5.6-luna" },
+    fallback: { provider: "gemini", model: "gemini-3.6-flash" },
+  },
+  entityExtraction: {
+    primary: { provider: "openai", model: "gpt-5.4-nano" },
+    fallback: { provider: "gemini", model: "gemini-3.5-flash-lite" },
+  },
+  embedding: { provider: "gemini", model: "gemini-embedding-2", outputDimensionality: 768 },
 };
 
 initializeApp();

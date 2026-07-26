@@ -153,21 +153,6 @@ export async function getVisionDocument(bookId: string): Promise<VisionDocument 
   return snapshot.exists ? (snapshot.data() as VisionDocument) : undefined;
 }
 
-export async function appendStructuralNoteMessage(bookId: string, text: string): Promise<void> {
-  const messages = firestore().collection("books").doc(bookId).collection("messages");
-  const lastMessage = await messages.orderBy("order", "desc").limit(1).get();
-  const nextOrder = lastMessage.empty ? 0 : (lastMessage.docs[0]?.data().order as number) + 1;
-
-  const message: ChatMessage = {
-    type: "structural_note",
-    text,
-    order: nextOrder,
-    createdAt: FieldValue.serverTimestamp(),
-  };
-
-  await messages.doc().set(message);
-}
-
 export async function upsertOpeningSuggestionMessage(bookId: string, text: string): Promise<void> {
   const messages = firestore().collection("books").doc(bookId).collection("messages");
   const messageRef = messages.doc("opening-suggestion");
