@@ -167,3 +167,32 @@ export async function appendStructuralNoteMessage(bookId: string, text: string):
 
   await messages.doc().set(message);
 }
+
+export async function upsertOpeningSuggestionMessage(bookId: string, text: string): Promise<void> {
+  const messages = firestore().collection("books").doc(bookId).collection("messages");
+  const messageRef = messages.doc("opening-suggestion");
+  const existing = await messageRef.get();
+
+  if (existing.exists) {
+    const currentOrder = existing.data()?.order;
+    await messageRef.set({
+      type: "structural_note",
+      text,
+      order: typeof currentOrder === "number" ? currentOrder : 0,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return;
+  }
+
+  const lastMessage = await messages.orderBy("order", "desc").limit(1).get();
+  const nextOrder = lastMessage.empty ? 0 : (lastMessage.docs[0]?.data().order as number) + 1;
+
+  const message: ChatMessage = {
+    type: "structural_note",
+    text,
+    order: nextOrder,
+    createdAt: FieldValue.serverTimestamp(),
+  };
+
+  await messageRef.set(message);
+}

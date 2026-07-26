@@ -11,9 +11,9 @@ const { generateContentMock, usageWrites, serverTimestampMock } = vi.hoisted(() 
 let registryData: unknown;
 
 vi.mock("@google/genai", () => ({
-  GoogleGenAI: vi.fn().mockImplementation(() => ({
-    models: { generateContent: generateContentMock },
-  })),
+  GoogleGenAI: vi.fn(function GoogleGenAIMock(this: { models: unknown }) {
+    this.models = { generateContent: generateContentMock };
+  }),
 }));
 
 vi.mock("firebase-admin/app", () => ({

@@ -66,6 +66,7 @@ import {
   getBook,
   getVisionDocument,
   appendStructuralNoteMessage,
+  upsertOpeningSuggestionMessage,
 } from "./books.js";
 import { DEFAULT_STYLE_PRESET_ID } from "../config/stylePresets.js";
 
@@ -227,6 +228,7 @@ describe("getVisionDocument", () => {
 describe("appendStructuralNoteMessage", () => {
   beforeEach(() => {
     setCalls.length = 0;
+    docStore = {};
     messagesStore = {};
   });
 
@@ -248,5 +250,44 @@ describe("appendStructuralNoteMessage", () => {
 
     const write = setCalls.find((call) => call.path.startsWith("books/book-1/messages/"));
     expect(write?.data).toMatchObject({ order: 8, type: "structural_note" });
+  });
+});
+
+describe("upsertOpeningSuggestionMessage", () => {
+  beforeEach(() => {
+    setCalls.length = 0;
+    docStore = {};
+    messagesStore = {};
+  });
+
+  it("writes the opening suggestion to a deterministic message doc at the next order", async () => {
+    messagesStore["books/book-1/messages"] = [{ order: 0 }, { order: 1 }, { order: 7 }];
+
+    await upsertOpeningSuggestionMessage("book-1", "The Muse suggests...");
+
+    const write = setCalls.find((call) => call.path === "books/book-1/messages/opening-suggestion");
+    expect(write?.data).toMatchObject({
+      type: "structural_note",
+      text: "The Muse suggests...",
+      order: 8,
+    });
+  });
+
+  it("updates the existing opening suggestion message without creating another message order", async () => {
+    docStore["books/book-1/messages/opening-suggestion"] = {
+      type: "structural_note",
+      text: "Old suggestion",
+      order: 8,
+    };
+    messagesStore["books/book-1/messages"] = [{ order: 8 }, { order: 9 }];
+
+    await upsertOpeningSuggestionMessage("book-1", "New suggestion");
+
+    const write = setCalls.find((call) => call.path === "books/book-1/messages/opening-suggestion");
+    expect(write?.data).toMatchObject({
+      type: "structural_note",
+      text: "New suggestion",
+      order: 8,
+    });
   });
 });

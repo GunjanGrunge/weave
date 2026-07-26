@@ -1,6 +1,6 @@
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 
-import { appendStructuralNoteMessage, getVisionDocument } from "../services/books.js";
+import { getVisionDocument, upsertOpeningSuggestionMessage } from "../services/books.js";
 import { generateOpeningSuggestions, type OpeningSuggestion } from "../services/gemini.js";
 
 const IntakeState = Annotation.Root({
@@ -25,7 +25,7 @@ async function openingSuggestionNode(
   }
 
   const { openings } = await generateOpeningSuggestions(state.bookId, vision, state.apiKey);
-  await appendStructuralNoteMessage(state.bookId, formatOpenings(openings));
+  await upsertOpeningSuggestionMessage(state.bookId, formatOpenings(openings));
 
   return { status: "ok", openings };
 }

@@ -6,6 +6,8 @@ import { verifyIdToken, AuthError } from "../services/auth.js";
 import { createBookWithIntake, type CreateBookInput } from "../services/books.js";
 import type { OpeningSuggestion } from "../services/gemini.js";
 
+const OPENING_SUGGESTION_TIMEOUT_MS = 12_000;
+
 export type CreateBookSuccess = {
   bookId: string;
   openingSuggestion: "ok" | "failed";
@@ -54,10 +56,31 @@ function parseCreateBookInput(body: unknown): CreateBookInput | undefined {
   };
 }
 
+function runOpeningSuggestionWithTimeout(
+  bookId: string,
+  apiKey: string,
+  timeoutMs: number,
+): Promise<{ status: "ok" | "failed"; openings: OpeningSuggestion[] }> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve({ status: "failed", openings: [] }), timeoutMs);
+
+    runIntakeOpeningSuggestion(bookId, apiKey)
+      .then((result) => {
+        clearTimeout(timeout);
+        resolve(result);
+      })
+      .catch(() => {
+        clearTimeout(timeout);
+        resolve({ status: "failed", openings: [] });
+      });
+  });
+}
+
 export async function buildCreateBookResponse(
   authorizationHeader: string | undefined,
   body: unknown,
   apiKey: string,
+  openingSuggestionTimeoutMs = OPENING_SUGGESTION_TIMEOUT_MS,
 ): Promise<CreateBookResult> {
   try {
     const decoded = await verifyIdToken(authorizationHeader);
@@ -73,7 +96,11 @@ export async function buildCreateBookResponse(
     }
 
     const { bookId } = await createBookWithIntake(decoded.uid, input);
-    const openingSuggestion = await runIntakeOpeningSuggestion(bookId, apiKey);
+    const openingSuggestion = await runOpeningSuggestionWithTimeout(
+      bookId,
+      apiKey,
+      openingSuggestionTimeoutMs,
+    );
 
     return {
       statusCode: 200,

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const { verifyIdTokenMock, createBookWithIntakeMock, runIntakeOpeningSuggestionMock } = vi.hoisted(
   () => ({
@@ -26,9 +26,14 @@ import { AuthError } from "../services/auth.js";
 
 describe("buildCreateBookResponse", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     verifyIdTokenMock.mockReset();
     createBookWithIntakeMock.mockReset();
     runIntakeOpeningSuggestionMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("returns 200 {bookId, openingSuggestion: 'ok', openings} for a valid token and request body", async () => {
@@ -80,6 +85,30 @@ describe("buildCreateBookResponse", () => {
     expect(result).toEqual({
       statusCode: 200,
       body: { bookId: "book-2", openingSuggestion: "failed", openings: [] },
+    });
+  });
+
+  it("still returns 200 {bookId, openingSuggestion: 'failed'} when the opening-suggestion pipeline times out", async () => {
+    vi.useFakeTimers();
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    createBookWithIntakeMock.mockResolvedValue({ bookId: "book-3" });
+    runIntakeOpeningSuggestionMock.mockReturnValue(new Promise(() => undefined));
+
+    const resultPromise = buildCreateBookResponse(
+      "Bearer valid",
+      {
+        premiseAnswers: {},
+        style: { presetIds: [] },
+      },
+      "fake-api-key",
+      5,
+    );
+
+    await vi.advanceTimersByTimeAsync(5);
+
+    await expect(resultPromise).resolves.toEqual({
+      statusCode: 200,
+      body: { bookId: "book-3", openingSuggestion: "failed", openings: [] },
     });
   });
 
