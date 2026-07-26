@@ -6,7 +6,7 @@ const assetsDir = join(publicDir, "assets");
 const assets = await readdir(assetsDir);
 
 const entry = assets.find((asset) => /^spa-.+\.js$/.test(asset));
-const stylesheet = assets.find((asset) => /^styles-.+\.css$/.test(asset));
+const stylesheet = assets.find((asset) => asset.endsWith(".css"));
 
 if (!entry) {
   throw new Error("Could not find built client entry asset in .output/public/assets");
