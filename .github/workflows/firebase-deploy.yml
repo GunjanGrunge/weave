@@ -1,0 +1,71 @@
+name: Deploy Firebase
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: firebase-deploy-main
+  cancel-in-progress: true
+
+jobs:
+  verify-and-deploy:
+    name: Verify and deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    env:
+      FIREBASE_PROJECT_ID: backupapp-bbf71
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install functions dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Run frontend tests
+        run: bun run test
+
+      - name: Build frontend
+        run: bun run build
+
+      - name: Verify functions
+        working-directory: functions
+        run: npm run verify
+
+      - name: Configure Firebase service account
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}" ]; then
+            echo "Missing required GitHub secret: FIREBASE_SERVICE_ACCOUNT_JSON" >&2
+            exit 1
+          fi
+          printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}' > "$RUNNER_TEMP/firebase-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+
+      - name: Seed Gemini model registry
+        working-directory: functions
+        run: node scripts/seedModelRegistry.mjs
+
+      - name: Deploy to Firebase
+        run: npx firebase-tools deploy --project "$FIREBASE_PROJECT_ID" --non-interactive
