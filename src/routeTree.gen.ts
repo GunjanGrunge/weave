@@ -17,6 +17,7 @@ import { Route as ResearchRouteImport } from './routes/research'
 import { Route as RefactorRouteImport } from './routes/refactor'
 import { Route as PublishingRouteImport } from './routes/publishing'
 import { Route as NotesRouteImport } from './routes/notes'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as ConsistencyRouteImport } from './routes/consistency'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as CharactersRouteImport } from './routes/characters'
@@ -65,6 +66,11 @@ const NotesRoute = NotesRouteImport.update({
   path: '/notes',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConsistencyRoute = ConsistencyRouteImport.update({
   id: '/consistency',
   path: '/consistency',
@@ -108,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/characters': typeof CharactersRoute
   '/chat': typeof ChatRoute
   '/consistency': typeof ConsistencyRoute
+  '/login': typeof LoginRoute
   '/notes': typeof NotesRoute
   '/publishing': typeof PublishingRoute
   '/refactor': typeof RefactorRoute
@@ -125,6 +132,7 @@ export interface FileRoutesByTo {
   '/characters': typeof CharactersRoute
   '/chat': typeof ChatRoute
   '/consistency': typeof ConsistencyRoute
+  '/login': typeof LoginRoute
   '/notes': typeof NotesRoute
   '/publishing': typeof PublishingRoute
   '/refactor': typeof RefactorRoute
@@ -143,6 +151,7 @@ export interface FileRoutesById {
   '/characters': typeof CharactersRoute
   '/chat': typeof ChatRoute
   '/consistency': typeof ConsistencyRoute
+  '/login': typeof LoginRoute
   '/notes': typeof NotesRoute
   '/publishing': typeof PublishingRoute
   '/refactor': typeof RefactorRoute
@@ -162,6 +171,7 @@ export interface FileRouteTypes {
     | '/characters'
     | '/chat'
     | '/consistency'
+    | '/login'
     | '/notes'
     | '/publishing'
     | '/refactor'
@@ -179,6 +189,7 @@ export interface FileRouteTypes {
     | '/characters'
     | '/chat'
     | '/consistency'
+    | '/login'
     | '/notes'
     | '/publishing'
     | '/refactor'
@@ -196,6 +207,7 @@ export interface FileRouteTypes {
     | '/characters'
     | '/chat'
     | '/consistency'
+    | '/login'
     | '/notes'
     | '/publishing'
     | '/refactor'
@@ -214,6 +226,7 @@ export interface RootRouteChildren {
   CharactersRoute: typeof CharactersRoute
   ChatRoute: typeof ChatRoute
   ConsistencyRoute: typeof ConsistencyRoute
+  LoginRoute: typeof LoginRoute
   NotesRoute: typeof NotesRoute
   PublishingRoute: typeof PublishingRoute
   RefactorRoute: typeof RefactorRoute
@@ -280,6 +293,13 @@ declare module '@tanstack/react-router' {
       path: '/notes'
       fullPath: '/notes'
       preLoaderRoute: typeof NotesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/consistency': {
@@ -351,6 +371,7 @@ const rootRouteChildren: RootRouteChildren = {
   CharactersRoute: CharactersRoute,
   ChatRoute: ChatRoute,
   ConsistencyRoute: ConsistencyRoute,
+  LoginRoute: LoginRoute,
   NotesRoute: NotesRoute,
   PublishingRoute: PublishingRoute,
   RefactorRoute: RefactorRoute,

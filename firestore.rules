@@ -1,0 +1,34 @@
+rules_version = '2';
+
+// Deny-by-default (AD-7, AC-2): no collection is readable/writable unless a
+// more specific rule below explicitly grants it. Firestore evaluates every
+// matching rule and allows the request if ANY of them permits it, so this
+// wildcard denial only takes effect for paths not covered by a specific
+// rule further down.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // books/{bookId} is the tenancy root (spine AD-2/AD-6): every Book and
+    // everything nested under it belongs to exactly one uid, and no rule
+    // ever permits a cross-uid read or write (AC-2, AC-3). No `books`
+    // collection exists yet as of Story 1.2 -- this rule establishes the
+    // posture before Story 1.3 creates the first document.
+    match /books/{bookId} {
+      allow read, update, delete: if request.auth != null
+        && request.auth.uid == resource.data.uid;
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.uid;
+
+      // chapters, scenes, messages, facts, vision, usage, snapshots (AD-6)
+      // all inherit the parent Book's ownership rather than carrying their
+      // own uid field.
+      match /{subcollection}/{document=**} {
+        allow read, write: if request.auth != null
+          && request.auth.uid == get(/databases/$(database)/documents/books/$(bookId)).data.uid;
+      }
+    }
+  }
+}

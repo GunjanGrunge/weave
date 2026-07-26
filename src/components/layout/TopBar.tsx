@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Menu, PanelLeft, Search, Bell, Moon, Sun } from "lucide-react";
 import { currentBook, notifications } from "@/lib/mock-data";
-import { cn } from "@/lib/utils";
+import { UserMenu } from "./UserMenu";
 
 export function TopBar({
   onToggleSidebar,
@@ -128,13 +128,7 @@ export function TopBar({
           {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
         </button>
 
-        <div
-          className={cn(
-            "grid size-8 shrink-0 place-items-center rounded-full bg-accent/15 font-mono text-[10px] font-bold text-accent",
-          )}
-        >
-          SP
-        </div>
+        <UserMenu />
       </div>
     </header>
   );

@@ -4,6 +4,7 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -11,6 +12,8 @@ import { type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { AppShell } from "../components/layout/AppShell";
+import { AuthProvider } from "../lib/auth-context";
+import { RouteGuard } from "../lib/route-guard";
 
 function NotFoundComponent() {
   return (
@@ -75,10 +78,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Story Platform — AI Writing Workspace for Authors" },
-      { name: "description", content: "A premium AI-first workspace for planning, drafting, refactoring, and publishing books." },
+      {
+        name: "description",
+        content:
+          "A premium AI-first workspace for planning, drafting, refactoring, and publishing books.",
+      },
       { name: "author", content: "Story Platform" },
       { property: "og:title", content: "Story Platform — AI Writing Workspace" },
-      { property: "og:description", content: "Draft, plan, and publish books with an AI co-author. Story Refactor, consistency checks, and a distraction-free manuscript editor." },
+      {
+        property: "og:description",
+        content:
+          "Draft, plan, and publish books with an AI co-author. Story Refactor, consistency checks, and a distraction-free manuscript editor.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -118,12 +129,22 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isLoginRoute = pathname === "/login";
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AppShell>
-        <Outlet />
-      </AppShell>
+      <AuthProvider>
+        <RouteGuard>
+          {isLoginRoute ? (
+            <Outlet />
+          ) : (
+            <AppShell>
+              <Outlet />
+            </AppShell>
+          )}
+        </RouteGuard>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }
