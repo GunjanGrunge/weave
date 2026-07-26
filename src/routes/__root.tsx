@@ -8,7 +8,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { AppShell } from "../components/layout/AppShell";
@@ -131,6 +131,15 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isLoginRoute = pathname === "/login";
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("story:theme");
+      document.documentElement.classList.toggle("dark", stored === "dark");
+    } catch {
+      document.documentElement.classList.remove("dark");
+    }
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

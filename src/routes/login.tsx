@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { signInWithEmailAndPassword, signOut, type AuthError } from "firebase/auth";
+import { BookOpenCheck, LockKeyhole, ShieldCheck } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { authenticatedFetch } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -8,7 +9,7 @@ import { useAuth } from "@/lib/auth-context";
 export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
-      { title: "Sign in · Story Platform" },
+      { title: "Sign in - Story Platform" },
       { name: "description", content: "Sign in to your private Story workspace." },
     ],
   }),
@@ -64,7 +65,11 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex w-full max-w-sm flex-col gap-4">
+    <form
+      onSubmit={handleSubmit}
+      className="relative z-10 flex w-full max-w-sm flex-col gap-4"
+      aria-label="Sign in"
+    >
       <div className="flex flex-col gap-1.5">
         <label htmlFor="login-email" className="text-sm font-medium text-foreground">
           Email
@@ -72,11 +77,12 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
         <input
           id="login-email"
           type="email"
+          autoFocus
           autoComplete="username"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+          className="pointer-events-auto h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-accent focus:ring-2 focus:ring-ring"
         />
       </div>
       <div className="flex flex-col gap-1.5">
@@ -90,20 +96,24 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+          className="pointer-events-auto h-11 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-accent focus:ring-2 focus:ring-ring"
         />
       </div>
       {error && (
-        <div role="alert" className="text-sm text-destructive">
+        <div
+          role="alert"
+          className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
           {error}
         </div>
       )}
       <button
         type="submit"
         disabled={submitting}
-        className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+        className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground shadow-sm shadow-accent/20 transition-colors hover:opacity-95 disabled:pointer-events-none disabled:opacity-50"
       >
-        {submitting ? "Signing in…" : "Sign in"}
+        <LockKeyhole className="size-4" />
+        {submitting ? "Signing in..." : "Sign in"}
       </button>
     </form>
   );
@@ -120,14 +130,68 @@ function LoginRoute() {
   }, [navigate, user]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="flex w-full max-w-sm flex-col items-center gap-6">
-        <div className="text-center">
-          <h1 className="text-xl font-semibold text-foreground">Story</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Sign in to your workspace</p>
+    <main className="isolate flex min-h-svh bg-background text-foreground">
+      <section className="hidden min-h-svh w-[42%] shrink-0 flex-col justify-between border-r border-border bg-sidebar p-8 lg:flex">
+        <div className="flex items-center gap-2.5">
+          <span className="grid size-9 place-items-center rounded-md bg-accent font-display text-xl italic text-accent-foreground">
+            S
+          </span>
+          <span className="text-sm font-semibold tracking-tight">Story Platform</span>
         </div>
-        <LoginForm onSuccess={() => navigate({ to: "/" })} />
-      </div>
-    </div>
+
+        <div className="max-w-md">
+          <div className="mb-5 inline-flex items-center gap-2 rounded-md border border-border bg-background/50 px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            <ShieldCheck className="size-3.5 text-accent" />
+            Private workspace
+          </div>
+          <h1 className="font-display text-5xl italic leading-tight text-foreground">
+            Your manuscript stays with your account.
+          </h1>
+          <p className="mt-4 max-w-sm font-serif text-base leading-7 text-muted-foreground">
+            Sign in with the writer account created for this workspace.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          {["Draft", "Shape", "Publish"].map((label) => (
+            <div key={label} className="rounded-md border border-border bg-background/45 px-3 py-2">
+              <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                {label}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="flex min-h-svh flex-1 items-center justify-center px-5 py-10 sm:px-8">
+        <div className="w-full max-w-md">
+          <div className="mb-8 flex items-center gap-2.5 lg:hidden">
+            <span className="grid size-9 place-items-center rounded-md bg-accent font-display text-xl italic text-accent-foreground">
+              S
+            </span>
+            <span className="text-sm font-semibold tracking-tight">Story Platform</span>
+          </div>
+
+          <div className="rounded-lg border border-border bg-card p-6 shadow-sm sm:p-8">
+            <div className="mb-7">
+              <div className="mb-4 flex size-10 items-center justify-center rounded-md bg-accent/10 text-accent">
+                <BookOpenCheck className="size-5" />
+              </div>
+              <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Writer sign in
+              </p>
+              <h2 className="mt-2 font-display text-3xl italic leading-tight text-foreground">
+                Open your workspace.
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Use one of the private email/password accounts provisioned in Firebase Auth.
+              </p>
+            </div>
+
+            <LoginForm onSuccess={() => navigate({ to: "/" })} />
+          </div>
+        </div>
+      </section>
+    </main>
   );
 }
