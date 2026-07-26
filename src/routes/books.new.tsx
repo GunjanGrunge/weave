@@ -23,6 +23,12 @@ export const Route = createFileRoute("/books/new")({
 
 type PremiseKey = "whatToWrite" | "mainCharacter" | "roughPremise";
 type ChatLine = { type: "system" | "user"; text: string };
+type OpeningSuggestion = { text: string; rationale: string };
+type OpeningSuggestionState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ok"; openings: OpeningSuggestion[] }
+  | { status: "failed" };
 
 const questions: Array<{ key: PremiseKey; prompt: string }> = [
   { key: "whatToWrite", prompt: "What do you want to write?" },
@@ -49,6 +55,10 @@ export default function NewBook() {
   const [customInstruction, setCustomInstruction] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bookId, setBookId] = useState<string | null>(null);
+  const [openingSuggestion, setOpeningSuggestion] = useState<OpeningSuggestionState>({
+    status: "idle",
+  });
   const navigate = useNavigate();
 
   const isStyleTurn = questionIndex >= questions.length;
@@ -108,16 +118,49 @@ export default function NewBook() {
       if (!response.ok) {
         throw new Error("Book creation failed.");
       }
-      await response.json();
+      const result = (await response.json()) as {
+        bookId: string;
+        openingSuggestion: "ok" | "failed";
+        openings: OpeningSuggestion[];
+      };
       setMessages((current) => [
         ...current,
         { type: "user", text: formatStyleChoice(presetIds, customInstruction) },
       ]);
-      navigate({ to: "/books" });
+      setBookId(result.bookId);
+      setOpeningSuggestion(
+        result.openingSuggestion === "ok"
+          ? { status: "ok", openings: result.openings }
+          : { status: "failed" },
+      );
     } catch (_error) {
       setError("Could not create the book. Try again in a moment.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function retryOpeningSuggestion() {
+    if (!bookId) return;
+    setOpeningSuggestion({ status: "loading" });
+    try {
+      const response = await authenticatedFetch("/retryOpeningSuggestion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookId }),
+      });
+      if (!response.ok) {
+        throw new Error("Retry failed.");
+      }
+      const result = (await response.json()) as {
+        status: "ok" | "failed";
+        openings: OpeningSuggestion[];
+      };
+      setOpeningSuggestion(
+        result.status === "ok" ? { status: "ok", openings: result.openings } : { status: "failed" },
+      );
+    } catch (_error) {
+      setOpeningSuggestion({ status: "failed" });
     }
   }
 
@@ -158,9 +201,50 @@ export default function NewBook() {
               </div>
             </div>
           ))}
+
+          {bookId && (
+            <div className="flex justify-start">
+              <div className="max-w-[82%] rounded-md border border-accent bg-card px-4 py-3 text-sm leading-relaxed text-foreground">
+                <Sparkles className="mb-2 size-4 text-accent" aria-hidden="true" />
+                {openingSuggestion.status === "loading" && (
+                  <p className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" /> The Muse is thinking of openings…
+                  </p>
+                )}
+                {openingSuggestion.status === "ok" && (
+                  <ol className="list-decimal space-y-2 pl-4">
+                    {openingSuggestion.openings.map((opening, index) => (
+                      <li key={index}>
+                        <p>{opening.text}</p>
+                        <p className="mt-1 text-xs italic text-muted-foreground">
+                          {opening.rationale}
+                        </p>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                {openingSuggestion.status === "failed" && (
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-muted-foreground">Couldn't get opening suggestions.</p>
+                    <Button type="button" variant="outline" onClick={retryOpeningSuggestion}>
+                      Retry
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
-        {!isStyleTurn ? (
+        {bookId ? (
+          <div className="border-t border-border py-4">
+            <div className="flex justify-end">
+              <Button type="button" onClick={() => navigate({ to: "/books" })}>
+                Continue to my book
+              </Button>
+            </div>
+          </div>
+        ) : !isStyleTurn ? (
           <div className="border-t border-border py-4">
             <div className="flex items-end gap-2">
               <textarea

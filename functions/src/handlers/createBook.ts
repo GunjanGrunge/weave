@@ -1,9 +1,16 @@
 import { onRequest } from "firebase-functions/v2/https";
 
+import { GOOGLE_API_KEY } from "../config/secrets.js";
+import { runIntakeOpeningSuggestion } from "../pipelines/intake.js";
 import { verifyIdToken, AuthError } from "../services/auth.js";
 import { createBookWithIntake, type CreateBookInput } from "../services/books.js";
+import type { OpeningSuggestion } from "../services/gemini.js";
 
-export type CreateBookSuccess = { bookId: string };
+export type CreateBookSuccess = {
+  bookId: string;
+  openingSuggestion: "ok" | "failed";
+  openings: OpeningSuggestion[];
+};
 export type CreateBookError = { code: string; message: string };
 
 export type CreateBookResult =
@@ -50,6 +57,7 @@ function parseCreateBookInput(body: unknown): CreateBookInput | undefined {
 export async function buildCreateBookResponse(
   authorizationHeader: string | undefined,
   body: unknown,
+  apiKey: string,
 ): Promise<CreateBookResult> {
   try {
     const decoded = await verifyIdToken(authorizationHeader);
@@ -64,7 +72,13 @@ export async function buildCreateBookResponse(
       };
     }
 
-    return { statusCode: 200, body: await createBookWithIntake(decoded.uid, input) };
+    const { bookId } = await createBookWithIntake(decoded.uid, input);
+    const openingSuggestion = await runIntakeOpeningSuggestion(bookId, apiKey);
+
+    return {
+      statusCode: 200,
+      body: { bookId, openingSuggestion: openingSuggestion.status, openings: openingSuggestion.openings },
+    };
   } catch (error) {
     if (error instanceof AuthError) {
       return { statusCode: 401, body: { code: error.code, message: error.message } };
@@ -77,10 +91,15 @@ export const createBook = onRequest(
   {
     cors: ["https://backupapp-bbf71.web.app"],
     region: "us-central1",
+    secrets: [GOOGLE_API_KEY],
   },
   async (request, response) => {
     try {
-      const result = await buildCreateBookResponse(request.headers.authorization, request.body);
+      const result = await buildCreateBookResponse(
+        request.headers.authorization,
+        request.body,
+        GOOGLE_API_KEY.value(),
+      );
       response.status(result.statusCode).json(result.body);
     } catch (error) {
       console.error(error);

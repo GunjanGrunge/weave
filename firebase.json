@@ -28,6 +28,13 @@
         }
       },
       {
+        "source": "/retryOpeningSuggestion",
+        "function": {
+          "functionId": "retryOpeningSuggestion",
+          "region": "us-central1"
+        }
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

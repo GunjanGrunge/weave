@@ -8,12 +8,39 @@ const { setCalls, commitMock, serverTimestampMock } = vi.hoisted(() => ({
   serverTimestampMock: vi.fn(() => "server-time"),
 }));
 
+let docStore: Record<string, unknown> = {};
+let messagesStore: Record<string, Array<{ order: number }>> = {};
+
 function makeDoc(path: string) {
   return {
     id: path.split("/").at(-1),
     path,
-    collection: (name: string) => ({
-      doc: (id?: string) => makeDoc(`${path}/${name}/${id ?? `${name}-auto-id`}`),
+    collection: (name: string) => makeCollection(`${path}/${name}`),
+    get: async () => ({
+      exists: docStore[path] !== undefined,
+      data: () => docStore[path],
+    }),
+    set: async (data: unknown) => {
+      setCalls.push({ path, data });
+      docStore[path] = data;
+    },
+  };
+}
+
+function makeCollection(path: string) {
+  return {
+    doc: (id?: string) => makeDoc(`${path}/${id ?? "book-auto-id"}`),
+    orderBy: (_field: string, direction: "asc" | "desc") => ({
+      limit: (n: number) => ({
+        get: async () => {
+          const list = messagesStore[path] ?? [];
+          const sorted = [...list].sort((a, b) =>
+            direction === "desc" ? b.order - a.order : a.order - b.order,
+          );
+          const docs = sorted.slice(0, n).map((item) => ({ data: () => item }));
+          return { empty: docs.length === 0, docs };
+        },
+      }),
     }),
   };
 }
@@ -26,9 +53,7 @@ vi.mock("firebase-admin/app", () => ({
 vi.mock("firebase-admin/firestore", () => ({
   FieldValue: { serverTimestamp: serverTimestampMock },
   getFirestore: vi.fn(() => ({
-    collection: (name: string) => ({
-      doc: () => makeDoc(`${name}/book-auto-id`),
-    }),
+    collection: (name: string) => makeCollection(name),
     batch: () => ({
       set: (ref: { path: string }, data: unknown) => setCalls.push({ path: ref.path, data }),
       commit: commitMock,
@@ -36,12 +61,19 @@ vi.mock("firebase-admin/firestore", () => ({
   })),
 }));
 
-import { createBookWithIntake } from "./books.js";
+import {
+  createBookWithIntake,
+  getBook,
+  getVisionDocument,
+  appendStructuralNoteMessage,
+} from "./books.js";
 import { DEFAULT_STYLE_PRESET_ID } from "../config/stylePresets.js";
 
 describe("createBookWithIntake", () => {
   beforeEach(() => {
     setCalls.length = 0;
+    docStore = {};
+    messagesStore = {};
     commitMock.mockReset();
     commitMock.mockResolvedValue(undefined);
     serverTimestampMock.mockClear();
@@ -142,5 +174,79 @@ describe("createBookWithIntake", () => {
     expect(messages[3]?.text).toBe("(skipped)");
     expect(messages[7]?.text).toContain("Warm & Character-Driven");
     expect(messages[7]?.text).toContain("Quiet, reflective prose.");
+  });
+});
+
+describe("getBook", () => {
+  beforeEach(() => {
+    docStore = {};
+  });
+
+  it("returns the book data when it exists", async () => {
+    docStore["books/book-1"] = { uid: "user-a", title: "A heist", style: { presetIds: [] } };
+
+    const book = await getBook("book-1");
+
+    expect(book).toEqual({ uid: "user-a", title: "A heist", style: { presetIds: [] } });
+  });
+
+  it("returns undefined when the book does not exist", async () => {
+    const book = await getBook("missing-book");
+
+    expect(book).toBeUndefined();
+  });
+});
+
+describe("getVisionDocument", () => {
+  beforeEach(() => {
+    docStore = {};
+  });
+
+  it("returns the vision document when it exists", async () => {
+    docStore["books/book-1/vision/main"] = {
+      theme: "x",
+      premise: "y",
+      characterIntents: [],
+      structureMap: [],
+      guidanceDial: "normal",
+      threads: [],
+    };
+
+    const vision = await getVisionDocument("book-1");
+
+    expect(vision).toMatchObject({ theme: "x", premise: "y" });
+  });
+
+  it("returns undefined when the vision document does not exist", async () => {
+    const vision = await getVisionDocument("missing-book");
+
+    expect(vision).toBeUndefined();
+  });
+});
+
+describe("appendStructuralNoteMessage", () => {
+  beforeEach(() => {
+    setCalls.length = 0;
+    messagesStore = {};
+  });
+
+  it("writes a structural_note message at order 0 when no messages exist yet", async () => {
+    await appendStructuralNoteMessage("book-1", "2-3 opening suggestions");
+
+    const write = setCalls.find((call) => call.path.startsWith("books/book-1/messages/"));
+    expect(write?.data).toMatchObject({
+      type: "structural_note",
+      text: "2-3 opening suggestions",
+      order: 0,
+    });
+  });
+
+  it("writes at order = previous max + 1 when messages already exist", async () => {
+    messagesStore["books/book-1/messages"] = [{ order: 0 }, { order: 1 }, { order: 7 }];
+
+    await appendStructuralNoteMessage("book-1", "The Muse suggests...");
+
+    const write = setCalls.find((call) => call.path.startsWith("books/book-1/messages/"));
+    expect(write?.data).toMatchObject({ order: 8, type: "structural_note" });
   });
 });
