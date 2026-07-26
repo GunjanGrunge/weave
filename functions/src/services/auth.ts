@@ -40,9 +40,17 @@ export async function verifyIdToken(
   }
 
   try {
-    return await adminAuth().verifyIdToken(token);
-  } catch {
-    throw new AuthError("Invalid or expired ID token.");
+    return await adminAuth().verifyIdToken(token, /* checkRevoked */ true);
+  } catch (error) {
+    // Only Firebase Auth's own token-validity errors (code starting
+    // `auth/`) mean "this credential is bad" — rethrow anything else
+    // (network failures, project misconfiguration) so it surfaces as a
+    // real 5xx instead of being misreported as a 401.
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string" && code.startsWith("auth/")) {
+      throw new AuthError("Invalid or expired ID token.");
+    }
+    throw error;
   }
 }
 

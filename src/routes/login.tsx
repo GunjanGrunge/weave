@@ -32,11 +32,41 @@ function friendlyAuthError(error: unknown): string {
   }
 }
 
+// Thrown when the credentials themselves were fine (Firebase Auth accepted
+// them) but the backend verification step couldn't be completed or trusted
+// — a network/infra hiccup or an unexpected response shape, not a bad
+// password. Kept distinct from a real 401 so the UI doesn't blame the
+// user's credentials for something else's failure.
+class WhoamiVerificationError extends Error {}
+
 async function verifySignedInUser(): Promise<void> {
-  const response = await authenticatedFetch("/whoami");
-  if (!response.ok) {
+  let response: Response;
+  try {
+    response = await authenticatedFetch("/whoami");
+  } catch {
+    throw new WhoamiVerificationError("Could not reach the server to verify your account.");
+  }
+
+  if (response.status === 401) {
     throw new Error("Unable to verify the signed-in account.");
   }
+
+  // Defend against a misconfigured VITE_FIREBASE_FUNCTIONS_URL silently
+  // hitting the SPA's catch-all rewrite (a 200 OK HTML page) instead of the
+  // real whoami function — a bare `.ok` check would treat that as a pass.
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    body = undefined;
+  }
+  const uid = (body as { uid?: unknown } | undefined)?.uid;
+  if (!response.ok || typeof uid !== "string") {
+    throw new WhoamiVerificationError("Could not verify the signed-in account.");
+  }
+
+  // Task 6: visible, unobtrusive proof the whole auth chain works end to end.
+  console.log("Signed in as uid:", uid);
 }
 
 export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
@@ -57,7 +87,11 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       if (auth.currentUser) {
         await signOut(auth);
       }
-      setError(friendlyAuthError(err));
+      setError(
+        err instanceof WhoamiVerificationError
+          ? "Signed in, but couldn't verify your account. Please try again."
+          : friendlyAuthError(err),
+      );
     } finally {
       setSubmitting(false);
     }

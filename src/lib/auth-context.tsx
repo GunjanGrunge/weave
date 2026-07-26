@@ -14,10 +14,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
-      setUser(nextUser);
-      setLoading(false);
-    });
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (nextUser) => {
+        setUser(nextUser);
+        setLoading(false);
+      },
+      (error) => {
+        // Without this, an error here would leave `loading` true forever —
+        // every route gated by RouteGuard would be stuck on the loading
+        // screen with no way out. Treat it as signed-out instead.
+        console.error("onAuthStateChanged error:", error);
+        setUser(null);
+        setLoading(false);
+      },
+    );
     return unsubscribe;
   }, []);
 

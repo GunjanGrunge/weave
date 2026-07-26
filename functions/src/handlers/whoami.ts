@@ -29,11 +29,16 @@ export async function buildWhoamiResponse(
 
 export const whoami = onRequest(
   {
-    cors: true,
+    cors: ["https://backupapp-bbf71.web.app"],
     region: "us-central1",
   },
   async (request, response) => {
-    const result = await buildWhoamiResponse(request.headers.authorization);
-    response.status(result.statusCode).json(result.body);
+    try {
+      const result = await buildWhoamiResponse(request.headers.authorization);
+      response.status(result.statusCode).json(result.body);
+    } catch (error) {
+      console.error(error);
+      response.status(500).json({ code: "internal", message: "Unexpected error." });
+    }
   },
 );

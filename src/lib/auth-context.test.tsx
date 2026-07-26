@@ -84,6 +84,26 @@ describe("AuthProvider / useAuth", () => {
     expect(screen.getByTestId("uid").textContent).toBe("none");
   });
 
+  it("clears loading (as signed-out) instead of hanging forever when onAuthStateChanged errors", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    onAuthStateChangedMock.mockImplementation(
+      (_auth, _callback: (u: User | null) => void, errorCallback: (e: Error) => void) => {
+        errorCallback(new Error("network unreachable"));
+        return () => {};
+      },
+    );
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("loading").textContent).toBe("false"));
+    expect(screen.getByTestId("uid").textContent).toBe("none");
+    consoleErrorSpy.mockRestore();
+  });
+
   it("unsubscribes from onAuthStateChanged on unmount", () => {
     const unsubscribe = vi.fn();
     onAuthStateChangedMock.mockImplementation(() => unsubscribe);

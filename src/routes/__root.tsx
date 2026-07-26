@@ -5,11 +5,12 @@ import {
   createRootRouteWithContext,
   useRouter,
   useRouterState,
+  useNavigate,
 } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { AppShell } from "../components/layout/AppShell";
-import { AuthProvider } from "../lib/auth-context";
+import { AuthProvider, useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../lib/route-guard";
 
 function NotFoundComponent() {
@@ -69,6 +70,17 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   );
 }
 
+// No `shellComponent` here on purpose: this app is deployed as a plain
+// client-rendered SPA (see vite.spa.config.ts + src/spa.tsx's createRoot
+// call), not TanStack Start's document-level SSR. A `shellComponent`
+// rendering <html>/<head>/<body> still executes even in that CSR path
+// (TanStack Router wraps the root route's children in it unconditionally),
+// nesting a second <html> document inside the real one's #root div — that
+// mismatch between the fiber tree and the actual DOM deadlocked React's
+// event-target-to-fiber lookup and froze the entire app on load (commit
+// f7d5197 "Fix SPA boot deadlock"). The <head> tags this used to render
+// (stylesheet, favicon, fonts) are generated directly into the static
+// index.html by scripts/write-static-index.mjs instead.
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     meta: [
@@ -96,6 +108,26 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
+// /login has no AppShell/RouteGuard (it's the one route reachable while
+// signed out), but it still needs auth state to bounce an already-signed-in
+// visitor back to the workspace rather than showing the form again.
+export function LoginRouteShell() {
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!loading && user) {
+      navigate({ to: "/" });
+    }
+  }, [loading, user, navigate]);
+
+  if (loading || user) {
+    return null;
+  }
+
+  return <Outlet />;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -110,22 +142,18 @@ function RootComponent() {
     }
   }, []);
 
-  if (isLoginRoute) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        <Outlet />
-      </QueryClientProvider>
-    );
-  }
-
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <RouteGuard>
-          <AppShell>
-            <Outlet />
-          </AppShell>
-        </RouteGuard>
+        {isLoginRoute ? (
+          <LoginRouteShell />
+        ) : (
+          <RouteGuard>
+            <AppShell>
+              <Outlet />
+            </AppShell>
+          </RouteGuard>
+        )}
       </AuthProvider>
     </QueryClientProvider>
   );

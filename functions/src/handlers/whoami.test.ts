@@ -41,4 +41,11 @@ describe("buildWhoamiResponse", () => {
     expect(result.statusCode).toBe(401);
     expect(result.body).toMatchObject({ code: "unauthenticated" });
   });
+
+  it("rethrows non-AuthError failures (e.g. infra errors) instead of reporting them as unauthenticated", async () => {
+    const infraFailure = new Error("network unreachable");
+    verifyIdTokenMock.mockRejectedValue(infraFailure);
+
+    await expect(buildWhoamiResponse("Bearer some-token")).rejects.toBe(infraFailure);
+  });
 });

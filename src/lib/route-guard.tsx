@@ -1,20 +1,19 @@
 import { useEffect, type ReactNode } from "react";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useAuth } from "./auth-context";
 
-const PUBLIC_PATHS = new Set(["/login"]);
-
+// __root.tsx never mounts RouteGuard for /login (see LoginRouteShell there),
+// so every route rendered here is protected by definition — no public-path
+// exemption needed.
 export function RouteGuard({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const isPublicPath = PUBLIC_PATHS.has(pathname);
 
   useEffect(() => {
-    if (!loading && !user && !isPublicPath) {
+    if (!loading && !user) {
       navigate({ to: "/login" });
     }
-  }, [loading, user, isPublicPath, navigate]);
+  }, [loading, user, navigate]);
 
   if (loading) {
     return (
@@ -24,7 +23,7 @@ export function RouteGuard({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!user && !isPublicPath) {
+  if (!user) {
     // Redirect is in flight (see effect above); render nothing to avoid a
     // flash of protected content.
     return null;

@@ -38,7 +38,7 @@ describe("verifyIdToken", () => {
     const decoded = await verifyIdToken("Bearer valid-token");
 
     expect(decoded.uid).toBe("user-a");
-    expect(verifyIdTokenMock).toHaveBeenCalledWith("valid-token");
+    expect(verifyIdTokenMock).toHaveBeenCalledWith("valid-token", true);
   });
 
   it("rejects with AuthError when the Authorization header is missing", async () => {
@@ -53,10 +53,29 @@ describe("verifyIdToken", () => {
   });
 
   it("rejects with AuthError when Admin SDK rejects the token as invalid/expired", async () => {
-    verifyIdTokenMock.mockRejectedValue(new Error("Firebase ID token has expired"));
+    const expired = Object.assign(new Error("Firebase ID token has expired"), {
+      code: "auth/id-token-expired",
+    });
+    verifyIdTokenMock.mockRejectedValue(expired);
 
     await expect(verifyIdToken("Bearer expired-token")).rejects.toBeInstanceOf(AuthError);
     await expect(verifyIdToken("Bearer expired-token")).rejects.toMatchObject({ code: "unauthenticated" });
+  });
+
+  it("rejects with AuthError when Admin SDK reports the token was revoked", async () => {
+    const revoked = Object.assign(new Error("Firebase ID token has been revoked"), {
+      code: "auth/id-token-revoked",
+    });
+    verifyIdTokenMock.mockRejectedValue(revoked);
+
+    await expect(verifyIdToken("Bearer revoked-token")).rejects.toBeInstanceOf(AuthError);
+  });
+
+  it("rethrows non-auth errors (e.g. network/infra failures) instead of misreporting them as unauthenticated", async () => {
+    const networkFailure = new Error("fetch failed");
+    verifyIdTokenMock.mockRejectedValue(networkFailure);
+
+    await expect(verifyIdToken("Bearer some-token")).rejects.toBe(networkFailure);
   });
 });
 
