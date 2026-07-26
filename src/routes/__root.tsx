@@ -141,17 +141,21 @@ function RootComponent() {
     }
   }, []);
 
+  if (isLoginRoute) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <Outlet />
+      </QueryClientProvider>
+    );
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <RouteGuard>
-          {isLoginRoute ? (
+          <AppShell>
             <Outlet />
-          ) : (
-            <AppShell>
-              <Outlet />
-            </AppShell>
-          )}
+          </AppShell>
         </RouteGuard>
       </AuthProvider>
     </QueryClientProvider>

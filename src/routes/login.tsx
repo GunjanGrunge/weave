@@ -1,10 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { signInWithEmailAndPassword, signOut, type AuthError } from "firebase/auth";
 import { BookOpenCheck, LockKeyhole, ShieldCheck } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { authenticatedFetch } from "@/lib/api";
-import { useAuth } from "@/lib/auth-context";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -121,13 +120,6 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
 
 function LoginRoute() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-
-  useEffect(() => {
-    if (user) {
-      navigate({ to: "/" });
-    }
-  }, [navigate, user]);
 
   return (
     <main className="isolate flex min-h-svh bg-background text-foreground">
