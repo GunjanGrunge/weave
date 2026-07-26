@@ -27,31 +27,11 @@ const sections: Array<{ heading: string; items: Item[] }> = [
       { to: "/", label: "Dashboard", icon: LayoutDashboard },
       { to: "/books", label: "My Books", icon: BookMarked },
       { to: "/write", label: "Writing Studio", icon: PenLine },
-      { to: "/chapters", label: "Chapters", icon: ListOrdered },
-    ],
-  },
-  {
-    heading: "Planning",
-    items: [
-      { to: "/characters", label: "Characters", icon: Users },
-      { to: "/world", label: "World Building", icon: Globe2 },
-      { to: "/timeline", label: "Timeline", icon: Clock },
-      { to: "/notes", label: "Notes", icon: StickyNote },
-      { to: "/research", label: "Research", icon: Compass },
-    ],
-  },
-  {
-    heading: "AI",
-    items: [
-      { to: "/chat", label: "AI Chat", icon: MessagesSquare },
-      { to: "/refactor", label: "Story Refactor", icon: GitBranch },
-      { to: "/consistency", label: "Consistency", icon: ShieldCheck },
     ],
   },
   {
     heading: "Production",
     items: [
-      { to: "/publishing", label: "Publishing", icon: BookOpenCheck },
       { to: "/settings", label: "Settings", icon: Settings },
     ],
   },

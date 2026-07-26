@@ -27,6 +27,18 @@ dist-ssr
 .DS_Store
 *.suo
 *.ntvs*
-*.njsproj
-*.sln
 *.sw?
+
+# Environment & local credentials
+.env
+.env.*
+!.env.example
+
+# Agentic & workspace-specific configurations
+.adal/
+.agent/
+.agents/
+.claude/
+.github/agents/
+_bmad-output/
+_bmad/
