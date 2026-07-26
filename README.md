@@ -1,159 +1,145 @@
-<div align="center">
+# Story
 
-# 📖 Story — AI-Assisted Novel Writing Platform
+Story is a private AI-assisted novel writing workspace. The current app is a Firebase-hosted React/TanStack Start frontend backed by Firebase Auth, Firestore, Cloud Functions, and a model-registry-driven AI layer.
 
-**A private, AI-first workspace for authors to plan, draft, refactor, and publish manuscripts with a Gemini-powered co-author.**
+Epic 1 is implemented: secure app access, private writer sign-in, guided conversational book creation, and the Muse opening-suggestion flow.
 
-[![React 19](https://img.shields.io/badge/React-19.2-blue?logo=react&logoColor=white)](https://react.dev/)
-[![TanStack Start](https://img.shields.io/badge/TanStack-Start-ff4154?logo=reactrouter&logoColor=white)](https://tanstack.com/)
-[![Tailwind CSS v4](https://img.shields.io/badge/Tailwind-v4.0-38bdf8?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
-[![Bun](https://img.shields.io/badge/Bun-v1.3.12-black?logo=bun&logoColor=white)](https://bun.sh/)
-[![Google Gemini API](https://img.shields.io/badge/Google_Gemini-3.1_Pro_|_3.6_Flash-4285F4?logo=google&logoColor=white)](https://ai.google.dev/)
-[![Firebase & GCP](https://img.shields.io/badge/GCP-Cloud_Functions_2nd_Gen-FFCA28?logo=firebase&logoColor=black)](https://firebase.google.com/)
+![Story Solution Architecture Diagram](public/architecture_infographic.png)
 
-</div>
+## Current Capabilities
 
----
+- Private Firebase Auth sign-in for the approved writer accounts.
+- Route protection for authenticated app areas.
+- Guided chat-style book intake at `/books/new`.
+- Atomic book creation with one Book, one opening Chapter, one Vision Document, and ordered intake messages.
+- Muse opening suggestions after intake, with 2-3 candidate openings and one-line rationales.
+- Non-blocking retry path for opening suggestions through `/retryOpeningSuggestion`.
+- Usage logging under `books/{bookId}/usage`.
+- Firestore ownership rules scoped under each `books/{bookId}` root.
+- CI deploy workflow that runs frontend tests, frontend build, functions verification, model-registry seeding, and Firebase deploy.
 
-## 🏗️ Solution Architecture Diagram
-
-### Cloud Architecture Blueprint (GCP / Firebase)
-
-![Story Solution Architecture Diagram](docs/assets/architecture_infographic.png)
-
-```
-+-----------------------------------------------------------------------------------------------------------------------------------------+
-|                                                   STORY — SOLUTION ARCHITECTURE BLUEPRINT                                                |
-+-----------------------------------------------------------------------------------------------------------------------------------------+
-
- [CLIENT TIER]                       [GATEWAY & COMPUTE TIER]                [PIPELINE ORCHESTRATION TIER]             [DATA & PERSISTENCE TIER]
- +---------------------------+       +-------------------------------+       +---------------------------------+       +---------------------------------+
- | Browser Client (SPA/SSR)  |       | GCP Cloud Functions (2nd Gen) |       | LangGraph.js Engine             |       | Firestore Native Mode           |
- |  - React 19               |       |  - Node.js 22 Runtime         |       |  - assembleContext (AD-3)       |       |  - books/{id}/chapters          |
- |  - TanStack Start/Router  | ----> |  - H3 Seam Handlers           | ----> |  - composePrompt                | ----> |  - books/{id}/facts (Vector)    |
- |  - Tailwind CSS v4        |       |  - Firebase Auth Validation   |       |  - generateScene                |       |  - books/{id}/vision/main       |
- |  - Writing Studio UI      |       |  - Owner Verification Check   |       |  - persistSession (AD-4)        |       |  - books/{id}/usage             |
- +---------------------------+       +-------------------------------+       +---------------------------------+       +---------------------------------+
-                                                                                             |                                         ^
-                                                                                             | (Event Triggers)                        | (Vector Queries)
-                                                                                             v                                         |
-                                                                             +---------------------------------+       +---------------------------------+
-                                                                             | Async Event Background Functions|       | GCP Cloud Storage Bucket        |
-                                                                             |  - extractEntities (Gemini Lite)| ----> |  - Manuscript Exports (.md/.txt)|
-                                                                             |  - embedFacts (Embedding 2)     |       |  - System Backups & Assets      |
-                                                                             |  - Muse Guidance (Flash Model)  |       +---------------------------------+
-                                                                             +---------------------------------+
-                                                                                             |
-                                                                                             v
-                                                                             +-------------------------------------------------------------------+
-                                                                             | GOOGLE GEMINI AI SERVICES SUITE                                   |
-                                                                             |  - gemini-3.1-pro-preview : Primary Scene Generation             |
-                                                                             |  - gemini-3.6-flash       : Muse Beat Guidance & Suggestions       |
-                                                                             |  - gemini-3.5-flash-lite  : JSON Fact & Entity Extraction         |
-                                                                             |  - gemini-embedding-2     : 768-dim Vector Embeddings              |
-                                                                             +-------------------------------------------------------------------+
-+-----------------------------------------------------------------------------------------------------------------------------------------+
-```
-
----
-
-## ✨ Key Features
-
-### ✍️ Integrated Chat-First Writing Studio
-- **Three Input Modes**: Generate scenes from free-text descriptions, quick-fill structured prompts (goal, mood, POV, setting), or draft polish rewrites.
-- **Inline Editing & Autosave**: Edit generated prose inline; accepted scenes append seamlessly to the active chapter.
-- **Session-Cached Regenerate**: Re-run generation with updated styles or prompt parameters while reusing cached retrieval outputs server-side (AD-4).
-
-### 🎨 Flexible Style Engine
-- **Characteristic Presets**: Select from curated voice presets (e.g. *Cinematic Noir*, *Sparse Realism*).
-- **Style Blending**: Combine up to two presets into a single LLM instruction call.
-- **Custom Voice Guidance**: Supply custom instructions to shape tone mid-book without affecting past chapters.
-
-### 🧠 Invisible Vector Memory & Context Assembly
-- **Context-Aware Prompting**: Automatically retrieves active chapter text, preceding scenes, prior chapter summaries, and relevant facts (AD-3).
-- **Vector Retrieval**: Fact extraction powered by `gemini-3.5-flash-lite` and 768-dimensional embeddings (`gemini-embedding-2`) using Firestore `findNearest` vector queries.
-- **Structural Data Isolation**: Path-based subcollection containment (`books/{id}/facts`) guarantees tenant data privacy.
-
-### 👁️ Vision Document & Narrative Threads
-- **Author Intent Tracking**: Maintain theme/genre, premise, and character intents separate from manuscript text.
-- **Narrative Secrets**: Manage planted details with granular subtlety registers (`invisible`, `subtle`, `explicit`) honored across all generations.
-
-### ⚡ The Muse — Passive Beat Guidance
-- **Structural Notes**: Advisory post-accept cards identifying structural beats (e.g. Inciting Incident, Midpoint, Climax) with a one-line rationale.
-- **Persisted Structure Map**: Automatically updates the Vision document's Structure Map to inform future beat recommendations.
-
-### 📸 Version Snapshots & Manuscript Export
-- **Point-in-Time Snapshots**: Create named manuscript snapshots, compare chapter/scene modifications, and restore coherently with confirmation warnings.
-- **Manuscript Export**: Compile ordered chapters and scenes into clean Markdown (`.md`) or Plain Text (`.txt`) files.
-
----
-
-## 🛠️ Technology Stack
+## Stack
 
 | Layer | Technology |
-| :--- | :--- |
-| **Frontend Framework** | React 19 + TanStack Start + Vite v8 |
-| **Routing** | TanStack Router (File-based routing) |
-| **Styling & UI** | Tailwind CSS v4 + LightningCSS + Radix UI + Lucide Icons |
-| **Runtime & Build** | Bun v1.3.12 + Nitro Engine (`cloudflare-module` / SSR) |
-| **Backend Compute** | Google Cloud Functions (2nd Gen, Node 22, TypeScript) |
-| **AI Orchestration** | LangGraph.js (Deterministic node pipelines) |
-| **AI Models** | Google Gemini `gemini-3.1-pro-preview`, `gemini-3.6-flash`, `gemini-3.5-flash-lite`, `gemini-embedding-2` |
-| **Database & Storage** | Firestore Native Mode (Vector Search) + Cloud Storage |
+| --- | --- |
+| Frontend | React 19, TanStack Start/Router, Vite 8 |
+| UI | Tailwind CSS v4, Radix UI, Lucide icons |
+| Runtime | Bun for frontend tooling, Node.js 22 for functions |
+| Backend | Firebase Hosting, Firebase Auth, Firestore, Cloud Functions v2 |
+| AI orchestration | LangGraph.js pipelines in `functions/src/pipelines` |
+| AI providers | OpenAI/Gemini text-provider registry, Gemini embeddings |
+| Tests | Vitest, Testing Library, functions seam lint |
 
----
+## Repository Layout
 
-## 🚀 Quick Start
+```text
+src/
+  lib/                  Frontend Firebase auth and authenticated fetch helpers
+  routes/               TanStack file routes, including guided book intake
+functions/
+  src/handlers/         HTTP function handlers
+  src/pipelines/        LangGraph pipeline entry points
+  src/services/         Firestore, auth, and AI service seams
+  scripts/              Operational scripts such as model registry seeding
+docs/
+  ai-cookbook-patterns.md
+public/
+  architecture_infographic.png
+```
 
-### 1. Prerequisites
-- [Bun](https://bun.sh/) `v1.3.12` or higher
-- [Node.js](https://nodejs.org/) `v22.x`
+## Local Setup
 
-### 2. Installation
+Install dependencies:
+
 ```bash
-# Clone the repository
-git clone https://github.com/vibecodermaster69/story-weaver-ai.git
-cd story-weaver-ai
-
-# Install dependencies
 bun install
+cd functions
+npm install
+cd ..
 ```
 
-### 3. Environment Variables Setup
-Create a `.env` file in the root directory:
+Create a root `.env` for frontend Firebase configuration:
+
 ```env
-GOOGLE_API_KEY=your_gemini_api_key
-VITE_GCP_PROJECT_ID=your_gcp_project_id
-VITE_FIREBASE_API_KEY=your_firebase_api_key
-VITE_FIREBASE_PROJECT_ID=your_firebase_project_id
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_APP_ID=...
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+VITE_FIREBASE_STORAGE_BUCKET=...
 ```
 
-### 4. Run Development Server
+Functions read AI keys from Firebase secrets, not from the frontend `.env`:
+
+```bash
+firebase functions:secrets:set GOOGLE_API_KEY
+firebase functions:secrets:set OPENAI_API_KEY
+```
+
+Run the frontend locally:
+
 ```bash
 bun run dev
 ```
-Open [http://localhost:5173/](http://localhost:5173/) in your browser.
 
-### 5. Build for Production
+The dev server opens at `http://localhost:5173`.
+
+## Verification
+
+Frontend:
+
 ```bash
+bun run test
 bun run build
 ```
 
----
+Functions:
 
-## 📚 Technical Documentation
+```bash
+cd functions
+npm run verify
+```
 
-For in-depth architectural specifications and developer guides, consult the [`docs/`](docs/) directory:
+`npm run verify` runs lint, seam lint, TypeScript build, and backend tests.
 
-- 📘 [docs/overview.md](docs/overview.md) — System Vision & Tech Stack
-- 🏗️ [docs/architecture.md](docs/architecture.md) — Deep-dive System Architecture & Invariants
-- 🛣️ [docs/api-and-routes.md](docs/api-and-routes.md) — Route Tree & LangGraph.js Pipeline Definitions
-- 🚀 [docs/setup-and-deployment.md](docs/setup-and-deployment.md) — Local Setup & Production Deployment
+## Firebase Deployment
 
----
+The GitHub Actions workflow at `.github/workflows/firebase-deploy.yml` deploys on pushes to `main`.
 
-<div align="center">
+Required GitHub secrets:
 
-*Maintained by Paige (`📚`), Technical Writer.*
+- `FIREBASE_SERVICE_ACCOUNT_JSON`
+- `VITE_FIREBASE_API_KEY`
+- `VITE_FIREBASE_AUTH_DOMAIN`
+- `VITE_FIREBASE_PROJECT_ID`
+- `VITE_FIREBASE_APP_ID`
+- `VITE_FIREBASE_MESSAGING_SENDER_ID`
+- `VITE_FIREBASE_STORAGE_BUCKET`
 
-</div>
+The workflow seeds `config/geminiModels` before deployment by running:
+
+```bash
+cd functions
+node scripts/seedModelRegistry.mjs
+```
+
+Manual deploys need an authenticated Firebase CLI session or service-account credentials.
+
+## AI Model Registry
+
+Model selection is stored in Firestore at `config/geminiModels`. App code reads it through `functions/src/services/gemini.ts`; handlers and pipelines do not call model providers directly.
+
+The current registry shape supports:
+
+- Text model primary/fallback providers for generation, opening suggestions, Muse notes, summaries, and entity extraction.
+- Gemini-only embedding configuration.
+- Per-call usage entries recording task, provider, model, and token counts.
+
+## Cookbook Pattern Notes
+
+The reviewed Claude cookbook repository is not vendored into this app. The reusable decisions are captured in [docs/ai-cookbook-patterns.md](docs/ai-cookbook-patterns.md):
+
+- Use structured JSON output for Muse notes, extraction, summaries, and opening suggestions.
+- Keep orchestration deterministic through Cloud Functions and LangGraph.js pipeline seams.
+- Defer explicit prompt caching until larger Writing Studio generation flows.
+- Defer Pinecone-style RAG unless Firestore vector retrieval is no longer enough.
