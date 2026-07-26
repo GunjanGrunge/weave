@@ -10,10 +10,13 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+functions/lib
+functions/node_modules
 .output
 .vinxi
 .tanstack/**
 .nitro
+.firebase/
 *.local
 
 # Wrangler / Cloudflare

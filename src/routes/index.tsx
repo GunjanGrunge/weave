@@ -1,13 +1,27 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, Flame, Target, BookOpen, GitBranch, MessagesSquare, Plus, PenLine } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  ArrowRight,
+  Flame,
+  Target,
+  BookOpen,
+  GitBranch,
+  MessagesSquare,
+  Plus,
+  PenLine,
+} from "lucide-react";
 import { books, currentBook, chapters, timelineEvents } from "@/lib/mock-data";
 import { SectionLabel } from "@/components/common/SectionLabel";
+import { checkBackendHealth, type HealthCheckResult } from "@/lib/health";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Dashboard · Story Platform" },
-      { name: "description", content: "Your writing streak, daily goal, and active manuscripts — Story Platform." },
+      {
+        name: "description",
+        content: "Your writing streak, daily goal, and active manuscripts — Story Platform.",
+      },
       { property: "og:title", content: "Dashboard · Story Platform" },
       { property: "og:description", content: "The command center for your writing life." },
     ],
@@ -18,6 +32,25 @@ export const Route = createFileRoute("/")({
 function Dashboard() {
   const goalPct = Math.min(1, currentBook.wordsToday / currentBook.dailyGoal);
   const activeChapter = chapters.find((c) => c.number === 12)!;
+  const [health, setHealth] = useState<HealthCheckResult>({
+    status: "idle",
+    message: "Checking Cloud Functions health",
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    setHealth({ status: "checking", message: "Checking Cloud Functions health" });
+
+    void checkBackendHealth().then((result) => {
+      if (isMounted) {
+        setHealth(result);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <div className="mx-auto max-w-7xl animate-reveal px-6 py-10 lg:px-10">
@@ -28,8 +61,24 @@ function Dashboard() {
             The desk is waiting.
           </h1>
           <p className="mt-3 max-w-lg text-sm text-muted-foreground">
-            You are twelve days into your longest streak of the year. One page tonight keeps it alive.
+            You are twelve days into your longest streak of the year. One page tonight keeps it
+            alive.
           </p>
+          <div className="mt-4 inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+            <span
+              className={`size-2 rounded-full ${
+                health.status === "ok"
+                  ? "bg-emerald-500"
+                  : health.status === "checking"
+                    ? "bg-amber-500"
+                    : "bg-destructive"
+              }`}
+            />
+            <span className="font-mono uppercase tracking-widest">
+              Backend {health.status === "ok" ? "healthy" : health.status}
+            </span>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">{health.message}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
@@ -80,11 +129,15 @@ function Dashboard() {
           <div className="mt-4 flex items-center gap-6">
             <RingGauge value={goalPct} />
             <div>
-              <div className="font-display text-3xl italic">{currentBook.wordsToday.toLocaleString()}</div>
+              <div className="font-display text-3xl italic">
+                {currentBook.wordsToday.toLocaleString()}
+              </div>
               <div className="mt-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
                 of {currentBook.dailyGoal.toLocaleString()} words
               </div>
-              <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">+15% vs yesterday</div>
+              <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+                +15% vs yesterday
+              </div>
             </div>
           </div>
         </div>
@@ -96,18 +149,24 @@ function Dashboard() {
             <BookOpen className="size-4 text-muted-foreground" />
           </div>
           <div className="mt-3 text-xs text-muted-foreground">Chapter {activeChapter.number}</div>
-          <div className="mt-1 font-display text-2xl italic leading-tight">{activeChapter.title}</div>
+          <div className="mt-1 font-display text-2xl italic leading-tight">
+            {activeChapter.title}
+          </div>
           <p className="mt-3 line-clamp-2 font-serif text-sm text-muted-foreground">
             {activeChapter.summary}
           </p>
           <div className="mt-4 h-1 overflow-hidden rounded-full bg-foreground/5">
             <div
               className="h-full bg-accent"
-              style={{ width: `${Math.round((activeChapter.wordCount / activeChapter.target) * 100)}%` }}
+              style={{
+                width: `${Math.round((activeChapter.wordCount / activeChapter.target) * 100)}%`,
+              }}
             />
           </div>
           <div className="mt-2 flex justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            <span>{activeChapter.wordCount} / {activeChapter.target} words</span>
+            <span>
+              {activeChapter.wordCount} / {activeChapter.target} words
+            </span>
             <span>{activeChapter.status}</span>
           </div>
         </div>
@@ -116,7 +175,10 @@ function Dashboard() {
         <div className="col-span-12 lg:col-span-8 rounded-2xl border border-border bg-card p-6">
           <div className="flex items-center justify-between">
             <SectionLabel>Recent projects</SectionLabel>
-            <Link to="/books" className="inline-flex items-center gap-1 text-xs text-accent hover:underline">
+            <Link
+              to="/books"
+              className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+            >
               All books <ArrowRight className="size-3" />
             </Link>
           </div>
@@ -190,7 +252,15 @@ function RingGauge({ value }: { value: number }) {
   const c = 2 * Math.PI * r;
   return (
     <svg width="80" height="80" viewBox="0 0 80 80">
-      <circle cx="40" cy="40" r={r} fill="none" stroke="currentColor" strokeOpacity="0.08" strokeWidth="8" />
+      <circle
+        cx="40"
+        cy="40"
+        r={r}
+        fill="none"
+        stroke="currentColor"
+        strokeOpacity="0.08"
+        strokeWidth="8"
+      />
       <circle
         cx="40"
         cy="40"
@@ -203,7 +273,12 @@ function RingGauge({ value }: { value: number }) {
         strokeDashoffset={c * (1 - value)}
         transform="rotate(-90 40 40)"
       />
-      <text x="40" y="45" textAnchor="middle" className="fill-foreground font-mono text-[11px] font-bold">
+      <text
+        x="40"
+        y="45"
+        textAnchor="middle"
+        className="fill-foreground font-mono text-[11px] font-bold"
+      >
         {Math.round(value * 100)}%
       </text>
     </svg>
