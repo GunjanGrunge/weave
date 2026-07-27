@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-type SetCall = { path: string; data: unknown };
+type WriteCall = { path: string; data: unknown };
 
-const { setCalls, commitMock, serverTimestampMock } = vi.hoisted(() => ({
-  setCalls: [] as SetCall[],
+const { setCalls, updateCalls, commitMock, serverTimestampMock } = vi.hoisted(() => ({
+  setCalls: [] as WriteCall[],
+  updateCalls: [] as WriteCall[],
   commitMock: vi.fn(),
   serverTimestampMock: vi.fn(() => "server-time"),
 }));
@@ -23,6 +24,10 @@ function makeDoc(path: string) {
     set: async (data: unknown) => {
       setCalls.push({ path, data });
       docStore[path] = data;
+    },
+    update: async (data: unknown) => {
+      updateCalls.push({ path, data });
+      docStore[path] = { ...(docStore[path] as Record<string, unknown> | undefined), ...(data as object) };
     },
   };
 }
@@ -65,6 +70,7 @@ import {
   createBookWithIntake,
   getBook,
   getVisionDocument,
+  updateVisionDocument,
   upsertOpeningSuggestionMessage,
 } from "./books.js";
 import { DEFAULT_STYLE_PRESET_ID } from "../config/stylePresets.js";
@@ -221,6 +227,51 @@ describe("getVisionDocument", () => {
     const vision = await getVisionDocument("missing-book");
 
     expect(vision).toBeUndefined();
+  });
+});
+
+describe("updateVisionDocument", () => {
+  beforeEach(() => {
+    setCalls.length = 0;
+    updateCalls.length = 0;
+    docStore = {
+      "books/book-1/vision/main": {
+        theme: "old",
+        premise: "old premise",
+        characterIntents: [],
+        structureMap: [{ beat: "Opening Image", sceneRef: "scene-1" }],
+        guidanceDial: "normal",
+        threads: [],
+      },
+    };
+  });
+
+  it("updates only editable vision fields via update(), never set()", async () => {
+    const vision = await updateVisionDocument("book-1", {
+      theme: "new",
+      premise: "new premise",
+      characterIntents: ["Mara"],
+      threads: [],
+    });
+
+    expect(updateCalls).toEqual([
+      {
+        path: "books/book-1/vision/main",
+        data: {
+          theme: "new",
+          premise: "new premise",
+          characterIntents: ["Mara"],
+          threads: [],
+        },
+      },
+    ]);
+    expect(setCalls).toHaveLength(0);
+    expect(vision).toMatchObject({
+      theme: "new",
+      premise: "new premise",
+      structureMap: [{ beat: "Opening Image", sceneRef: "scene-1" }],
+      guidanceDial: "normal",
+    });
   });
 });
 

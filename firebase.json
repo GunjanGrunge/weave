@@ -35,6 +35,20 @@
         }
       },
       {
+        "source": "/getVision",
+        "function": {
+          "functionId": "getVision",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/updateVision",
+        "function": {
+          "functionId": "updateVision",
+          "region": "us-central1"
+        }
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

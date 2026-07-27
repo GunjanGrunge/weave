@@ -153,6 +153,27 @@ export async function getVisionDocument(bookId: string): Promise<VisionDocument 
   return snapshot.exists ? (snapshot.data() as VisionDocument) : undefined;
 }
 
+export type VisionUpdatePatch = Pick<
+  VisionDocument,
+  "theme" | "premise" | "characterIntents" | "threads"
+>;
+
+export async function updateVisionDocument(
+  bookId: string,
+  patch: VisionUpdatePatch,
+): Promise<VisionDocument | undefined> {
+  const visionRef = firestore()
+    .collection("books")
+    .doc(bookId)
+    .collection("vision")
+    .doc("main");
+
+  await visionRef.update(patch);
+
+  const snapshot = await visionRef.get();
+  return snapshot.exists ? (snapshot.data() as VisionDocument) : undefined;
+}
+
 export async function upsertOpeningSuggestionMessage(bookId: string, text: string): Promise<void> {
   const messages = firestore().collection("books").doc(bookId).collection("messages");
   const messageRef = messages.doc("opening-suggestion");
