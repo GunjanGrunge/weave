@@ -51,6 +51,25 @@ function makeCollection(path: string) {
 
   return {
     doc: (id?: string) => makeDoc(`${path}/${id ?? "book-auto-id"}`),
+    where: (field: string, _operator: "==", value: unknown) => ({
+      get: async () => {
+        const prefix = `${path}/`;
+        const docs = Object.entries(docStore)
+          .filter(([docPath, data]) => {
+            const remainder = docPath.slice(prefix.length);
+            return (
+              docPath.startsWith(prefix) &&
+              !remainder.includes("/") &&
+              (data as Record<string, unknown> | undefined)?.[field] === value
+            );
+          })
+          .map(([docPath, data]) => ({
+            id: docPath.slice(prefix.length),
+            data: () => data,
+          }));
+        return { empty: docs.length === 0, docs };
+      },
+    }),
     orderBy: (_field: string, direction: "asc" | "desc" = "asc") => ({
       get: async () => {
         const docs = sortedDocs(direction).map((item) => ({ id: item.id, data: () => item }));
@@ -126,6 +145,7 @@ import {
   createBookWithIntake,
   getActiveChapterScenes,
   getBook,
+  listOwnedBooks,
   getMessages,
   getVisionDocument,
   resolveOpeningSuggestionAttempt,
@@ -307,6 +327,42 @@ describe("getBook", () => {
     const book = await getBook("missing-book");
 
     expect(book).toBeUndefined();
+  });
+});
+
+describe("listOwnedBooks", () => {
+  beforeEach(() => {
+    docStore = {};
+  });
+
+  it("returns only owned books newest first", async () => {
+    docStore["books/book-old"] = {
+      uid: "user-a",
+      title: "Old book",
+      style: { presetIds: ["warm"] },
+      createdAt: { toMillis: () => 100 },
+    };
+    docStore["books/book-new"] = {
+      uid: "user-a",
+      title: "New book",
+      style: { presetIds: ["sparse"] },
+      createdAt: { toMillis: () => 200 },
+    };
+    docStore["books/book-other"] = {
+      uid: "user-b",
+      title: "Other writer",
+      style: { presetIds: [] },
+      createdAt: { toMillis: () => 300 },
+    };
+
+    const books = await listOwnedBooks("user-a");
+
+    expect(books.map((book) => book.bookId)).toEqual(["book-new", "book-old"]);
+    expect(books.map((book) => book.title)).toEqual(["New book", "Old book"]);
+  });
+
+  it("returns an empty list when the writer owns no books", async () => {
+    expect(await listOwnedBooks("user-a")).toEqual([]);
   });
 });
 

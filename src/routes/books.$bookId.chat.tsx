@@ -71,7 +71,7 @@ function truncatePreview(value: string, maxCodePoints: number): string {
 function summarizePolishRequest(draftText: string, aspects: PolishAspectId[]): string {
   const labels = aspects
     .map((aspectId) => POLISH_ASPECTS.find((aspect) => aspect.id === aspectId)?.label)
-    .filter((label): label is string => Boolean(label));
+    .filter((label): label is NonNullable<typeof label> => Boolean(label));
   const preview = truncatePreview(draftText, DRAFT_PREVIEW_LENGTH);
   return `Polish draft (${labels.join(", ")}): ${preview}`;
 }

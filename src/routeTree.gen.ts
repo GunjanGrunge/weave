@@ -9,88 +9,23 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as WriteRouteImport } from './routes/write'
-import { Route as WorldRouteImport } from './routes/world'
-import { Route as TimelineRouteImport } from './routes/timeline'
 import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as ResearchRouteImport } from './routes/research'
-import { Route as RefactorRouteImport } from './routes/refactor'
-import { Route as PublishingRouteImport } from './routes/publishing'
-import { Route as NotesRouteImport } from './routes/notes'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as ConsistencyRouteImport } from './routes/consistency'
-import { Route as ChatRouteImport } from './routes/chat'
-import { Route as CharactersRouteImport } from './routes/characters'
-import { Route as ChaptersRouteImport } from './routes/chapters'
 import { Route as BooksRouteImport } from './routes/books'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BooksIndexRouteImport } from './routes/books.index'
 import { Route as BooksNewRouteImport } from './routes/books.new'
 import { Route as BooksBookIdVisionRouteImport } from './routes/books.$bookId.vision'
 import { Route as BooksBookIdChatRouteImport } from './routes/books.$bookId.chat'
 
-const WriteRoute = WriteRouteImport.update({
-  id: '/write',
-  path: '/write',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const WorldRoute = WorldRouteImport.update({
-  id: '/world',
-  path: '/world',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TimelineRoute = TimelineRouteImport.update({
-  id: '/timeline',
-  path: '/timeline',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ResearchRoute = ResearchRouteImport.update({
-  id: '/research',
-  path: '/research',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RefactorRoute = RefactorRouteImport.update({
-  id: '/refactor',
-  path: '/refactor',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PublishingRoute = PublishingRouteImport.update({
-  id: '/publishing',
-  path: '/publishing',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const NotesRoute = NotesRouteImport.update({
-  id: '/notes',
-  path: '/notes',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ConsistencyRoute = ConsistencyRouteImport.update({
-  id: '/consistency',
-  path: '/consistency',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ChatRoute = ChatRouteImport.update({
-  id: '/chat',
-  path: '/chat',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CharactersRoute = CharactersRouteImport.update({
-  id: '/characters',
-  path: '/characters',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ChaptersRoute = ChaptersRouteImport.update({
-  id: '/chapters',
-  path: '/chapters',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BooksRoute = BooksRouteImport.update({
@@ -102,6 +37,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const BooksIndexRoute = BooksIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => BooksRoute,
 } as any)
 const BooksNewRoute = BooksNewRouteImport.update({
   id: '/new',
@@ -122,40 +62,19 @@ const BooksBookIdChatRoute = BooksBookIdChatRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/books': typeof BooksRouteWithChildren
-  '/chapters': typeof ChaptersRoute
-  '/characters': typeof CharactersRoute
-  '/chat': typeof ChatRoute
-  '/consistency': typeof ConsistencyRoute
   '/login': typeof LoginRoute
-  '/notes': typeof NotesRoute
-  '/publishing': typeof PublishingRoute
-  '/refactor': typeof RefactorRoute
-  '/research': typeof ResearchRoute
   '/settings': typeof SettingsRoute
-  '/timeline': typeof TimelineRoute
-  '/world': typeof WorldRoute
-  '/write': typeof WriteRoute
   '/books/new': typeof BooksNewRoute
+  '/books/': typeof BooksIndexRoute
   '/books/$bookId/chat': typeof BooksBookIdChatRoute
   '/books/$bookId/vision': typeof BooksBookIdVisionRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/books': typeof BooksRouteWithChildren
-  '/chapters': typeof ChaptersRoute
-  '/characters': typeof CharactersRoute
-  '/chat': typeof ChatRoute
-  '/consistency': typeof ConsistencyRoute
   '/login': typeof LoginRoute
-  '/notes': typeof NotesRoute
-  '/publishing': typeof PublishingRoute
-  '/refactor': typeof RefactorRoute
-  '/research': typeof ResearchRoute
   '/settings': typeof SettingsRoute
-  '/timeline': typeof TimelineRoute
-  '/world': typeof WorldRoute
-  '/write': typeof WriteRoute
   '/books/new': typeof BooksNewRoute
+  '/books': typeof BooksIndexRoute
   '/books/$bookId/chat': typeof BooksBookIdChatRoute
   '/books/$bookId/vision': typeof BooksBookIdVisionRoute
 }
@@ -163,20 +82,10 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/books': typeof BooksRouteWithChildren
-  '/chapters': typeof ChaptersRoute
-  '/characters': typeof CharactersRoute
-  '/chat': typeof ChatRoute
-  '/consistency': typeof ConsistencyRoute
   '/login': typeof LoginRoute
-  '/notes': typeof NotesRoute
-  '/publishing': typeof PublishingRoute
-  '/refactor': typeof RefactorRoute
-  '/research': typeof ResearchRoute
   '/settings': typeof SettingsRoute
-  '/timeline': typeof TimelineRoute
-  '/world': typeof WorldRoute
-  '/write': typeof WriteRoute
   '/books/new': typeof BooksNewRoute
+  '/books/': typeof BooksIndexRoute
   '/books/$bookId/chat': typeof BooksBookIdChatRoute
   '/books/$bookId/vision': typeof BooksBookIdVisionRoute
 }
@@ -185,60 +94,29 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/books'
-    | '/chapters'
-    | '/characters'
-    | '/chat'
-    | '/consistency'
     | '/login'
-    | '/notes'
-    | '/publishing'
-    | '/refactor'
-    | '/research'
     | '/settings'
-    | '/timeline'
-    | '/world'
-    | '/write'
     | '/books/new'
+    | '/books/'
     | '/books/$bookId/chat'
     | '/books/$bookId/vision'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/books'
-    | '/chapters'
-    | '/characters'
-    | '/chat'
-    | '/consistency'
     | '/login'
-    | '/notes'
-    | '/publishing'
-    | '/refactor'
-    | '/research'
     | '/settings'
-    | '/timeline'
-    | '/world'
-    | '/write'
     | '/books/new'
+    | '/books'
     | '/books/$bookId/chat'
     | '/books/$bookId/vision'
   id:
     | '__root__'
     | '/'
     | '/books'
-    | '/chapters'
-    | '/characters'
-    | '/chat'
-    | '/consistency'
     | '/login'
-    | '/notes'
-    | '/publishing'
-    | '/refactor'
-    | '/research'
     | '/settings'
-    | '/timeline'
-    | '/world'
-    | '/write'
     | '/books/new'
+    | '/books/'
     | '/books/$bookId/chat'
     | '/books/$bookId/vision'
   fileRoutesById: FileRoutesById
@@ -246,44 +124,12 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BooksRoute: typeof BooksRouteWithChildren
-  ChaptersRoute: typeof ChaptersRoute
-  CharactersRoute: typeof CharactersRoute
-  ChatRoute: typeof ChatRoute
-  ConsistencyRoute: typeof ConsistencyRoute
   LoginRoute: typeof LoginRoute
-  NotesRoute: typeof NotesRoute
-  PublishingRoute: typeof PublishingRoute
-  RefactorRoute: typeof RefactorRoute
-  ResearchRoute: typeof ResearchRoute
   SettingsRoute: typeof SettingsRoute
-  TimelineRoute: typeof TimelineRoute
-  WorldRoute: typeof WorldRoute
-  WriteRoute: typeof WriteRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/write': {
-      id: '/write'
-      path: '/write'
-      fullPath: '/write'
-      preLoaderRoute: typeof WriteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/world': {
-      id: '/world'
-      path: '/world'
-      fullPath: '/world'
-      preLoaderRoute: typeof WorldRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/timeline': {
-      id: '/timeline'
-      path: '/timeline'
-      fullPath: '/timeline'
-      preLoaderRoute: typeof TimelineRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -291,67 +137,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/research': {
-      id: '/research'
-      path: '/research'
-      fullPath: '/research'
-      preLoaderRoute: typeof ResearchRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/refactor': {
-      id: '/refactor'
-      path: '/refactor'
-      fullPath: '/refactor'
-      preLoaderRoute: typeof RefactorRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/publishing': {
-      id: '/publishing'
-      path: '/publishing'
-      fullPath: '/publishing'
-      preLoaderRoute: typeof PublishingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/notes': {
-      id: '/notes'
-      path: '/notes'
-      fullPath: '/notes'
-      preLoaderRoute: typeof NotesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/login': {
       id: '/login'
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/consistency': {
-      id: '/consistency'
-      path: '/consistency'
-      fullPath: '/consistency'
-      preLoaderRoute: typeof ConsistencyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/chat': {
-      id: '/chat'
-      path: '/chat'
-      fullPath: '/chat'
-      preLoaderRoute: typeof ChatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/characters': {
-      id: '/characters'
-      path: '/characters'
-      fullPath: '/characters'
-      preLoaderRoute: typeof CharactersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/chapters': {
-      id: '/chapters'
-      path: '/chapters'
-      fullPath: '/chapters'
-      preLoaderRoute: typeof ChaptersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/books': {
@@ -367,6 +157,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/books/': {
+      id: '/books/'
+      path: '/'
+      fullPath: '/books/'
+      preLoaderRoute: typeof BooksIndexRouteImport
+      parentRoute: typeof BooksRoute
     }
     '/books/new': {
       id: '/books/new'
@@ -394,12 +191,14 @@ declare module '@tanstack/react-router' {
 
 interface BooksRouteChildren {
   BooksNewRoute: typeof BooksNewRoute
+  BooksIndexRoute: typeof BooksIndexRoute
   BooksBookIdChatRoute: typeof BooksBookIdChatRoute
   BooksBookIdVisionRoute: typeof BooksBookIdVisionRoute
 }
 
 const BooksRouteChildren: BooksRouteChildren = {
   BooksNewRoute: BooksNewRoute,
+  BooksIndexRoute: BooksIndexRoute,
   BooksBookIdChatRoute: BooksBookIdChatRoute,
   BooksBookIdVisionRoute: BooksBookIdVisionRoute,
 }
@@ -409,30 +208,9 @@ const BooksRouteWithChildren = BooksRoute._addFileChildren(BooksRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BooksRoute: BooksRouteWithChildren,
-  ChaptersRoute: ChaptersRoute,
-  CharactersRoute: CharactersRoute,
-  ChatRoute: ChatRoute,
-  ConsistencyRoute: ConsistencyRoute,
   LoginRoute: LoginRoute,
-  NotesRoute: NotesRoute,
-  PublishingRoute: PublishingRoute,
-  RefactorRoute: RefactorRoute,
-  ResearchRoute: ResearchRoute,
   SettingsRoute: SettingsRoute,
-  TimelineRoute: TimelineRoute,
-  WorldRoute: WorldRoute,
-  WriteRoute: WriteRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

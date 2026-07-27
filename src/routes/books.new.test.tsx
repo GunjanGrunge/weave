@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const { authenticatedFetchMock, navigateMock } = vi.hoisted(() => ({
+const { authenticatedFetchMock, navigateMock, invalidateQueriesMock } = vi.hoisted(() => ({
   authenticatedFetchMock: vi.fn(),
   navigateMock: vi.fn(),
+  invalidateQueriesMock: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -20,6 +21,14 @@ vi.mock("@/lib/api", () => ({
   authenticatedFetch: authenticatedFetchMock,
 }));
 
+vi.mock("@/lib/auth-context", () => ({
+  useAuth: () => ({ user: { uid: "user-a" }, loading: false }),
+}));
+
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ invalidateQueries: invalidateQueriesMock }),
+}));
+
 import NewBook from "./books.new";
 import { STYLE_PRESETS } from "@/lib/style-presets";
 
@@ -32,13 +41,14 @@ function skipAllQuestionsAndCreate() {
 
 describe("NewBook intake chat", () => {
   beforeEach(() => {
+    localStorage.clear();
     authenticatedFetchMock.mockReset();
     navigateMock.mockReset();
+    invalidateQueriesMock.mockReset();
     authenticatedFetchMock.mockResolvedValue(
-      new Response(
-        JSON.stringify({ bookId: "book-1", openingSuggestion: "ok", openings: [] }),
-        { status: 200 },
-      ),
+      new Response(JSON.stringify({ bookId: "book-1", openingSuggestion: "ok", openings: [] }), {
+        status: 200,
+      }),
     );
   });
 
@@ -220,5 +230,40 @@ describe("NewBook intake chat", () => {
       ),
     );
     await waitFor(() => expect(screen.getByText("Open on the rooftop.")).toBeInTheDocument());
+  });
+
+  it("restores an interrupted intake for the signed-in writer", async () => {
+    const firstRender = render(<NewBook />);
+
+    fireEvent.change(screen.getByLabelText(/reply/i), {
+      target: { value: "A mystery inside a lighthouse" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    await waitFor(() => expect(screen.getByText(/saved on this device/i)).toBeInTheDocument());
+    firstRender.unmount();
+
+    render(<NewBook />);
+
+    expect(screen.getByText("A mystery inside a lighthouse")).toBeInTheDocument();
+    expect(screen.getByText("Who is the main character?")).toBeInTheDocument();
+  });
+
+  it("clears the local intake draft after the book is created", async () => {
+    render(<NewBook />);
+
+    fireEvent.change(screen.getByLabelText(/reply/i), {
+      target: { value: "A mystery inside a lighthouse" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+    fireEvent.click(screen.getByRole("button", { name: /create book/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /continue to my book/i })).toBeInTheDocument(),
+    );
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ["books"] });
+    expect(localStorage.getItem("story:intake:user-a")).toBeNull();
   });
 });

@@ -1,9 +1,11 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { ArrowLeft, Loader2, Send, Sparkles } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, Loader2, RotateCcw, Send, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { authenticatedFetch } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { DEFAULT_STYLE_PRESET_ID, STYLE_PRESETS } from "@/lib/style-presets";
 
 export const Route = createFileRoute("/books/new")({
@@ -38,6 +40,52 @@ const questions: Array<{ key: PremiseKey; prompt: string }> = [
 
 const initialMessages: ChatLine[] = [{ type: "system", text: questions[0].prompt }];
 
+type IntakeDraft = {
+  version: 1;
+  answers: Partial<Record<PremiseKey, string>>;
+  messages: ChatLine[];
+  questionIndex: number;
+  reply: string;
+  selectedPresets: string[];
+  customInstruction: string;
+  idempotencyKey: string;
+};
+
+function intakeDraftKey(uid: string): string {
+  return `story:intake:${uid}`;
+}
+
+function loadIntakeDraft(uid: string): IntakeDraft | null {
+  try {
+    const raw = localStorage.getItem(intakeDraftKey(uid));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<IntakeDraft>;
+    if (
+      parsed.version !== 1 ||
+      typeof parsed.questionIndex !== "number" ||
+      !Array.isArray(parsed.messages) ||
+      typeof parsed.idempotencyKey !== "string"
+    ) {
+      return null;
+    }
+    return {
+      version: 1,
+      answers: parsed.answers ?? {},
+      messages: parsed.messages,
+      questionIndex: Math.max(0, Math.min(questions.length, parsed.questionIndex)),
+      reply: typeof parsed.reply === "string" ? parsed.reply : "",
+      selectedPresets: Array.isArray(parsed.selectedPresets)
+        ? parsed.selectedPresets.filter((id): id is string => typeof id === "string").slice(0, 2)
+        : [],
+      customInstruction:
+        typeof parsed.customInstruction === "string" ? parsed.customInstruction : "",
+      idempotencyKey: parsed.idempotencyKey,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function isOpeningSuggestionArray(value: unknown): value is OpeningSuggestion[] {
   return (
     Array.isArray(value) &&
@@ -60,12 +108,20 @@ function formatStyleChoice(presetIds: string[], customInstruction: string): stri
 }
 
 export default function NewBook() {
-  const [answers, setAnswers] = useState<Partial<Record<PremiseKey, string>>>({});
-  const [messages, setMessages] = useState<ChatLine[]>(initialMessages);
-  const [questionIndex, setQuestionIndex] = useState(0);
-  const [reply, setReply] = useState("");
-  const [selectedPresets, setSelectedPresets] = useState<string[]>([]);
-  const [customInstruction, setCustomInstruction] = useState("");
+  const { user } = useAuth();
+  const uid = user?.uid ?? "signed-out";
+  const [initialDraft] = useState(() => loadIntakeDraft(uid));
+  const [answers, setAnswers] = useState<Partial<Record<PremiseKey, string>>>(
+    initialDraft?.answers ?? {},
+  );
+  const [messages, setMessages] = useState<ChatLine[]>(initialDraft?.messages ?? initialMessages);
+  const [questionIndex, setQuestionIndex] = useState(initialDraft?.questionIndex ?? 0);
+  const [reply, setReply] = useState(initialDraft?.reply ?? "");
+  const [selectedPresets, setSelectedPresets] = useState<string[]>(
+    initialDraft?.selectedPresets ?? [],
+  );
+  const [customInstruction, setCustomInstruction] = useState(initialDraft?.customInstruction ?? "");
+  const [hasSavedDraft, setHasSavedDraft] = useState(initialDraft !== null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bookId, setBookId] = useState<string | null>(null);
@@ -73,13 +129,56 @@ export default function NewBook() {
     status: "idle",
   });
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   // Stable for the lifetime of this intake attempt so a retry after a
   // dropped/unparseable response replays the same request instead of
   // creating a second book.
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [idempotencyKey, setIdempotencyKey] = useState(
+    () => initialDraft?.idempotencyKey ?? crypto.randomUUID(),
+  );
 
   const isStyleTurn = questionIndex >= questions.length;
+
+  useEffect(() => {
+    if (bookId) return;
+    const hasProgress =
+      questionIndex > 0 ||
+      reply.trim().length > 0 ||
+      selectedPresets.length > 0 ||
+      customInstruction.trim().length > 0;
+    try {
+      if (!hasProgress) {
+        localStorage.removeItem(intakeDraftKey(uid));
+        setHasSavedDraft(false);
+        return;
+      }
+      const draft: IntakeDraft = {
+        version: 1,
+        answers,
+        messages,
+        questionIndex,
+        reply,
+        selectedPresets,
+        customInstruction,
+        idempotencyKey,
+      };
+      localStorage.setItem(intakeDraftKey(uid), JSON.stringify(draft));
+      setHasSavedDraft(true);
+    } catch {
+      // Intake still works when browser storage is unavailable.
+    }
+  }, [
+    answers,
+    bookId,
+    customInstruction,
+    idempotencyKey,
+    messages,
+    questionIndex,
+    reply,
+    selectedPresets,
+    uid,
+  ]);
 
   const premiseAnswers = useMemo(
     () =>
@@ -152,7 +251,14 @@ export default function NewBook() {
         ...current,
         { type: "user", text: formatStyleChoice(presetIds, customInstruction) },
       ]);
+      try {
+        localStorage.removeItem(intakeDraftKey(uid));
+      } catch {
+        // The persisted Firestore book is authoritative after creation.
+      }
+      setHasSavedDraft(false);
       setBookId(result.bookId);
+      void queryClient.invalidateQueries({ queryKey: ["books"] });
       setOpeningSuggestion(
         result.openingSuggestion === "ok" && isOpeningSuggestionArray(result.openings)
           ? { status: "ok", openings: result.openings }
@@ -191,6 +297,23 @@ export default function NewBook() {
     }
   }
 
+  function discardDraft() {
+    try {
+      localStorage.removeItem(intakeDraftKey(uid));
+    } catch {
+      // State reset below is sufficient when storage is unavailable.
+    }
+    setAnswers({});
+    setMessages(initialMessages);
+    setQuestionIndex(0);
+    setReply("");
+    setSelectedPresets([]);
+    setCustomInstruction("");
+    setIdempotencyKey(crypto.randomUUID());
+    setError(null);
+    setHasSavedDraft(false);
+  }
+
   return (
     <div className="mx-auto flex min-h-full max-w-4xl animate-reveal flex-col px-5 py-6 sm:px-8 lg:px-10">
       <Link
@@ -202,10 +325,25 @@ export default function NewBook() {
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col overflow-hidden border-y border-border bg-background">
         <div className="border-b border-border py-4">
-          <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">New Book</p>
-          <h1 className="mt-1 font-display text-3xl italic leading-tight">
-            Start with a conversation
-          </h1>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">New Book</p>
+              <h1 className="mt-1 font-display text-3xl italic leading-tight">
+                Start with a conversation
+              </h1>
+            </div>
+            {hasSavedDraft && !bookId && (
+              <Button type="button" variant="ghost" size="sm" onClick={discardDraft}>
+                <RotateCcw className="size-4" />
+                Discard intake
+              </Button>
+            )}
+          </div>
+          {hasSavedDraft && !bookId && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              This unfinished intake is saved on this device.
+            </p>
+          )}
         </div>
 
         <div className="min-h-[320px] flex-1 space-y-4 overflow-y-auto py-6">

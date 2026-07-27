@@ -21,6 +21,13 @@
         }
       },
       {
+        "source": "/listBooks",
+        "function": {
+          "functionId": "listBooks",
+          "region": "us-central1"
+        }
+      },
+      {
         "source": "/createBook",
         "function": {
           "functionId": "createBook",

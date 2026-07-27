@@ -1,22 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  BookMarked,
-  PenLine,
-  Users,
-  Globe2,
-  ListOrdered,
-  StickyNote,
-  Compass,
-  MessagesSquare,
-  GitBranch,
-  ShieldCheck,
-  BookOpenCheck,
-  Settings,
-  Clock,
-  X,
-} from "lucide-react";
+import { LayoutDashboard, BookMarked, Settings, X } from "lucide-react";
 
 type Item = { to: string; label: string; icon: React.ComponentType<{ className?: string }> };
 
@@ -26,7 +10,6 @@ const sections: Array<{ heading: string; items: Item[] }> = [
     items: [
       { to: "/", label: "Dashboard", icon: LayoutDashboard },
       { to: "/books", label: "My Books", icon: BookMarked },
-      { to: "/write", label: "Writing Studio", icon: PenLine },
     ],
   },
   {

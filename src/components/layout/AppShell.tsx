@@ -15,8 +15,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => setMobileOpen(false), [pathname]);
 
-  const isWriting = pathname === "/write";
-
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
       <AppSidebar
@@ -29,9 +27,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           onToggleSidebar={() => setCollapsed((c) => !c)}
           onOpenMobileSidebar={() => setMobileOpen(true)}
         />
-        <main className={isWriting ? "flex-1 min-h-0 overflow-hidden" : "flex-1 min-h-0 overflow-y-auto"}>
-          {children}
-        </main>
+        <main className="flex-1 min-h-0 overflow-y-auto">{children}</main>
       </div>
     </div>
   );

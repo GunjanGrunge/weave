@@ -1,5 +1,6 @@
 export { health } from "./handlers/health.js";
 export { whoami } from "./handlers/whoami.js";
+export { listBooks } from "./handlers/listBooks.js";
 export { createBook } from "./handlers/createBook.js";
 export { retryOpeningSuggestion } from "./handlers/retryOpeningSuggestion.js";
 export { getVision } from "./handlers/getVision.js";

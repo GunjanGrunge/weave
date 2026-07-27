@@ -169,6 +169,44 @@ export async function getBook(bookId: string): Promise<Book | undefined> {
   return snapshot.exists ? (snapshot.data() as Book) : undefined;
 }
 
+export type OwnedBook = {
+  bookId: string;
+  title: string;
+  style: Style;
+  createdAt: unknown;
+};
+
+export async function listOwnedBooks(uid: string): Promise<OwnedBook[]> {
+  const snapshot = await firestore().collection("books").where("uid", "==", uid).get();
+
+  return snapshot.docs
+    .map((doc) => {
+      const book = doc.data() as Book;
+      return {
+        bookId: doc.id,
+        title: book.title,
+        style: book.style,
+        createdAt: book.createdAt,
+      };
+    })
+    .sort((a, b) => timestampMillis(b.createdAt) - timestampMillis(a.createdAt));
+}
+
+function timestampMillis(value: unknown): number {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "toMillis" in value &&
+    typeof value.toMillis === "function"
+  ) {
+    return value.toMillis();
+  }
+  if (typeof value === "string") {
+    return Date.parse(value) || 0;
+  }
+  return 0;
+}
+
 export async function getVisionDocument(bookId: string): Promise<VisionDocument | undefined> {
   const snapshot = await firestore()
     .collection("books")
