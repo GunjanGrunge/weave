@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const { verifyIdTokenMock, getBookMock, runIntakeOpeningSuggestionMock } = vi.hoisted(() => ({
   verifyIdTokenMock: vi.fn(),
@@ -26,9 +26,14 @@ const apiKeys = { openai: "fake-openai-key", gemini: "fake-gemini-key" };
 
 describe("buildRetryOpeningSuggestionResponse", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     verifyIdTokenMock.mockReset();
     getBookMock.mockReset();
     runIntakeOpeningSuggestionMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("returns 200 {status, openings} for a valid token and an owned book", async () => {
@@ -68,6 +73,27 @@ describe("buildRetryOpeningSuggestionResponse", () => {
 
     expect(result.statusCode).toBe(401);
     expect(getBookMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 200 {status: 'failed'} when the opening-suggestion retry times out", async () => {
+    vi.useFakeTimers();
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    getBookMock.mockResolvedValue({ uid: "user-a", title: "A heist", style: { presetIds: [] } });
+    runIntakeOpeningSuggestionMock.mockReturnValue(new Promise(() => undefined));
+
+    const resultPromise = buildRetryOpeningSuggestionResponse(
+      "Bearer valid",
+      { bookId: "book-1" },
+      apiKeys,
+      5,
+    );
+
+    await vi.advanceTimersByTimeAsync(5);
+
+    await expect(resultPromise).resolves.toEqual({
+      statusCode: 200,
+      body: { status: "failed", openings: [] },
+    });
   });
 
   it("returns 400 when bookId is missing from the body", async () => {

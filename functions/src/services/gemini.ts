@@ -224,7 +224,7 @@ async function recordUsage(
   inputTokens: number,
   outputTokens: number,
 ): Promise<void> {
-  await firestore().collection("books").doc(bookId).collection("usage").doc().set({
+  await firestore().collection("books").doc(bookId).collection("usage").doc(task).set({
     task,
     provider,
     model,

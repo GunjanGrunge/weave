@@ -6,6 +6,8 @@ import { verifyIdToken, assertOwnership, AuthError } from "../services/auth.js";
 import { getBook } from "../services/books.js";
 import type { AIProviderKeys, OpeningSuggestion } from "../services/gemini.js";
 
+const RETRY_OPENING_SUGGESTION_TIMEOUT_MS = 12_000;
+
 export type RetryOpeningSuggestionSuccess = {
   status: "ok" | "failed";
   openings: OpeningSuggestion[];
@@ -26,10 +28,31 @@ function parseBookId(body: unknown): string | undefined {
   return typeof bookId === "string" && bookId.length > 0 ? bookId : undefined;
 }
 
+function runOpeningSuggestionWithTimeout(
+  bookId: string,
+  apiKeys: AIProviderKeys,
+  timeoutMs: number,
+): Promise<{ status: "ok" | "failed"; openings: OpeningSuggestion[] }> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve({ status: "failed", openings: [] }), timeoutMs);
+
+    runIntakeOpeningSuggestion(bookId, apiKeys)
+      .then((result) => {
+        clearTimeout(timeout);
+        resolve(result);
+      })
+      .catch(() => {
+        clearTimeout(timeout);
+        resolve({ status: "failed", openings: [] });
+      });
+  });
+}
+
 export async function buildRetryOpeningSuggestionResponse(
   authorizationHeader: string | undefined,
   body: unknown,
   apiKeys: AIProviderKeys,
+  openingSuggestionTimeoutMs = RETRY_OPENING_SUGGESTION_TIMEOUT_MS,
 ): Promise<RetryOpeningSuggestionResult> {
   try {
     const decoded = await verifyIdToken(authorizationHeader);
@@ -48,7 +71,11 @@ export async function buildRetryOpeningSuggestionResponse(
 
     assertOwnership(decoded.uid, book.uid);
 
-    const result = await runIntakeOpeningSuggestion(bookId, apiKeys);
+    const result = await runOpeningSuggestionWithTimeout(
+      bookId,
+      apiKeys,
+      openingSuggestionTimeoutMs,
+    );
     return { statusCode: 200, body: { status: result.status, openings: result.openings } };
   } catch (error) {
     if (error instanceof AuthError) {
