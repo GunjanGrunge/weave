@@ -274,6 +274,120 @@ describe("ChatPage", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("switches to polish mode, blocks submission with no aspect selected, and never calls generateScene", async () => {
+    authenticatedFetchMock.mockResolvedValue(jsonResponse({ messages: [] }));
+
+    render(<ChatPage bookId="book-1" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /polish a draft/i }));
+
+    expect(screen.getByLabelText(/draft text/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /tighten pacing/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /raise tension/i })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/draft text/i), {
+      target: { value: "Mara walked into the vault." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/select at least one/i);
+    expect(authenticatedFetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks polish submission when draft text is empty even if an aspect is selected", async () => {
+    authenticatedFetchMock.mockResolvedValue(jsonResponse({ messages: [] }));
+
+    render(<ChatPage bookId="book-1" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /polish a draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /raise tension/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/paste your draft/i);
+    expect(authenticatedFetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("generates a polished rewrite from a draft and selected aspects", async () => {
+    authenticatedFetchMock
+      .mockResolvedValueOnce(jsonResponse({ messages: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          sessionId: "session-1",
+          text: "Mara slipped into the vault, pulse hammering.",
+          provider: "openai",
+          model: "gpt-5.6-terra",
+        }),
+      );
+
+    render(<ChatPage bookId="book-1" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /polish a draft/i }));
+    fireEvent.change(screen.getByLabelText(/draft text/i), {
+      target: { value: "Mara walked into the vault." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /raise tension/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Mara slipped into the vault, pulse hammering."),
+      ).toBeInTheDocument(),
+    );
+    expect(authenticatedFetchMock).toHaveBeenCalledWith(
+      "/generateScene",
+      expect.objectContaining({
+        body: JSON.stringify({
+          bookId: "book-1",
+          mode: "polish",
+          draftText: "Mara walked into the vault.",
+          aspects: ["raise-tension"],
+        }),
+      }),
+    );
+  });
+
+  it("keeps the draft text and selected aspects on polish generation failure", async () => {
+    authenticatedFetchMock
+      .mockResolvedValueOnce(jsonResponse({ messages: [] }))
+      .mockResolvedValueOnce(jsonResponse({ code: "generation-failed" }, 502));
+
+    render(<ChatPage bookId="book-1" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /polish a draft/i }));
+    fireEvent.change(screen.getByLabelText(/draft text/i), {
+      target: { value: "Mara walked into the vault." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /raise tension/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument(),
+    );
+    expect(screen.getByLabelText(/draft text/i)).toHaveValue("Mara walked into the vault.");
+    expect(screen.getByRole("button", { name: /raise tension/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("clears a stale validation error when switching away from polish mode", async () => {
+    authenticatedFetchMock.mockResolvedValue(jsonResponse({ messages: [] }));
+
+    render(<ChatPage bookId="book-1" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /polish a draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /describe it/i }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("shows an error with Retry and keeps the typed description on failure", async () => {
     authenticatedFetchMock
       .mockResolvedValueOnce(jsonResponse({ messages: [] }))

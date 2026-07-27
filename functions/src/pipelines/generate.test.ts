@@ -167,4 +167,31 @@ describe("runGenerate", () => {
       sessionId: "session-auto-id",
     });
   });
+
+  it("passes a polish SceneInput through to composePrompt unchanged", async () => {
+    assembleContextMock.mockResolvedValue(assembledContext);
+    composePromptMock.mockResolvedValue({ prompt: "Composed prompt text.", style: { presetIds: [] } });
+    generateSceneMock.mockResolvedValue({
+      text: "Rewritten scene text.",
+      provider: "openai",
+      model: "gpt-5.6-terra",
+    });
+
+    const polishInput = {
+      mode: "polish" as const,
+      draftText: "Mara walked into the vault.",
+      aspects: ["raise-tension"],
+    };
+    const result = await runGenerate("book-1", polishInput, apiKeys);
+
+    expect(composePromptMock).toHaveBeenCalledWith("book-1", assembledContext, polishInput);
+    expect(generateSceneMock).toHaveBeenCalledWith("book-1", "Composed prompt text.", apiKeys);
+    expect(result).toEqual({
+      status: "ok",
+      text: "Rewritten scene text.",
+      provider: "openai",
+      model: "gpt-5.6-terra",
+      sessionId: "session-auto-id",
+    });
+  });
 });

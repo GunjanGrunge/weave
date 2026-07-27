@@ -1,3 +1,4 @@
+import { POLISH_ASPECTS } from "../config/polishAspects.js";
 import { STYLE_PRESETS } from "../config/stylePresets.js";
 import { getBook, getVisionDocument } from "../services/books.js";
 import type { Style } from "../types/book.js";
@@ -63,6 +64,21 @@ function buildSharedLines(
 function appendInputLines(lines: string[], input: SceneInput): void {
   if (input.mode === "free-text") {
     lines.push(`Write the next scene from this description: ${input.description}`);
+    return;
+  }
+
+  if (input.mode === "polish") {
+    lines.push(
+      "The writer has pasted a draft below. Rewrite it, preserving its core plot content and character actions — this is a rewrite of the provided text, not a new scene from a description.",
+    );
+    for (const aspectId of input.aspects) {
+      const aspect = POLISH_ASPECTS.find((candidate) => candidate.id === aspectId);
+      if (aspect) {
+        lines.push(`${aspect.label}: ${aspect.description}`);
+      }
+    }
+    lines.push("Draft to rewrite:");
+    lines.push(input.draftText);
     return;
   }
 

@@ -337,6 +337,133 @@ describe("buildGenerateSceneResponse", () => {
     expect(combinedLength).toBeLessThan(4_000);
   });
 
+  it("returns the generated scene for polish mode and persists a summarized user message", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    getBookMock.mockResolvedValue(book);
+    runGenerateMock.mockResolvedValue({
+      status: "ok",
+      text: "A rewritten, tenser vault scene.",
+      provider: "openai",
+      model: "gpt-5.6-terra",
+      sessionId: "session-1",
+    });
+
+    const result = await buildGenerateSceneResponse(
+      "Bearer valid",
+      {
+        bookId: "book-1",
+        mode: "polish",
+        draftText: "Mara walked into the vault. It was dark.",
+        aspects: ["raise-tension", "fix-dialogue"],
+      },
+      apiKeys,
+    );
+
+    expect(result.statusCode).toBe(200);
+    expect(runGenerateMock).toHaveBeenCalledWith(
+      "book-1",
+      {
+        mode: "polish",
+        draftText: "Mara walked into the vault. It was dark.",
+        aspects: ["raise-tension", "fix-dialogue"],
+      },
+      apiKeys,
+    );
+    expect(appendChatMessageMock).toHaveBeenNthCalledWith(
+      1,
+      "book-1",
+      "user",
+      "Polish draft (Raise tension, Fix dialogue): Mara walked into the vault. It was dark.",
+    );
+  });
+
+  it("returns 400 and never runs the pipeline when polish draftText is empty or whitespace", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+
+    const result = await buildGenerateSceneResponse(
+      "Bearer valid",
+      { bookId: "book-1", mode: "polish", draftText: "   ", aspects: ["raise-tension"] },
+      apiKeys,
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(getBookMock).not.toHaveBeenCalled();
+    expect(runGenerateMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 and never runs the pipeline when no polish aspect is selected", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+
+    const result = await buildGenerateSceneResponse(
+      "Bearer valid",
+      { bookId: "book-1", mode: "polish", draftText: "Some draft.", aspects: [] },
+      apiKeys,
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(runGenerateMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when an unknown polish aspect id is supplied", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+
+    const result = await buildGenerateSceneResponse(
+      "Bearer valid",
+      { bookId: "book-1", mode: "polish", draftText: "Some draft.", aspects: ["not-a-real-aspect"] },
+      apiKeys,
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(runGenerateMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when polish draftText exceeds the max length", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+
+    const result = await buildGenerateSceneResponse(
+      "Bearer valid",
+      {
+        bookId: "book-1",
+        mode: "polish",
+        draftText: "x".repeat(8001),
+        aspects: ["raise-tension"],
+      },
+      apiKeys,
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(runGenerateMock).not.toHaveBeenCalled();
+  });
+
+  it("truncates a very long draft in the persisted user-message preview", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    getBookMock.mockResolvedValue(book);
+    runGenerateMock.mockResolvedValue({
+      status: "ok",
+      text: "Rewritten.",
+      provider: "openai",
+      model: "gpt-5.6-terra",
+      sessionId: "session-1",
+    });
+    const longDraft = "x".repeat(300);
+
+    await buildGenerateSceneResponse(
+      "Bearer valid",
+      { bookId: "book-1", mode: "polish", draftText: longDraft, aspects: ["clarify-prose"] },
+      apiKeys,
+    );
+
+    const persistedMessage = appendChatMessageMock.mock.calls[0][2] as string;
+    expect(persistedMessage.length).toBeLessThan(longDraft.length);
+    expect(persistedMessage).toContain("…");
+    // The full draft is still sent to the model, only the persisted preview is truncated.
+    expect(runGenerateMock).toHaveBeenCalledWith(
+      "book-1",
+      { mode: "polish", draftText: longDraft, aspects: ["clarify-prose"] },
+      apiKeys,
+    );
+  });
+
   it("returns a structured 502 error when the pipeline call times out", async () => {
     verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
     getBookMock.mockResolvedValue(book);

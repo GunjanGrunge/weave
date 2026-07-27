@@ -7,4 +7,5 @@ export type StructuredSceneFields = {
 
 export type SceneInput =
   | { mode: "free-text"; description: string }
-  | { mode: "structured"; fields: StructuredSceneFields };
+  | { mode: "structured"; fields: StructuredSceneFields }
+  | { mode: "polish"; draftText: string; aspects: string[] };

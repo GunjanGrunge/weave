@@ -4,6 +4,7 @@ import { ArrowLeft, Loader2, Send, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { authenticatedFetch } from "@/lib/api";
+import { POLISH_ASPECTS } from "@/lib/polish-aspects";
 
 export const Route = createFileRoute("/books/$bookId/chat")({
   head: () => ({
@@ -30,11 +31,14 @@ type LoadState =
 
 type GenerationState = { status: "idle" | "loading" } | { status: "error"; message: string };
 
-type InputMode = "free-text" | "structured";
+type InputMode = "free-text" | "structured" | "polish";
 
 // Mirrors the server's per-field cap (functions/src/handlers/generateScene.ts)
 // so a paste can't trigger a server-side 400 the user has no way to see coming.
 const MAX_STRUCTURED_FIELD_LENGTH = 500;
+// Mirrors the server's draft cap (functions/src/handlers/generateScene.ts).
+const MAX_DRAFT_LENGTH = 8_000;
+const DRAFT_PREVIEW_LENGTH = 200;
 
 type StructuredFields = {
   sceneGoal: string;
@@ -54,6 +58,17 @@ function summarizeStructuredFields(fields: StructuredFields): string {
   return STRUCTURED_FIELD_LABELS.filter(({ key }) => fields[key].trim())
     .map(({ key, label }) => `${label}: ${fields[key].trim()}.`)
     .join(" ");
+}
+
+function summarizePolishRequest(draftText: string, aspects: string[]): string {
+  const labels = aspects
+    .map((aspectId) => POLISH_ASPECTS.find((aspect) => aspect.id === aspectId)?.label)
+    .filter((label): label is string => Boolean(label));
+  const preview =
+    draftText.length > DRAFT_PREVIEW_LENGTH
+      ? `${draftText.slice(0, DRAFT_PREVIEW_LENGTH)}…`
+      : draftText;
+  return `Polish draft (${labels.join(", ")}): ${preview}`;
 }
 
 function ChatRoute() {
@@ -84,6 +99,8 @@ export function ChatPage({ bookId }: { bookId: string }) {
     povCharacter: "",
     setting: "",
   });
+  const [draftText, setDraftText] = useState("");
+  const [selectedAspects, setSelectedAspects] = useState<string[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [generationState, setGenerationState] = useState<GenerationState>({ status: "idle" });
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -126,6 +143,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
 
     const trimmedDescription = description.trim();
     const hasStructuredValue = STRUCTURED_FIELD_LABELS.some(({ key }) => structuredFields[key].trim());
+    const trimmedDraftText = draftText.trim();
 
     let payload: Record<string, unknown>;
     let userMessageText: string;
@@ -137,13 +155,24 @@ export function ChatPage({ bookId }: { bookId: string }) {
       }
       payload = { bookId, mode: "free-text", description: trimmedDescription };
       userMessageText = trimmedDescription;
-    } else {
+    } else if (inputMode === "structured") {
       if (!hasStructuredValue) {
         setValidationError("Fill in at least one detail before sending.");
         return;
       }
       payload = { bookId, mode: "structured", fields: structuredFields };
       userMessageText = summarizeStructuredFields(structuredFields);
+    } else {
+      if (!trimmedDraftText) {
+        setValidationError("Paste your draft before sending.");
+        return;
+      }
+      if (selectedAspects.length === 0) {
+        setValidationError("Select at least one polish aspect before sending.");
+        return;
+      }
+      payload = { bookId, mode: "polish", draftText: trimmedDraftText, aspects: selectedAspects };
+      userMessageText = summarizePolishRequest(trimmedDraftText, selectedAspects);
     }
 
     setValidationError(null);
@@ -180,8 +209,11 @@ export function ChatPage({ bookId }: { bookId: string }) {
       setSessionId(result.sessionId);
       if (inputMode === "free-text") {
         setDescription("");
-      } else {
+      } else if (inputMode === "structured") {
         setStructuredFields({ sceneGoal: "", mood: "", povCharacter: "", setting: "" });
+      } else {
+        setDraftText("");
+        setSelectedAspects([]);
       }
       setGenerationState({ status: "idle" });
     } catch {
@@ -194,6 +226,14 @@ export function ChatPage({ bookId }: { bookId: string }) {
 
   function retry() {
     void submitScene();
+  }
+
+  function toggleAspect(aspectId: string) {
+    setSelectedAspects((current) =>
+      current.includes(aspectId)
+        ? current.filter((id) => id !== aspectId)
+        : [...current, aspectId],
+    );
   }
 
   function switchInputMode(mode: InputMode) {
@@ -310,6 +350,19 @@ export function ChatPage({ bookId }: { bookId: string }) {
         >
           Quick details
         </button>
+        <button
+          type="button"
+          onClick={() => switchInputMode("polish")}
+          aria-pressed={inputMode === "polish"}
+          disabled={isLoading}
+          className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+            inputMode === "polish"
+              ? "border-accent bg-accent text-accent-foreground"
+              : "border-border bg-card hover:border-accent/50"
+          }`}
+        >
+          Polish a draft
+        </button>
       </div>
 
       {inputMode === "free-text" ? (
@@ -332,7 +385,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
             {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
           </button>
         </div>
-      ) : (
+      ) : inputMode === "structured" ? (
         <div className="mt-2 rounded-2xl border border-border bg-card p-3">
           <div className="grid gap-2 sm:grid-cols-2">
             {STRUCTURED_FIELD_LABELS.map(({ key, label }) => (
@@ -350,6 +403,47 @@ export function ChatPage({ bookId }: { bookId: string }) {
                 />
               </label>
             ))}
+          </div>
+          <div className="mt-2 flex justify-end">
+            <Button type="button" onClick={submitScene} disabled={isLoading}>
+              {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              Send
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-2 rounded-2xl border border-border bg-card p-3">
+          <textarea
+            value={draftText}
+            onChange={(event) => setDraftText(event.target.value)}
+            aria-label="Draft text"
+            rows={4}
+            disabled={isLoading}
+            maxLength={MAX_DRAFT_LENGTH}
+            placeholder="Paste your draft here…"
+            className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-50"
+          />
+          <div className="mt-2 flex flex-wrap gap-2">
+            {POLISH_ASPECTS.map((aspect) => {
+              const selected = selectedAspects.includes(aspect.id);
+              return (
+                <button
+                  key={aspect.id}
+                  type="button"
+                  onClick={() => toggleAspect(aspect.id)}
+                  aria-pressed={selected}
+                  disabled={isLoading}
+                  title={aspect.description}
+                  className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+                    selected
+                      ? "border-accent bg-accent text-accent-foreground"
+                      : "border-border bg-card hover:border-accent/50"
+                  }`}
+                >
+                  {aspect.label}
+                </button>
+              );
+            })}
           </div>
           <div className="mt-2 flex justify-end">
             <Button type="button" onClick={submitScene} disabled={isLoading}>

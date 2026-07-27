@@ -195,4 +195,94 @@ describe("composePrompt", () => {
     expect(result?.prompt).toContain("Lean scenes, crisp images");
     expect(result?.prompt).toContain("Heist");
   });
+
+  it("includes the draft text verbatim and only the selected polish aspects' instructions", async () => {
+    getBookMock.mockResolvedValue({
+      uid: "user-a",
+      title: "A Heist",
+      style: { presetIds: [] },
+      createdAt: "t",
+    });
+    getVisionDocumentMock.mockResolvedValue(baseVision);
+
+    const result = await composePrompt(
+      "book-1",
+      { chapterId: "chapter-1", priorScenesText: [] },
+      {
+        mode: "polish",
+        draftText: "Mara walked into the vault. It was dark. She grabbed the case.",
+        aspects: ["raise-tension"],
+      },
+    );
+
+    expect(result?.prompt).toContain(
+      "Mara walked into the vault. It was dark. She grabbed the case.",
+    );
+    expect(result?.prompt).toContain("Sharpen stakes and urgency");
+    expect(result?.prompt).not.toContain("Cut redundant description");
+    expect(result?.prompt).not.toContain("natural and distinct per character");
+  });
+
+  it("instructs the model to preserve plot content and character actions, and to rewrite rather than write a new scene", async () => {
+    getBookMock.mockResolvedValue({
+      uid: "user-a",
+      title: "A Heist",
+      style: { presetIds: [] },
+      createdAt: "t",
+    });
+    getVisionDocumentMock.mockResolvedValue(baseVision);
+
+    const result = await composePrompt(
+      "book-1",
+      { chapterId: "chapter-1", priorScenesText: [] },
+      { mode: "polish", draftText: "Some draft text.", aspects: ["tighten-pacing"] },
+    );
+
+    expect(result?.prompt.toLowerCase()).toContain("rewrite");
+    expect(result?.prompt.toLowerCase()).toContain("preserving");
+    expect(result?.prompt.toLowerCase()).toContain("plot");
+    expect(result?.prompt.toLowerCase()).toContain("character");
+  });
+
+  it("applies instructions for every selected polish aspect when multiple are chosen", async () => {
+    getBookMock.mockResolvedValue({
+      uid: "user-a",
+      title: "A Heist",
+      style: { presetIds: [] },
+      createdAt: "t",
+    });
+    getVisionDocumentMock.mockResolvedValue(baseVision);
+
+    const result = await composePrompt(
+      "book-1",
+      { chapterId: "chapter-1", priorScenesText: [] },
+      {
+        mode: "polish",
+        draftText: "Draft.",
+        aspects: ["tighten-pacing", "fix-dialogue"],
+      },
+    );
+
+    expect(result?.prompt).toContain("Cut redundant description");
+    expect(result?.prompt).toContain("natural and distinct per character");
+  });
+
+  it("includes the shared style/vision/threads sections in polish mode just like the other modes", async () => {
+    getBookMock.mockResolvedValue({
+      uid: "user-a",
+      title: "A Heist",
+      style: { presetIds: ["sparse-cinematic"] },
+      createdAt: "t",
+    });
+    getVisionDocumentMock.mockResolvedValue(baseVision);
+
+    const result = await composePrompt(
+      "book-1",
+      { chapterId: "chapter-1", priorScenesText: [] },
+      { mode: "polish", draftText: "Draft.", aspects: ["clarify-prose"] },
+    );
+
+    expect(result?.prompt).toContain("Lean scenes, crisp images");
+    expect(result?.prompt).toContain("Heist");
+  });
 });

@@ -1,5 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 
+import { allowedOrigins } from "../config/cors.js";
+import { POLISH_ASPECTS } from "../config/polishAspects.js";
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "../config/secrets.js";
 import { runGenerate } from "../pipelines/generate.js";
 import { verifyIdToken, assertOwnership, AuthError } from "../services/auth.js";
@@ -17,6 +19,14 @@ const MAX_DESCRIPTION_LENGTH = 4_000;
 // could smuggle ~4x the prompt volume free-text allows (the exact class of
 // timeout risk Story 2.1's live verification found with an oversized prompt).
 const MAX_STRUCTURED_FIELD_LENGTH = 500;
+// A pasted draft is the writer's own already-written scene text, plausibly
+// longer than a one-line free-text description, but still bounded against
+// runaway prompt cost/latency the same way the other two modes are.
+const MAX_DRAFT_LENGTH = 8_000;
+// How much of a long draft to keep in the persisted chat-history preview —
+// the full draft is always sent to the model regardless of this cap.
+const DRAFT_PREVIEW_LENGTH = 200;
+const POLISH_ASPECT_IDS = new Set(POLISH_ASPECTS.map((aspect) => aspect.id));
 
 export type GenerateSceneSuccess = {
   sessionId: string;
@@ -60,6 +70,16 @@ function parseStructuredFields(rawFields: unknown): StructuredSceneFields | unde
   return Object.keys(fields).length > 0 ? fields : undefined;
 }
 
+function parsePolishAspects(rawAspects: unknown): string[] | undefined {
+  if (!Array.isArray(rawAspects) || rawAspects.length === 0) {
+    return undefined;
+  }
+  if (!rawAspects.every((aspect) => typeof aspect === "string" && POLISH_ASPECT_IDS.has(aspect))) {
+    return undefined;
+  }
+  return rawAspects;
+}
+
 function parseInput(body: unknown): { bookId: string; input: SceneInput } | undefined {
   if (typeof body !== "object" || body === null) {
     return undefined;
@@ -78,6 +98,22 @@ function parseInput(body: unknown): { bookId: string; input: SceneInput } | unde
     return { bookId, input: { mode: "structured", fields } };
   }
 
+  if (record.mode === "polish") {
+    const draftText = record.draftText;
+    if (
+      typeof draftText !== "string" ||
+      draftText.trim().length === 0 ||
+      draftText.length > MAX_DRAFT_LENGTH
+    ) {
+      return undefined;
+    }
+    const aspects = parsePolishAspects(record.aspects);
+    if (!aspects) {
+      return undefined;
+    }
+    return { bookId, input: { mode: "polish", draftText, aspects } };
+  }
+
   const description = record.description;
   if (
     typeof description !== "string" ||
@@ -92,6 +128,17 @@ function parseInput(body: unknown): { bookId: string; input: SceneInput } | unde
 function summarizeSceneInput(input: SceneInput): string {
   if (input.mode === "free-text") {
     return input.description;
+  }
+
+  if (input.mode === "polish") {
+    const aspectLabels = input.aspects
+      .map((aspectId) => POLISH_ASPECTS.find((aspect) => aspect.id === aspectId)?.label)
+      .filter((label): label is string => Boolean(label));
+    const preview =
+      input.draftText.length > DRAFT_PREVIEW_LENGTH
+        ? `${input.draftText.slice(0, DRAFT_PREVIEW_LENGTH)}…`
+        : input.draftText;
+    return `Polish draft (${aspectLabels.join(", ")}): ${preview}`;
   }
 
   const labels: Record<keyof StructuredSceneFields, string> = {
@@ -194,7 +241,7 @@ export async function buildGenerateSceneResponse(
 
 export const generateScene = onRequest(
   {
-    cors: ["https://backupapp-bbf71.web.app"],
+    cors: allowedOrigins(),
     region: "us-central1",
     secrets: [GOOGLE_API_KEY, OPENAI_API_KEY],
   },
