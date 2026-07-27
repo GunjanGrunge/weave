@@ -4,7 +4,7 @@ baseline_commit: "ab4d684"
 
 # Story 1.5: See and Shape My Book's Vision
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -55,12 +55,12 @@ so that the book's memory of what I mean stays correct as my ideas evolve.
   - [x] Handler tests cover: valid owner read, valid owner update, missing/invalid token 401, nonexistent book 404, cross-owner rejection, malformed thread/subtlety/status 400, and that `structureMap` cannot be changed through the user update handler.
   - [x] Frontend tests cover: initial Vision render, save of theme/premise/intents, Structure Map read-only behavior, Guidance Dial has no control, add/edit/paid-off thread flow, and no direct Firestore import/use.
 
-- [ ] Task 5: Verify and deploy (AC: 1, 2, 3)
+- [x] Task 5: Verify and deploy (AC: 1, 2, 3)
   - [x] Run `npm run verify` in `functions/`.
   - [x] Run `bun run test` and `bun run build` at repo root.
-  - [ ] Push to `main` so `.github/workflows/firebase-deploy.yml` deploys automatically.
-  - [ ] Live verify with one writer account: create/open an existing Book, load Vision, edit premise/intents, add/edit/pay off a thread, confirm Firestore `vision/main` changed only user-owned fields and retained `structureMap`.
-  - [ ] Clean up any test data created for live verification.
+  - [x] Push to `main` so `.github/workflows/firebase-deploy.yml` deploys automatically.
+  - [x] Live verify with one writer account: create/open an existing Book, load Vision, edit premise/intents, add/edit/pay off a thread, confirm Firestore `vision/main` changed only user-owned fields and retained `structureMap`.
+  - [x] Clean up any test data created for live verification.
 
 ## Dev Notes
 
@@ -142,6 +142,8 @@ GPT-5 Codex
 - `functions/`: `npm run verify` passed (lint, seam lint, build, 10 files / 56 tests).
 - Repo root: `bun run test` passed (8 files / 33 tests).
 - Repo root: `bun run build` passed; Vite emitted the existing chunk-size warning for the SPA bundle.
+- GitHub Actions deploy run `30242687945` passed and deployed commit `ca8712a`.
+- Live authenticated verification used a temporary custom-token UID and disposable Book `story-1-5-live-1785133740498`; `/getVision` returned 200, `/updateVision` returned 200, `structureMap` and `guidanceDial` were retained despite client-supplied overwrite attempts, and the paid-off thread persisted with an ID. Test docs were deleted immediately after verification.
 
 ### Completion Notes List
 
@@ -150,6 +152,7 @@ GPT-5 Codex
 - Added protected `getVision` and `updateVision` callable-over-Hosting endpoints with token verification, ownership assertion, server-side field validation, and field-scoped Vision `update()`.
 - Added a `/books/$bookId/vision` route that uses `authenticatedFetch`, provides editable author-owned Vision fields, and keeps Structure Map and Guidance Dial read-only in V1.
 - Added backend service/handler coverage and frontend route coverage for render, save, thread editing, read-only Structure Map, fixed Guidance Dial, and no client Firestore import.
+- Pushed and verified the deployed protected endpoints against Firebase Hosting rewrites.
 
 ### File List
 
@@ -172,3 +175,4 @@ GPT-5 Codex
 
 - 2026-07-27: Created Story 1.5 context from Epic 1 backlog.
 - 2026-07-27: Implemented protected Vision read/update backend, Vision editor frontend, CI deploy target updates, and local test/build verification.
+- 2026-07-27: Deployed via GitHub Actions, live-verified authenticated Vision read/update behavior, cleaned up test docs, and moved Story 1.5 to review.
