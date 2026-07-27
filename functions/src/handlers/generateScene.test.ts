@@ -209,6 +209,89 @@ describe("buildGenerateSceneResponse", () => {
     expect(appendChatMessageMock).not.toHaveBeenCalled();
   });
 
+  it("returns the generated scene for structured mode with all four fields and persists a summarized user message", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    getBookMock.mockResolvedValue(book);
+    runGenerateMock.mockResolvedValue({
+      status: "ok",
+      text: "The vault door groaned open.",
+      provider: "openai",
+      model: "gpt-5.6-terra",
+      sessionId: "session-1",
+    });
+
+    const result = await buildGenerateSceneResponse(
+      "Bearer valid",
+      {
+        bookId: "book-1",
+        mode: "structured",
+        fields: {
+          sceneGoal: "Escape the vault",
+          mood: "tense",
+          povCharacter: "Mara",
+          setting: "Loading dock at 3am",
+        },
+      },
+      apiKeys,
+    );
+
+    expect(result.statusCode).toBe(200);
+    expect(runGenerateMock).toHaveBeenCalledWith(
+      "book-1",
+      {
+        mode: "structured",
+        fields: {
+          sceneGoal: "Escape the vault",
+          mood: "tense",
+          povCharacter: "Mara",
+          setting: "Loading dock at 3am",
+        },
+      },
+      apiKeys,
+    );
+    expect(appendChatMessageMock).toHaveBeenNthCalledWith(
+      1,
+      "book-1",
+      "user",
+      "Scene goal: Escape the vault. Mood: tense. POV: Mara. Setting: Loading dock at 3am.",
+    );
+  });
+
+  it("returns the generated scene for structured mode with only one field supplied, summarizing only that field", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    getBookMock.mockResolvedValue(book);
+    runGenerateMock.mockResolvedValue({
+      status: "ok",
+      text: "Scene text.",
+      provider: "openai",
+      model: "gpt-5.6-terra",
+      sessionId: "session-1",
+    });
+
+    const result = await buildGenerateSceneResponse(
+      "Bearer valid",
+      { bookId: "book-1", mode: "structured", fields: { mood: "tense" } },
+      apiKeys,
+    );
+
+    expect(result.statusCode).toBe(200);
+    expect(appendChatMessageMock).toHaveBeenNthCalledWith(1, "book-1", "user", "Mood: tense.");
+  });
+
+  it("returns 400 and never runs the pipeline when all structured fields are empty or whitespace", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+
+    const result = await buildGenerateSceneResponse(
+      "Bearer valid",
+      { bookId: "book-1", mode: "structured", fields: { sceneGoal: "  ", mood: "" } },
+      apiKeys,
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(getBookMock).not.toHaveBeenCalled();
+    expect(runGenerateMock).not.toHaveBeenCalled();
+  });
+
   it("returns a structured 502 error when the pipeline call times out", async () => {
     verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
     getBookMock.mockResolvedValue(book);

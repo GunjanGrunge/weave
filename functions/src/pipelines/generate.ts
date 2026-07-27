@@ -6,6 +6,7 @@ import { assembleContext, type AssembledContext } from "./assembleContext.js";
 import { composePrompt } from "./composePrompt.js";
 import type { AIProviderKeys } from "../services/gemini.js";
 import { generateScene as generateSceneCall } from "../services/gemini.js";
+import type { SceneInput } from "../types/sceneInput.js";
 
 function firestore() {
   if (getApps().length === 0) {
@@ -16,7 +17,7 @@ function firestore() {
 
 const GenerateState = Annotation.Root({
   bookId: Annotation<string>,
-  description: Annotation<string>,
+  input: Annotation<SceneInput>,
   apiKeys: Annotation<AIProviderKeys>,
   status: Annotation<"ok" | "failed">,
   assembledContext: Annotation<AssembledContext | undefined>,
@@ -39,7 +40,7 @@ async function composePromptNode(state: GenerateStateValue): Promise<Partial<Gen
     console.error("generate/composePrompt: no assembled context", { bookId: state.bookId });
     return { status: "failed" };
   }
-  const composed = await composePrompt(state.bookId, state.assembledContext, state.description);
+  const composed = await composePrompt(state.bookId, state.assembledContext, state.input);
   if (!composed) {
     console.error("generate/composePrompt: composePrompt returned undefined (missing book or vision)", {
       bookId: state.bookId,
@@ -113,12 +114,12 @@ export type RunGenerateResult =
 
 export async function runGenerate(
   bookId: string,
-  description: string,
+  input: SceneInput,
   apiKeys: AIProviderKeys,
 ): Promise<RunGenerateResult> {
   const result = await graph.invoke({
     bookId,
-    description,
+    input,
     apiKeys,
     status: "failed",
     assembledContext: undefined,

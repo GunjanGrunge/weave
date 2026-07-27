@@ -30,6 +30,28 @@ type LoadState =
 
 type GenerationState = { status: "idle" | "loading" } | { status: "error"; message: string };
 
+type InputMode = "free-text" | "structured";
+
+type StructuredFields = {
+  sceneGoal: string;
+  mood: string;
+  povCharacter: string;
+  setting: string;
+};
+
+const STRUCTURED_FIELD_LABELS: Array<{ key: keyof StructuredFields; label: string }> = [
+  { key: "sceneGoal", label: "Scene goal" },
+  { key: "mood", label: "Mood" },
+  { key: "povCharacter", label: "POV/character" },
+  { key: "setting", label: "Setting" },
+];
+
+function summarizeStructuredFields(fields: StructuredFields): string {
+  return STRUCTURED_FIELD_LABELS.filter(({ key }) => fields[key].trim())
+    .map(({ key, label }) => `${label}: ${fields[key].trim()}.`)
+    .join(" ");
+}
+
 function ChatRoute() {
   const { bookId } = Route.useParams();
   return <ChatPage bookId={bookId} />;
@@ -51,6 +73,13 @@ function messageStyles(type: ChatMessageType): string {
 export function ChatPage({ bookId }: { bookId: string }) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [description, setDescription] = useState("");
+  const [inputMode, setInputMode] = useState<InputMode>("free-text");
+  const [structuredFields, setStructuredFields] = useState<StructuredFields>({
+    sceneGoal: "",
+    mood: "",
+    povCharacter: "",
+    setting: "",
+  });
   const [validationError, setValidationError] = useState<string | null>(null);
   const [generationState, setGenerationState] = useState<GenerationState>({ status: "idle" });
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -86,15 +115,33 @@ export function ChatPage({ bookId }: { bookId: string }) {
     };
   }, [bookId]);
 
-  async function submitDescription() {
+  async function submitScene() {
     if (generationState.status === "loading") {
       return;
     }
-    const trimmed = description.trim();
-    if (!trimmed) {
-      setValidationError("Describe what happens in the scene before sending.");
-      return;
+
+    const trimmedDescription = description.trim();
+    const hasStructuredValue = STRUCTURED_FIELD_LABELS.some(({ key }) => structuredFields[key].trim());
+
+    let payload: Record<string, unknown>;
+    let userMessageText: string;
+
+    if (inputMode === "free-text") {
+      if (!trimmedDescription) {
+        setValidationError("Describe what happens in the scene before sending.");
+        return;
+      }
+      payload = { bookId, mode: "free-text", description: trimmedDescription };
+      userMessageText = trimmedDescription;
+    } else {
+      if (!hasStructuredValue) {
+        setValidationError("Fill in at least one detail before sending.");
+        return;
+      }
+      payload = { bookId, mode: "structured", fields: structuredFields };
+      userMessageText = summarizeStructuredFields(structuredFields);
     }
+
     setValidationError(null);
     setGenerationState({ status: "loading" });
 
@@ -102,7 +149,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
       const response = await authenticatedFetch("/generateScene", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookId, description: trimmed }),
+        body: JSON.stringify(payload),
       });
       if (!response.ok) {
         throw new Error("Generation failed.");
@@ -121,24 +168,28 @@ export function ChatPage({ bookId }: { bookId: string }) {
           status: "ready",
           messages: [
             ...priorMessages,
-            { type: "user", text: trimmed, order: nextOrder },
+            { type: "user", text: userMessageText, order: nextOrder },
             { type: "assistant_scene", text: result.text, order: nextOrder + 1 },
           ],
         };
       });
       setSessionId(result.sessionId);
-      setDescription("");
+      if (inputMode === "free-text") {
+        setDescription("");
+      } else {
+        setStructuredFields({ sceneGoal: "", mood: "", povCharacter: "", setting: "" });
+      }
       setGenerationState({ status: "idle" });
     } catch {
       setGenerationState({
         status: "error",
-        message: "Couldn't generate a scene. Your description is still here.",
+        message: "Couldn't generate a scene. Your details are still here.",
       });
     }
   }
 
   function retry() {
-    void submitDescription();
+    void submitScene();
   }
 
   if (loadState.status === "loading") {
@@ -222,25 +273,81 @@ export function ChatPage({ bookId }: { bookId: string }) {
         </div>
       )}
 
-      <div className="mt-4 flex items-end gap-2 rounded-2xl border border-border bg-card p-2 pl-4 focus-within:border-accent/40">
-        <textarea
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          aria-label="Scene description"
-          rows={2}
-          disabled={isLoading}
-          className="flex-1 resize-none bg-transparent text-sm outline-none disabled:opacity-50"
-        />
+      <div className="mt-4 flex gap-2">
         <button
           type="button"
-          onClick={submitDescription}
+          onClick={() => setInputMode("free-text")}
+          aria-pressed={inputMode === "free-text"}
           disabled={isLoading}
-          aria-label="Send"
-          className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent text-accent-foreground disabled:opacity-50"
+          className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+            inputMode === "free-text"
+              ? "border-accent bg-accent text-accent-foreground"
+              : "border-border bg-card hover:border-accent/50"
+          }`}
         >
-          {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+          Describe it
+        </button>
+        <button
+          type="button"
+          onClick={() => setInputMode("structured")}
+          aria-pressed={inputMode === "structured"}
+          disabled={isLoading}
+          className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+            inputMode === "structured"
+              ? "border-accent bg-accent text-accent-foreground"
+              : "border-border bg-card hover:border-accent/50"
+          }`}
+        >
+          Quick details
         </button>
       </div>
+
+      {inputMode === "free-text" ? (
+        <div className="mt-2 flex items-end gap-2 rounded-2xl border border-border bg-card p-2 pl-4 focus-within:border-accent/40">
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            aria-label="Scene description"
+            rows={2}
+            disabled={isLoading}
+            className="flex-1 resize-none bg-transparent text-sm outline-none disabled:opacity-50"
+          />
+          <button
+            type="button"
+            onClick={submitScene}
+            disabled={isLoading}
+            aria-label="Send"
+            className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent text-accent-foreground disabled:opacity-50"
+          >
+            {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+          </button>
+        </div>
+      ) : (
+        <div className="mt-2 rounded-2xl border border-border bg-card p-3">
+          <div className="grid gap-2 sm:grid-cols-2">
+            {STRUCTURED_FIELD_LABELS.map(({ key, label }) => (
+              <label key={key} className="text-xs font-medium text-muted-foreground">
+                {label}
+                <input
+                  value={structuredFields[key]}
+                  onChange={(event) =>
+                    setStructuredFields((current) => ({ ...current, [key]: event.target.value }))
+                  }
+                  aria-label={label}
+                  disabled={isLoading}
+                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm normal-case text-foreground outline-none focus:border-accent disabled:opacity-50"
+                />
+              </label>
+            ))}
+          </div>
+          <div className="mt-2 flex justify-end">
+            <Button type="button" onClick={submitScene} disabled={isLoading}>
+              {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              Send
+            </Button>
+          </div>
+        </div>
+      )}
       {sessionId && <span className="sr-only">session:{sessionId}</span>}
     </div>
   );

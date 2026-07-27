@@ -104,7 +104,11 @@ describe("ChatPage", () => {
     expect(authenticatedFetchMock).toHaveBeenCalledWith(
       "/generateScene",
       expect.objectContaining({
-        body: JSON.stringify({ bookId: "book-1", description: "Mara breaks into the vault." }),
+        body: JSON.stringify({
+          bookId: "book-1",
+          mode: "free-text",
+          description: "Mara breaks into the vault.",
+        }),
       }),
     );
   });
@@ -144,6 +148,78 @@ describe("ChatPage", () => {
       expect(screen.getByText("The vault door groaned open.")).toBeInTheDocument(),
     );
     expect(authenticatedFetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("switches to structured mode, blocks all-empty submission, and never calls generateScene", async () => {
+    authenticatedFetchMock.mockResolvedValue(jsonResponse({ messages: [] }));
+
+    render(<ChatPage bookId="book-1" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /quick details/i }));
+
+    expect(screen.getByLabelText("Scene goal")).toBeInTheDocument();
+    expect(screen.getByLabelText("Mood")).toBeInTheDocument();
+    expect(screen.getByLabelText("POV/character")).toBeInTheDocument();
+    expect(screen.getByLabelText("Setting")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/fill in at least one detail/i);
+    expect(authenticatedFetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("generates a scene from a single structured field and renders a summarized user message", async () => {
+    authenticatedFetchMock
+      .mockResolvedValueOnce(jsonResponse({ messages: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          sessionId: "session-1",
+          text: "The vault door groaned open.",
+          provider: "openai",
+          model: "gpt-5.6-terra",
+        }),
+      );
+
+    render(<ChatPage bookId="book-1" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /quick details/i }));
+    fireEvent.change(screen.getByLabelText("Mood"), { target: { value: "tense" } });
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText("The vault door groaned open.")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("Mood: tense.")).toBeInTheDocument();
+    expect(authenticatedFetchMock).toHaveBeenCalledWith(
+      "/generateScene",
+      expect.objectContaining({
+        body: JSON.stringify({
+          bookId: "book-1",
+          mode: "structured",
+          fields: { sceneGoal: "", mood: "tense", povCharacter: "", setting: "" },
+        }),
+      }),
+    );
+  });
+
+  it("keeps structured field values on generation failure", async () => {
+    authenticatedFetchMock
+      .mockResolvedValueOnce(jsonResponse({ messages: [] }))
+      .mockResolvedValueOnce(jsonResponse({ code: "generation-failed" }, 502));
+
+    render(<ChatPage bookId="book-1" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /quick details/i }));
+    fireEvent.change(screen.getByLabelText("Mood"), { target: { value: "tense" } });
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument(),
+    );
+    expect(screen.getByLabelText("Mood")).toHaveValue("tense");
   });
 
   it("shows an error with Retry and keeps the typed description on failure", async () => {

@@ -46,7 +46,7 @@ describe("composePrompt", () => {
     const result = await composePrompt(
       "book-1",
       { chapterId: "chapter-1", priorScenesText: [] },
-      "Mara breaks into the vault.",
+      { mode: "free-text", description: "Mara breaks into the vault." },
     );
 
     expect(result?.prompt).toContain("Lean scenes, crisp images");
@@ -86,7 +86,7 @@ describe("composePrompt", () => {
     const result = await composePrompt(
       "book-1",
       { chapterId: "chapter-1", priorScenesText: [] },
-      "A quiet evening at home.",
+      { mode: "free-text", description: "A quiet evening at home." },
     );
 
     expect(result?.prompt).toContain("A leaking ceiling");
@@ -106,7 +106,7 @@ describe("composePrompt", () => {
     const result = await composePrompt(
       "book-1",
       { chapterId: "chapter-1", priorScenesText: ["Scene one text.", "Scene two text."] },
-      "Continue the story.",
+      { mode: "free-text", description: "Continue the story." },
     );
 
     expect(result?.prompt).toContain("Scene one text.");
@@ -117,8 +117,82 @@ describe("composePrompt", () => {
     getBookMock.mockResolvedValue(undefined);
     getVisionDocumentMock.mockResolvedValue(baseVision);
 
-    const result = await composePrompt("missing-book", { chapterId: undefined, priorScenesText: [] }, "x");
+    const result = await composePrompt(
+      "missing-book",
+      { chapterId: undefined, priorScenesText: [] },
+      { mode: "free-text", description: "x" },
+    );
 
     expect(result).toBeUndefined();
+  });
+
+  it("includes only the supplied structured fields, omitting absent ones", async () => {
+    getBookMock.mockResolvedValue({
+      uid: "user-a",
+      title: "A Heist",
+      style: { presetIds: [] },
+      createdAt: "t",
+    });
+    getVisionDocumentMock.mockResolvedValue(baseVision);
+
+    const result = await composePrompt(
+      "book-1",
+      { chapterId: "chapter-1", priorScenesText: [] },
+      { mode: "structured", fields: { mood: "tense" } },
+    );
+
+    expect(result?.prompt).toContain("Mood: tense");
+    expect(result?.prompt).not.toContain("Scene goal:");
+    expect(result?.prompt).not.toContain("POV/character:");
+    expect(result?.prompt).not.toContain("Setting:");
+  });
+
+  it("ties the mood field to a directive that should produce recognizably tense prose", async () => {
+    getBookMock.mockResolvedValue({
+      uid: "user-a",
+      title: "A Heist",
+      style: { presetIds: [] },
+      createdAt: "t",
+    });
+    getVisionDocumentMock.mockResolvedValue(baseVision);
+
+    const result = await composePrompt(
+      "book-1",
+      { chapterId: "chapter-1", priorScenesText: [] },
+      { mode: "structured", fields: { mood: "tense" } },
+    );
+
+    expect(result?.prompt).toContain("Write this scene with a tense emotional register throughout.");
+  });
+
+  it("includes all four structured fields when supplied, plus the shared style/vision sections", async () => {
+    getBookMock.mockResolvedValue({
+      uid: "user-a",
+      title: "A Heist",
+      style: { presetIds: ["sparse-cinematic"] },
+      createdAt: "t",
+    });
+    getVisionDocumentMock.mockResolvedValue(baseVision);
+
+    const result = await composePrompt(
+      "book-1",
+      { chapterId: "chapter-1", priorScenesText: [] },
+      {
+        mode: "structured",
+        fields: {
+          sceneGoal: "Escape the vault",
+          mood: "tense",
+          povCharacter: "Mara",
+          setting: "Loading dock at 3am",
+        },
+      },
+    );
+
+    expect(result?.prompt).toContain("Scene goal: Escape the vault");
+    expect(result?.prompt).toContain("Mood: tense");
+    expect(result?.prompt).toContain("POV/character: Mara");
+    expect(result?.prompt).toContain("Setting: Loading dock at 3am");
+    expect(result?.prompt).toContain("Lean scenes, crisp images");
+    expect(result?.prompt).toContain("Heist");
   });
 });

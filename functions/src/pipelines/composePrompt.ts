@@ -1,7 +1,8 @@
 import { STYLE_PRESETS } from "../config/stylePresets.js";
 import { getBook, getVisionDocument } from "../services/books.js";
 import type { Style } from "../types/book.js";
-import type { ThreadSubtlety } from "../types/vision.js";
+import type { SceneInput } from "../types/sceneInput.js";
+import type { NarrativeThread, ThreadSubtlety } from "../types/vision.js";
 
 import type { AssembledContext } from "./assembleContext.js";
 
@@ -23,22 +24,11 @@ function resolveStyleInstruction(style: Style): string {
   return style.customInstruction ? `${presetText} ${style.customInstruction}`.trim() : presetText;
 }
 
-/**
- * `composePrompt` always reads the Book/Vision doc live (never from the
- * cached session) so a style change or thread edit between a generate and a
- * later regenerate is honored on the very next call, per AD-4.
- */
-export async function composePrompt(
-  bookId: string,
+function buildSharedLines(
+  book: { style: Style },
+  vision: { theme: string; premise: string; characterIntents: string[]; threads: NarrativeThread[] },
   context: AssembledContext,
-  description: string,
-): Promise<ComposedPrompt> {
-  const book = await getBook(bookId);
-  const vision = await getVisionDocument(bookId);
-  if (!book || !vision) {
-    return undefined;
-  }
-
+): string[] {
   const styleInstruction = resolveStyleInstruction(book.style);
   const openThreads = vision.threads.filter((thread) => thread.status === "open");
 
@@ -67,7 +57,49 @@ export async function composePrompt(
     lines.push(...context.priorScenesText);
   }
 
-  lines.push(`Write the next scene from this description: ${description}`);
+  return lines;
+}
+
+function appendInputLines(lines: string[], input: SceneInput): void {
+  if (input.mode === "free-text") {
+    lines.push(`Write the next scene from this description: ${input.description}`);
+    return;
+  }
+
+  const { sceneGoal, mood, povCharacter, setting } = input.fields;
+  if (sceneGoal) {
+    lines.push(`Scene goal: ${sceneGoal}`);
+  }
+  if (mood) {
+    lines.push(`Mood: ${mood}. Write this scene with a ${mood} emotional register throughout.`);
+  }
+  if (povCharacter) {
+    lines.push(`POV/character: ${povCharacter}`);
+  }
+  if (setting) {
+    lines.push(`Setting: ${setting}`);
+  }
+  lines.push("Write the next scene from these details alone, not as a paraphrase of a paragraph.");
+}
+
+/**
+ * `composePrompt` always reads the Book/Vision doc live (never from the
+ * cached session) so a style change or thread edit between a generate and a
+ * later regenerate is honored on the very next call, per AD-4.
+ */
+export async function composePrompt(
+  bookId: string,
+  context: AssembledContext,
+  input: SceneInput,
+): Promise<ComposedPrompt> {
+  const book = await getBook(bookId);
+  const vision = await getVisionDocument(bookId);
+  if (!book || !vision) {
+    return undefined;
+  }
+
+  const lines = buildSharedLines(book, vision, context);
+  appendInputLines(lines, input);
 
   return { prompt: lines.join("\n"), style: book.style };
 }

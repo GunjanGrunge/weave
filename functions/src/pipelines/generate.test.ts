@@ -65,7 +65,7 @@ describe("runGenerate", () => {
       model: "gpt-5.6-terra",
     });
 
-    const result = await runGenerate("book-1", "A heist scene.", apiKeys);
+    const result = await runGenerate("book-1", { mode: "free-text", description: "A heist scene." }, apiKeys);
 
     expect(result).toEqual({
       status: "ok",
@@ -75,7 +75,11 @@ describe("runGenerate", () => {
       sessionId: "session-auto-id",
     });
     expect(assembleContextMock).toHaveBeenCalledWith("book-1");
-    expect(composePromptMock).toHaveBeenCalledWith("book-1", assembledContext, "A heist scene.");
+    expect(composePromptMock).toHaveBeenCalledWith(
+      "book-1",
+      assembledContext,
+      { mode: "free-text", description: "A heist scene." },
+    );
     expect(generateSceneMock).toHaveBeenCalledWith("book-1", "Composed prompt text.", apiKeys);
     expect(sessionSetMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -91,7 +95,7 @@ describe("runGenerate", () => {
     composePromptMock.mockResolvedValue({ prompt: "Composed prompt text.", style: { presetIds: [] } });
     generateSceneMock.mockResolvedValue({ text: "Scene text.", provider: "openai", model: "gpt-5.6-terra" });
 
-    const result = await runGenerate("book-1", "A heist scene.", apiKeys);
+    const result = await runGenerate("book-1", { mode: "free-text", description: "A heist scene." }, apiKeys);
 
     expect(result).not.toHaveProperty("prompt");
     expect(result).not.toHaveProperty("assembledContext");
@@ -102,7 +106,7 @@ describe("runGenerate", () => {
     assembleContextMock.mockResolvedValue(assembledContext);
     composePromptMock.mockResolvedValue(undefined);
 
-    const result = await runGenerate("missing-book", "A heist scene.", apiKeys);
+    const result = await runGenerate("missing-book", { mode: "free-text", description: "A heist scene." }, apiKeys);
 
     expect(result).toEqual({ status: "failed" });
     expect(generateSceneMock).not.toHaveBeenCalled();
@@ -114,7 +118,7 @@ describe("runGenerate", () => {
     composePromptMock.mockResolvedValue({ prompt: "Composed prompt text.", style: { presetIds: [] } });
     generateSceneMock.mockRejectedValue(new Error("Both providers failed"));
 
-    const result = await runGenerate("book-1", "A heist scene.", apiKeys);
+    const result = await runGenerate("book-1", { mode: "free-text", description: "A heist scene." }, apiKeys);
 
     expect(result).toEqual({ status: "failed" });
     expect(sessionSetMock).not.toHaveBeenCalled();
@@ -130,7 +134,7 @@ describe("runGenerate", () => {
     });
     sessionSetMock.mockRejectedValue(new Error("Firestore write failed"));
 
-    const result = await runGenerate("book-1", "A heist scene.", apiKeys);
+    const result = await runGenerate("book-1", { mode: "free-text", description: "A heist scene." }, apiKeys);
 
     expect(result).toEqual({
       status: "ok",
@@ -139,5 +143,20 @@ describe("runGenerate", () => {
       model: "gpt-5.6-terra",
       sessionId: "",
     });
+  });
+
+  it("passes a structured SceneInput through to composePrompt unchanged", async () => {
+    assembleContextMock.mockResolvedValue(assembledContext);
+    composePromptMock.mockResolvedValue({ prompt: "Composed prompt text.", style: { presetIds: [] } });
+    generateSceneMock.mockResolvedValue({
+      text: "Scene text.",
+      provider: "openai",
+      model: "gpt-5.6-terra",
+    });
+
+    const structuredInput = { mode: "structured" as const, fields: { mood: "tense" } };
+    await runGenerate("book-1", structuredInput, apiKeys);
+
+    expect(composePromptMock).toHaveBeenCalledWith("book-1", assembledContext, structuredInput);
   });
 });
