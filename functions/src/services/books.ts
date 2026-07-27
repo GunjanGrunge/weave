@@ -17,6 +17,7 @@ export type PremiseAnswers = {
 export type CreateBookInput = {
   premiseAnswers: PremiseAnswers;
   style: Style;
+  idempotencyKey?: string;
 };
 
 const intakePrompts = [
@@ -39,8 +40,12 @@ function clean(value: string | undefined): string {
 function normalizeStyle(style: Style): Style {
   const knownIds = new Set(STYLE_PRESETS.map((preset) => preset.id));
   const presetIds = [...new Set(style.presetIds.filter((id) => knownIds.has(id)))].slice(0, 2);
-  const normalizedPresetIds = presetIds.length > 0 ? presetIds : [DEFAULT_STYLE_PRESET_ID];
   const customInstruction = clean(style.customInstruction);
+  // Only fall back to the default preset when style choice was skipped
+  // entirely — a pure custom instruction with no preset is a valid, distinct
+  // choice under AC-1 and must not be silently tagged with the default preset.
+  const skippedStyleEntirely = presetIds.length === 0 && !customInstruction;
+  const normalizedPresetIds = skippedStyleEntirely ? [DEFAULT_STYLE_PRESET_ID] : presetIds;
 
   return customInstruction
     ? { presetIds: normalizedPresetIds, customInstruction }
@@ -100,6 +105,18 @@ export async function createBookWithIntake(
   input: CreateBookInput,
 ): Promise<{ bookId: string }> {
   const db = firestore();
+
+  // A replayed request (client retried after a dropped/unparseable response
+  // to an already-committed submission) must not create a second book —
+  // return the book the original request already created instead.
+  if (input.idempotencyKey) {
+    const existing = await db.collection("intakeRequests").doc(input.idempotencyKey).get();
+    const existingData = existing.data();
+    if (existing.exists && existingData?.uid === uid && typeof existingData.bookId === "string") {
+      return { bookId: existingData.bookId };
+    }
+  }
+
   const batch = db.batch();
   const bookRef = db.collection("books").doc();
   const createdAt = FieldValue.serverTimestamp();
@@ -132,6 +149,14 @@ export async function createBookWithIntake(
 
   for (const message of buildMessages(answers, style, createdAt)) {
     batch.set(bookRef.collection("messages").doc(), message);
+  }
+
+  if (input.idempotencyKey) {
+    batch.set(db.collection("intakeRequests").doc(input.idempotencyKey), {
+      uid,
+      bookId: bookRef.id,
+      createdAt,
+    });
   }
 
   await batch.commit();

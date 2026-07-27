@@ -61,24 +61,21 @@ describe("NewBook intake chat", () => {
     fireEvent.click(screen.getByRole("button", { name: /Warm & Character-Driven/i }));
     fireEvent.click(screen.getByRole("button", { name: /create book/i }));
 
-    await waitFor(() =>
-      expect(authenticatedFetchMock).toHaveBeenCalledWith(
-        "/createBook",
-        expect.objectContaining({
-          method: "POST",
-          body: JSON.stringify({
-            premiseAnswers: {
-              whatToWrite: "A survival story on a generation ship",
-              mainCharacter: "Mara, an engineer hiding a mutiny",
-              roughPremise: "The ship's oxygen debt forces a moral compromise.",
-            },
-            style: {
-              presetIds: ["sparse-cinematic", "warm-character-driven"],
-            },
-          }),
-        }),
-      ),
-    );
+    await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledTimes(1));
+    const [url, init] = authenticatedFetchMock.mock.calls[0];
+    expect(url).toBe("/createBook");
+    expect(init).toMatchObject({ method: "POST" });
+    expect(JSON.parse(init.body)).toEqual({
+      premiseAnswers: {
+        whatToWrite: "A survival story on a generation ship",
+        mainCharacter: "Mara, an engineer hiding a mutiny",
+        roughPremise: "The ship's oxygen debt forces a moral compromise.",
+      },
+      style: {
+        presetIds: ["sparse-cinematic", "warm-character-driven"],
+      },
+      idempotencyKey: expect.any(String),
+    });
 
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /continue to my book/i })).toBeInTheDocument(),
@@ -97,6 +94,29 @@ describe("NewBook intake chat", () => {
       style: {
         presetIds: ["warm-character-driven"],
       },
+      idempotencyKey: expect.any(String),
+    });
+  });
+
+  it("sends a pure custom instruction with no preset, without forcing the default preset", async () => {
+    render(<NewBook />);
+
+    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+    fireEvent.change(screen.getByLabelText(/custom style instruction/i), {
+      target: { value: "Terse, second-person, present tense." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /create book/i }));
+
+    await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(authenticatedFetchMock.mock.calls[0][1].body)).toEqual({
+      premiseAnswers: {},
+      style: {
+        presetIds: [],
+        customInstruction: "Terse, second-person, present tense.",
+      },
+      idempotencyKey: expect.any(String),
     });
   });
 
@@ -134,7 +154,10 @@ describe("NewBook intake chat", () => {
     expect(navigateMock).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: /continue to my book/i }));
-    expect(navigateMock).toHaveBeenCalledWith({ to: "/books" });
+    expect(navigateMock).toHaveBeenCalledWith({
+      to: "/books/$bookId/chat",
+      params: { bookId: "book-1" },
+    });
   });
 
   it("shows a non-blocking retry notice when the opening suggestion fails, and Continue still works", async () => {
@@ -155,7 +178,10 @@ describe("NewBook intake chat", () => {
     const continueButton = screen.getByRole("button", { name: /continue to my book/i });
     expect(continueButton).toBeEnabled();
     fireEvent.click(continueButton);
-    expect(navigateMock).toHaveBeenCalledWith({ to: "/books" });
+    expect(navigateMock).toHaveBeenCalledWith({
+      to: "/books/$bookId/chat",
+      params: { bookId: "book-1" },
+    });
   });
 
   it("retries the opening suggestion via /retryOpeningSuggestion and shows the result", async () => {

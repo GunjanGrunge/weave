@@ -1,5 +1,6 @@
 import { onRequest } from "firebase-functions/v2/https";
 
+import { allowedOrigins } from "../config/cors.js";
 import { verifyIdToken, AuthError } from "../services/auth.js";
 
 export type WhoamiSuccess = { uid: string };
@@ -29,7 +30,7 @@ export async function buildWhoamiResponse(
 
 export const whoami = onRequest(
   {
-    cors: ["https://backupapp-bbf71.web.app"],
+    cors: allowedOrigins(),
     region: "us-central1",
   },
   async (request, response) => {

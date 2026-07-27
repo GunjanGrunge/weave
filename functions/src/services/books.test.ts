@@ -77,10 +77,24 @@ vi.mock("firebase-admin/firestore", () => ({
   FieldValue: { serverTimestamp: serverTimestampMock },
   getFirestore: vi.fn(() => ({
     collection: (name: string) => makeCollection(name),
-    batch: () => ({
-      set: (ref: { path: string }, data: unknown) => setCalls.push({ path: ref.path, data }),
-      commit: commitMock,
-    }),
+    batch: () => {
+      const pending: WriteCall[] = [];
+      return {
+        set: (ref: { path: string }, data: unknown) => {
+          setCalls.push({ path: ref.path, data });
+          pending.push({ path: ref.path, data });
+        },
+        commit: async () => {
+          // Real batch writes only become visible to subsequent reads once
+          // committed — apply them to docStore here so idempotency lookups
+          // against docs written by a prior batch behave like real Firestore.
+          for (const { path, data } of pending) {
+            docStore[path] = data;
+          }
+          return commitMock();
+        },
+      };
+    },
     runTransaction: async <T,>(
       updateFn: (transaction: {
         get: (query: { get: () => Promise<unknown> }) => Promise<unknown>;
@@ -222,6 +236,54 @@ describe("createBookWithIntake", () => {
     expect(messages[3]?.text).toBe("(skipped)");
     expect(messages[7]?.text).toContain("Warm & Character-Driven");
     expect(messages[7]?.text).toContain("Quiet, reflective prose.");
+  });
+
+  it("stores a pure custom instruction with no preset, without forcing the default preset", async () => {
+    await createBookWithIntake("user-a", {
+      premiseAnswers: {},
+      style: { presetIds: [], customInstruction: "Terse, second-person, present tense." },
+    });
+
+    const book = setCalls.find((call) => call.path === "books/book-auto-id")?.data;
+
+    expect(book).toMatchObject({
+      style: {
+        presetIds: [],
+        customInstruction: "Terse, second-person, present tense.",
+      },
+    });
+  });
+
+  it("still applies the default preset when style is skipped entirely (no presets, no custom instruction)", async () => {
+    await createBookWithIntake("user-a", {
+      premiseAnswers: {},
+      style: { presetIds: [] },
+    });
+
+    const book = setCalls.find((call) => call.path === "books/book-auto-id")?.data;
+
+    expect(book).toMatchObject({ style: { presetIds: [DEFAULT_STYLE_PRESET_ID] } });
+  });
+
+  it("returns the original bookId on a replayed idempotency key instead of creating a duplicate book", async () => {
+    const first = await createBookWithIntake("user-a", {
+      premiseAnswers: { whatToWrite: "A heist novel" },
+      style: { presetIds: ["fast-paced-thriller"] },
+      idempotencyKey: "retry-key-1",
+    });
+
+    setCalls.length = 0;
+    commitMock.mockClear();
+
+    const second = await createBookWithIntake("user-a", {
+      premiseAnswers: { whatToWrite: "A heist novel" },
+      style: { presetIds: ["fast-paced-thriller"] },
+      idempotencyKey: "retry-key-1",
+    });
+
+    expect(second).toEqual(first);
+    expect(commitMock).not.toHaveBeenCalled();
+    expect(setCalls).toHaveLength(0);
   });
 });
 

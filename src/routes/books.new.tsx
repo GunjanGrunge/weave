@@ -38,6 +38,19 @@ const questions: Array<{ key: PremiseKey; prompt: string }> = [
 
 const initialMessages: ChatLine[] = [{ type: "system", text: questions[0].prompt }];
 
+function isOpeningSuggestionArray(value: unknown): value is OpeningSuggestion[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        typeof item === "object" &&
+        item !== null &&
+        typeof (item as OpeningSuggestion).text === "string" &&
+        typeof (item as OpeningSuggestion).rationale === "string",
+    )
+  );
+}
+
 function formatStyleChoice(presetIds: string[], customInstruction: string): string {
   const presetLabels = presetIds.map(
     (id) => STYLE_PRESETS.find((preset) => preset.id === id)?.label ?? id,
@@ -60,6 +73,11 @@ export default function NewBook() {
     status: "idle",
   });
   const navigate = useNavigate();
+
+  // Stable for the lifetime of this intake attempt so a retry after a
+  // dropped/unparseable response replays the same request instead of
+  // creating a second book.
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
 
   const isStyleTurn = questionIndex >= questions.length;
 
@@ -100,13 +118,20 @@ export default function NewBook() {
   async function createBook() {
     setSubmitting(true);
     setError(null);
-    const presetIds = selectedPresets.length > 0 ? selectedPresets : [DEFAULT_STYLE_PRESET_ID];
+    // Only fall back to the default preset when style choice was skipped
+    // entirely — typing a custom instruction with no preset selected is a
+    // valid, distinct AC-1 choice, not a skip.
+    const presetIds =
+      selectedPresets.length === 0 && !customInstruction.trim()
+        ? [DEFAULT_STYLE_PRESET_ID]
+        : selectedPresets;
     const payload = {
       premiseAnswers,
       style: {
         presetIds,
         ...(customInstruction.trim() ? { customInstruction: customInstruction.trim() } : {}),
       },
+      idempotencyKey,
     };
 
     try {
@@ -129,7 +154,7 @@ export default function NewBook() {
       ]);
       setBookId(result.bookId);
       setOpeningSuggestion(
-        result.openingSuggestion === "ok"
+        result.openingSuggestion === "ok" && isOpeningSuggestionArray(result.openings)
           ? { status: "ok", openings: result.openings }
           : { status: "failed" },
       );
@@ -141,7 +166,7 @@ export default function NewBook() {
   }
 
   async function retryOpeningSuggestion() {
-    if (!bookId) return;
+    if (!bookId || openingSuggestion.status === "loading") return;
     setOpeningSuggestion({ status: "loading" });
     try {
       const response = await authenticatedFetch("/retryOpeningSuggestion", {
@@ -157,7 +182,9 @@ export default function NewBook() {
         openings: OpeningSuggestion[];
       };
       setOpeningSuggestion(
-        result.status === "ok" ? { status: "ok", openings: result.openings } : { status: "failed" },
+        result.status === "ok" && isOpeningSuggestionArray(result.openings)
+          ? { status: "ok", openings: result.openings }
+          : { status: "failed" },
       );
     } catch (_error) {
       setOpeningSuggestion({ status: "failed" });
@@ -239,7 +266,12 @@ export default function NewBook() {
         {bookId ? (
           <div className="border-t border-border py-4">
             <div className="flex justify-end">
-              <Button type="button" onClick={() => navigate({ to: "/books" })}>
+              <Button
+                type="button"
+                onClick={() =>
+                  bookId && navigate({ to: "/books/$bookId/chat", params: { bookId } })
+                }
+              >
                 Continue to my book
               </Button>
             </div>

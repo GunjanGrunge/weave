@@ -144,6 +144,28 @@ describe("buildCreateBookResponse", () => {
     expect(result.body).toMatchObject({ code: "unauthenticated" });
   });
 
+  it("passes idempotencyKey through to createBookWithIntake when provided", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    createBookWithIntakeMock.mockResolvedValue({ bookId: "book-4" });
+    runIntakeOpeningSuggestionMock.mockResolvedValue({ status: "ok", openings: [] });
+
+    await buildCreateBookResponse(
+      "Bearer valid",
+      {
+        premiseAnswers: {},
+        style: { presetIds: [] },
+        idempotencyKey: "client-generated-uuid",
+      },
+      apiKeys,
+    );
+
+    expect(createBookWithIntakeMock).toHaveBeenCalledWith("user-a", {
+      premiseAnswers: {},
+      style: { presetIds: [] },
+      idempotencyKey: "client-generated-uuid",
+    });
+  });
+
   it("returns 400 when the request body is not the intake payload shape", async () => {
     verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
 

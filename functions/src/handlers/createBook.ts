@@ -1,5 +1,6 @@
 import { onRequest } from "firebase-functions/v2/https";
 
+import { allowedOrigins } from "../config/cors.js";
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "../config/secrets.js";
 import { runIntakeOpeningSuggestion } from "../pipelines/intake.js";
 import { verifyIdToken, AuthError } from "../services/auth.js";
@@ -53,6 +54,7 @@ function parseCreateBookInput(body: unknown): CreateBookInput | undefined {
       customInstruction:
         typeof body.style.customInstruction === "string" ? body.style.customInstruction : undefined,
     },
+    idempotencyKey: typeof body.idempotencyKey === "string" ? body.idempotencyKey : undefined,
   };
 }
 
@@ -116,7 +118,7 @@ export async function buildCreateBookResponse(
 
 export const createBook = onRequest(
   {
-    cors: ["https://backupapp-bbf71.web.app"],
+    cors: allowedOrigins(),
     region: "us-central1",
     secrets: [GOOGLE_API_KEY, OPENAI_API_KEY],
   },
