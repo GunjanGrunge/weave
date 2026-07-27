@@ -417,6 +417,52 @@ describe("buildGenerateSceneResponse", () => {
     expect(runGenerateMock).not.toHaveBeenCalled();
   });
 
+  it("returns 400 when polish aspects contain duplicates or exceed the catalog size", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+
+    const duplicateResult = await buildGenerateSceneResponse(
+      "Bearer valid",
+      {
+        bookId: "book-1",
+        mode: "polish",
+        draftText: "Some draft.",
+        aspects: ["raise-tension", "raise-tension"],
+      },
+      apiKeys,
+    );
+    const oversizedResult = await buildGenerateSceneResponse(
+      "Bearer valid",
+      {
+        bookId: "book-1",
+        mode: "polish",
+        draftText: "Some draft.",
+        aspects: Array.from({ length: 6 }, () => "raise-tension"),
+      },
+      apiKeys,
+    );
+
+    expect(duplicateResult.statusCode).toBe(400);
+    expect(oversizedResult.statusCode).toBe(400);
+    expect(runGenerateMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown input mode instead of falling through to free-text", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+
+    const result = await buildGenerateSceneResponse(
+      "Bearer valid",
+      { bookId: "book-1", mode: "polsih", description: "Write a new scene." },
+      apiKeys,
+    );
+
+    expect(result.statusCode).toBe(400);
+    if (result.statusCode !== 400) {
+      throw new Error("Expected invalid input to return 400.");
+    }
+    expect(result.body.message).toContain("polish");
+    expect(runGenerateMock).not.toHaveBeenCalled();
+  });
+
   it("returns 400 when polish draftText exceeds the max length", async () => {
     verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
 
@@ -462,6 +508,34 @@ describe("buildGenerateSceneResponse", () => {
       { mode: "polish", draftText: longDraft, aspects: ["clarify-prose"] },
       apiKeys,
     );
+  });
+
+  it("does not split a Unicode code point at the persisted preview boundary", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    getBookMock.mockResolvedValue(book);
+    runGenerateMock.mockResolvedValue({
+      status: "ok",
+      text: "Rewritten.",
+      provider: "openai",
+      model: "gpt-5.6-terra",
+      sessionId: "session-1",
+    });
+    const draftAtBoundary = `${"x".repeat(199)}😀tail`;
+
+    await buildGenerateSceneResponse(
+      "Bearer valid",
+      {
+        bookId: "book-1",
+        mode: "polish",
+        draftText: draftAtBoundary,
+        aspects: ["clarify-prose"],
+      },
+      apiKeys,
+    );
+
+    const persistedMessage = appendChatMessageMock.mock.calls[0][2] as string;
+    expect(persistedMessage).toContain("😀…");
+    expect(persistedMessage).not.toContain("�");
   });
 
   it("returns a structured 502 error when the pipeline call times out", async () => {

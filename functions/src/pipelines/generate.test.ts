@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { SceneInput } from "../types/sceneInput.js";
 
 const {
   assembleContextMock,
@@ -177,8 +178,8 @@ describe("runGenerate", () => {
       model: "gpt-5.6-terra",
     });
 
-    const polishInput = {
-      mode: "polish" as const,
+    const polishInput: SceneInput = {
+      mode: "polish",
       draftText: "Mara walked into the vault.",
       aspects: ["raise-tension"],
     };

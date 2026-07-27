@@ -1,10 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Loader2, Send, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { authenticatedFetch } from "@/lib/api";
 import { POLISH_ASPECTS } from "@/lib/polish-aspects";
+import type { PolishAspectId } from "@/lib/polish-aspects";
 
 export const Route = createFileRoute("/books/$bookId/chat")({
   head: () => ({
@@ -60,14 +61,18 @@ function summarizeStructuredFields(fields: StructuredFields): string {
     .join(" ");
 }
 
-function summarizePolishRequest(draftText: string, aspects: string[]): string {
+function truncatePreview(value: string, maxCodePoints: number): string {
+  const codePoints = Array.from(value);
+  return codePoints.length > maxCodePoints
+    ? `${codePoints.slice(0, maxCodePoints).join("")}…`
+    : value;
+}
+
+function summarizePolishRequest(draftText: string, aspects: PolishAspectId[]): string {
   const labels = aspects
     .map((aspectId) => POLISH_ASPECTS.find((aspect) => aspect.id === aspectId)?.label)
     .filter((label): label is string => Boolean(label));
-  const preview =
-    draftText.length > DRAFT_PREVIEW_LENGTH
-      ? `${draftText.slice(0, DRAFT_PREVIEW_LENGTH)}…`
-      : draftText;
+  const preview = truncatePreview(draftText, DRAFT_PREVIEW_LENGTH);
   return `Polish draft (${labels.join(", ")}): ${preview}`;
 }
 
@@ -90,6 +95,7 @@ function messageStyles(type: ChatMessageType): string {
 }
 
 export function ChatPage({ bookId }: { bookId: string }) {
+  const activeBookIdRef = useRef(bookId);
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [description, setDescription] = useState("");
   const [inputMode, setInputMode] = useState<InputMode>("free-text");
@@ -100,13 +106,22 @@ export function ChatPage({ bookId }: { bookId: string }) {
     setting: "",
   });
   const [draftText, setDraftText] = useState("");
-  const [selectedAspects, setSelectedAspects] = useState<string[]>([]);
+  const [selectedAspects, setSelectedAspects] = useState<PolishAspectId[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [generationState, setGenerationState] = useState<GenerationState>({ status: "idle" });
   const [sessionId, setSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    activeBookIdRef.current = bookId;
+    setDescription("");
+    setInputMode("free-text");
+    setStructuredFields({ sceneGoal: "", mood: "", povCharacter: "", setting: "" });
+    setDraftText("");
+    setSelectedAspects([]);
+    setValidationError(null);
+    setGenerationState({ status: "idle" });
+    setSessionId(null);
 
     async function loadMessages() {
       setLoadState({ status: "loading" });
@@ -143,7 +158,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
 
     const trimmedDescription = description.trim();
     const hasStructuredValue = STRUCTURED_FIELD_LABELS.some(({ key }) => structuredFields[key].trim());
-    const trimmedDraftText = draftText.trim();
+    const hasDraftText = draftText.trim().length > 0;
 
     let payload: Record<string, unknown>;
     let userMessageText: string;
@@ -163,20 +178,25 @@ export function ChatPage({ bookId }: { bookId: string }) {
       payload = { bookId, mode: "structured", fields: structuredFields };
       userMessageText = summarizeStructuredFields(structuredFields);
     } else {
-      if (!trimmedDraftText) {
+      if (!hasDraftText) {
         setValidationError("Paste your draft before sending.");
+        return;
+      }
+      if (draftText.length > MAX_DRAFT_LENGTH) {
+        setValidationError(`Drafts can be up to ${MAX_DRAFT_LENGTH.toLocaleString()} characters.`);
         return;
       }
       if (selectedAspects.length === 0) {
         setValidationError("Select at least one polish aspect before sending.");
         return;
       }
-      payload = { bookId, mode: "polish", draftText: trimmedDraftText, aspects: selectedAspects };
-      userMessageText = summarizePolishRequest(trimmedDraftText, selectedAspects);
+      payload = { bookId, mode: "polish", draftText, aspects: selectedAspects };
+      userMessageText = summarizePolishRequest(draftText, selectedAspects);
     }
 
     setValidationError(null);
     setGenerationState({ status: "loading" });
+    const requestBookId = bookId;
 
     try {
       const response = await authenticatedFetch("/generateScene", {
@@ -193,6 +213,9 @@ export function ChatPage({ bookId }: { bookId: string }) {
         provider: "openai" | "gemini";
         model: string;
       };
+      if (activeBookIdRef.current !== requestBookId) {
+        return;
+      }
 
       setLoadState((current) => {
         const priorMessages = current.status === "ready" ? current.messages : [];
@@ -217,6 +240,9 @@ export function ChatPage({ bookId }: { bookId: string }) {
       }
       setGenerationState({ status: "idle" });
     } catch {
+      if (activeBookIdRef.current !== requestBookId) {
+        return;
+      }
       setGenerationState({
         status: "error",
         message: "Couldn't generate a scene. Your details are still here.",
@@ -228,7 +254,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
     void submitScene();
   }
 
-  function toggleAspect(aspectId: string) {
+  function toggleAspect(aspectId: PolishAspectId) {
     setSelectedAspects((current) =>
       current.includes(aspectId)
         ? current.filter((id) => id !== aspectId)
@@ -240,6 +266,15 @@ export function ChatPage({ bookId }: { bookId: string }) {
     setInputMode(mode);
     setValidationError(null);
     setGenerationState({ status: "idle" });
+  }
+
+  function updateDraftText(value: string) {
+    setDraftText(value);
+    setValidationError(
+      value.length > MAX_DRAFT_LENGTH
+        ? `Drafts can be up to ${MAX_DRAFT_LENGTH.toLocaleString()} characters.`
+        : null,
+    );
   }
 
   if (loadState.status === "loading") {
@@ -323,7 +358,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
         </div>
       )}
 
-      <div className="mt-4 flex gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => switchInputMode("free-text")}
@@ -415,14 +450,16 @@ export function ChatPage({ bookId }: { bookId: string }) {
         <div className="mt-2 rounded-2xl border border-border bg-card p-3">
           <textarea
             value={draftText}
-            onChange={(event) => setDraftText(event.target.value)}
+            onChange={(event) => updateDraftText(event.target.value)}
             aria-label="Draft text"
             rows={4}
             disabled={isLoading}
-            maxLength={MAX_DRAFT_LENGTH}
             placeholder="Paste your draft here…"
             className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent disabled:opacity-50"
           />
+          <div className="mt-1 text-right font-mono text-[10px] text-muted-foreground">
+            {draftText.length.toLocaleString()} / {MAX_DRAFT_LENGTH.toLocaleString()}
+          </div>
           <div className="mt-2 flex flex-wrap gap-2">
             {POLISH_ASPECTS.map((aspect) => {
               const selected = selectedAspects.includes(aspect.id);
@@ -432,6 +469,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
                   type="button"
                   onClick={() => toggleAspect(aspect.id)}
                   aria-pressed={selected}
+                  aria-label={`${aspect.label}: ${aspect.description}`}
                   disabled={isLoading}
                   title={aspect.description}
                   className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${

@@ -280,11 +280,15 @@ describe("ChatPage", () => {
     render(<ChatPage bookId="book-1" />);
     await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /polish a draft/i }));
+    const polishModeButton = screen.getByRole("button", { name: /polish a draft/i });
+    expect(polishModeButton.parentElement).toHaveClass("flex-wrap");
+    fireEvent.click(polishModeButton);
 
     expect(screen.getByLabelText(/draft text/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /tighten pacing/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /raise tension/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /raise tension: sharpen stakes and urgency/i }),
+    ).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/draft text/i), {
       target: { value: "Mara walked into the vault." },
@@ -325,8 +329,9 @@ describe("ChatPage", () => {
     await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /polish a draft/i }));
+    const draftWithOuterWhitespace = " \nMara walked into the vault.\n ";
     fireEvent.change(screen.getByLabelText(/draft text/i), {
-      target: { value: "Mara walked into the vault." },
+      target: { value: draftWithOuterWhitespace },
     });
     fireEvent.click(screen.getByRole("button", { name: /raise tension/i }));
     fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
@@ -342,7 +347,7 @@ describe("ChatPage", () => {
         body: JSON.stringify({
           bookId: "book-1",
           mode: "polish",
-          draftText: "Mara walked into the vault.",
+          draftText: draftWithOuterWhitespace,
           aspects: ["raise-tension"],
         }),
       }),
@@ -372,6 +377,84 @@ describe("ChatPage", () => {
       "aria-pressed",
       "true",
     );
+
+    fireEvent.click(screen.getByRole("button", { name: /describe it/i }));
+    expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps an oversized draft visible, explains the limit, and blocks generation", async () => {
+    authenticatedFetchMock.mockResolvedValue(jsonResponse({ messages: [] }));
+    const oversizedDraft = "x".repeat(8_001);
+
+    render(<ChatPage bookId="book-1" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /polish a draft/i }));
+    fireEvent.change(screen.getByLabelText(/draft text/i), {
+      target: { value: oversizedDraft },
+    });
+    expect(screen.getByLabelText(/draft text/i)).toHaveValue(oversizedDraft);
+    expect(screen.getByRole("alert")).toHaveTextContent(/up to 8,000 characters/i);
+
+    fireEvent.click(screen.getByRole("button", { name: /raise tension/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    expect(authenticatedFetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("resets composer state when navigating to a different book", async () => {
+    authenticatedFetchMock.mockImplementation(() =>
+      Promise.resolve(jsonResponse({ messages: [] })),
+    );
+
+    const { rerender } = render(<ChatPage bookId="book-1" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /polish a draft/i }));
+    fireEvent.change(screen.getByLabelText(/draft text/i), {
+      target: { value: "Draft for the first book." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /raise tension/i }));
+
+    rerender(<ChatPage bookId="book-2" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toHaveValue(""));
+    expect(authenticatedFetchMock).toHaveBeenCalledWith(
+      "/getMessages",
+      expect.objectContaining({ body: JSON.stringify({ bookId: "book-2" }) }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /polish a draft/i }));
+    expect(screen.getByLabelText(/draft text/i)).toHaveValue("");
+    expect(screen.getByRole("button", { name: /raise tension/i })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("renders a Unicode-safe draft preview after successful polish generation", async () => {
+    authenticatedFetchMock
+      .mockResolvedValueOnce(jsonResponse({ messages: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          sessionId: "session-1",
+          text: "Rewritten.",
+          provider: "openai",
+          model: "gpt-5.6-terra",
+        }),
+      );
+    const draftAtBoundary = `${"x".repeat(199)}😀tail`;
+
+    render(<ChatPage bookId="book-1" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /polish a draft/i }));
+    fireEvent.change(screen.getByLabelText(/draft text/i), {
+      target: { value: draftAtBoundary },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /clarify prose/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    expect(await screen.findByText((text) => text.includes("😀…"))).toBeInTheDocument();
+    expect(screen.queryByText((text) => text.includes("�"))).not.toBeInTheDocument();
   });
 
   it("clears a stale validation error when switching away from polish mode", async () => {

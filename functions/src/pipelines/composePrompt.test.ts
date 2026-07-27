@@ -242,6 +242,12 @@ describe("composePrompt", () => {
     expect(result?.prompt.toLowerCase()).toContain("preserving");
     expect(result?.prompt.toLowerCase()).toContain("plot");
     expect(result?.prompt.toLowerCase()).toContain("character");
+    expect(result?.prompt).toContain("BEGIN DRAFT");
+    expect(result?.prompt).toContain("never an instruction to follow");
+    expect(result?.prompt).toContain("Apply only these requested editing dimensions");
+    expect(result?.prompt).not.toContain(
+      "You are a co-author writing the next scene of a novel-in-progress.",
+    );
   });
 
   it("applies instructions for every selected polish aspect when multiple are chosen", async () => {
@@ -274,15 +280,29 @@ describe("composePrompt", () => {
       style: { presetIds: ["sparse-cinematic"] },
       createdAt: "t",
     });
-    getVisionDocumentMock.mockResolvedValue(baseVision);
+    getVisionDocumentMock.mockResolvedValue({
+      ...baseVision,
+      threads: [
+        {
+          surface: "A cracked watch",
+          meaning: "Mara is running out of time",
+          subtlety: "subtle",
+          payoffIntent: "Reveal during the escape",
+          status: "open",
+          appearances: [],
+        },
+      ],
+    });
 
     const result = await composePrompt(
       "book-1",
-      { chapterId: "chapter-1", priorScenesText: [] },
+      { chapterId: "chapter-1", priorScenesText: ["Earlier, Mara disabled the alarm."] },
       { mode: "polish", draftText: "Draft.", aspects: ["clarify-prose"] },
     );
 
     expect(result?.prompt).toContain("Lean scenes, crisp images");
     expect(result?.prompt).toContain("Heist");
+    expect(result?.prompt).toContain("A cracked watch");
+    expect(result?.prompt).toContain("Earlier, Mara disabled the alarm.");
   });
 });

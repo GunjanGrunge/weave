@@ -2,6 +2,7 @@ import { onRequest } from "firebase-functions/v2/https";
 
 import { allowedOrigins } from "../config/cors.js";
 import { POLISH_ASPECTS } from "../config/polishAspects.js";
+import type { PolishAspectId } from "../config/polishAspects.js";
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "../config/secrets.js";
 import { runGenerate } from "../pipelines/generate.js";
 import { verifyIdToken, assertOwnership, AuthError } from "../services/auth.js";
@@ -26,7 +27,9 @@ const MAX_DRAFT_LENGTH = 8_000;
 // How much of a long draft to keep in the persisted chat-history preview —
 // the full draft is always sent to the model regardless of this cap.
 const DRAFT_PREVIEW_LENGTH = 200;
-const POLISH_ASPECT_IDS = new Set(POLISH_ASPECTS.map((aspect) => aspect.id));
+const POLISH_ASPECT_IDS: ReadonlySet<string> = new Set(
+  POLISH_ASPECTS.map((aspect) => aspect.id),
+);
 
 export type GenerateSceneSuccess = {
   sessionId: string;
@@ -70,14 +73,21 @@ function parseStructuredFields(rawFields: unknown): StructuredSceneFields | unde
   return Object.keys(fields).length > 0 ? fields : undefined;
 }
 
-function parsePolishAspects(rawAspects: unknown): string[] | undefined {
-  if (!Array.isArray(rawAspects) || rawAspects.length === 0) {
+function parsePolishAspects(rawAspects: unknown): PolishAspectId[] | undefined {
+  if (
+    !Array.isArray(rawAspects) ||
+    rawAspects.length === 0 ||
+    rawAspects.length > POLISH_ASPECTS.length
+  ) {
     return undefined;
   }
   if (!rawAspects.every((aspect) => typeof aspect === "string" && POLISH_ASPECT_IDS.has(aspect))) {
     return undefined;
   }
-  return rawAspects;
+  if (new Set(rawAspects).size !== rawAspects.length) {
+    return undefined;
+  }
+  return rawAspects as PolishAspectId[];
 }
 
 function parseInput(body: unknown): { bookId: string; input: SceneInput } | undefined {
@@ -114,6 +124,10 @@ function parseInput(body: unknown): { bookId: string; input: SceneInput } | unde
     return { bookId, input: { mode: "polish", draftText, aspects } };
   }
 
+  if (record.mode !== undefined && record.mode !== "free-text") {
+    return undefined;
+  }
+
   const description = record.description;
   if (
     typeof description !== "string" ||
@@ -133,10 +147,11 @@ function summarizeSceneInput(input: SceneInput): string {
   if (input.mode === "polish") {
     const aspectLabels = input.aspects
       .map((aspectId) => POLISH_ASPECTS.find((aspect) => aspect.id === aspectId)?.label)
-      .filter((label): label is string => Boolean(label));
+      .filter((label) => label !== undefined);
+    const draftCodePoints = Array.from(input.draftText);
     const preview =
-      input.draftText.length > DRAFT_PREVIEW_LENGTH
-        ? `${input.draftText.slice(0, DRAFT_PREVIEW_LENGTH)}…`
+      draftCodePoints.length > DRAFT_PREVIEW_LENGTH
+        ? `${draftCodePoints.slice(0, DRAFT_PREVIEW_LENGTH).join("")}…`
         : input.draftText;
     return `Polish draft (${aspectLabels.join(", ")}): ${preview}`;
   }
@@ -190,7 +205,7 @@ export async function buildGenerateSceneResponse(
         body: {
           code: "invalid-argument",
           message:
-            "Request body must include a bookId and either a non-empty description or at least one structured field.",
+            "Request body must include a bookId and valid free-text, structured, or polish input with at least one polish aspect.",
         },
       };
     }

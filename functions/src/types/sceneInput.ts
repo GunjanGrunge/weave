@@ -1,3 +1,5 @@
+import type { PolishAspectId } from "../config/polishAspects.js";
+
 export type StructuredSceneFields = {
   sceneGoal?: string;
   mood?: string;
@@ -8,4 +10,4 @@ export type StructuredSceneFields = {
 export type SceneInput =
   | { mode: "free-text"; description: string }
   | { mode: "structured"; fields: StructuredSceneFields }
-  | { mode: "polish"; draftText: string; aspects: string[] };
+  | { mode: "polish"; draftText: string; aspects: PolishAspectId[] };
