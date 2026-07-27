@@ -105,6 +105,7 @@ vi.mock("firebase-admin/firestore", () => ({
         get: (query: { get: () => Promise<unknown> }) => query.get(),
         set: (ref: { path: string }, data: unknown) => {
           setCalls.push({ path: ref.path, data });
+          docStore[ref.path] = data;
           const parentPath = ref.path.split("/").slice(0, -1).join("/");
           if (parentPath.endsWith("/messages")) {
             messagesStore[parentPath] = [
@@ -121,11 +122,13 @@ vi.mock("firebase-admin/firestore", () => ({
 
 import {
   appendChatMessage,
+  claimOpeningSuggestionAttempt,
   createBookWithIntake,
   getActiveChapterScenes,
   getBook,
   getMessages,
   getVisionDocument,
+  resolveOpeningSuggestionAttempt,
   updateVisionDocument,
   upsertOpeningSuggestionMessage,
 } from "./books.js";
@@ -414,6 +417,64 @@ describe("upsertOpeningSuggestionMessage", () => {
       type: "structural_note",
       text: "New suggestion",
       order: 8,
+    });
+  });
+});
+
+describe("claimOpeningSuggestionAttempt / resolveOpeningSuggestionAttempt", () => {
+  beforeEach(() => {
+    setCalls.length = 0;
+    docStore = {};
+  });
+
+  it("claims the attempt when no state exists yet", async () => {
+    const claim = await claimOpeningSuggestionAttempt("book-1");
+
+    expect(claim).toEqual({ shouldRun: true });
+    expect(docStore["books/book-1/system/openingSuggestion"]).toMatchObject({ state: "pending" });
+  });
+
+  it("does not re-claim and returns the cached result once a prior attempt succeeded", async () => {
+    docStore["books/book-1/system/openingSuggestion"] = {
+      state: "ok",
+      openings: [{ text: "Open mid-heist.", rationale: "Immediate stakes." }],
+    };
+
+    const claim = await claimOpeningSuggestionAttempt("book-1");
+
+    expect(claim).toEqual({
+      shouldRun: false,
+      existingResult: {
+        status: "ok",
+        openings: [{ text: "Open mid-heist.", rationale: "Immediate stakes." }],
+      },
+    });
+  });
+
+  it("does not start a second attempt while one is still pending", async () => {
+    docStore["books/book-1/system/openingSuggestion"] = { state: "pending" };
+
+    const claim = await claimOpeningSuggestionAttempt("book-1");
+
+    expect(claim).toEqual({ shouldRun: false, existingResult: { status: "failed", openings: [] } });
+  });
+
+  it("allows a new claim after a prior attempt failed", async () => {
+    docStore["books/book-1/system/openingSuggestion"] = { state: "failed" };
+
+    const claim = await claimOpeningSuggestionAttempt("book-1");
+
+    expect(claim).toEqual({ shouldRun: true });
+  });
+
+  it("resolveOpeningSuggestionAttempt persists the final state and openings", async () => {
+    await resolveOpeningSuggestionAttempt("book-1", "ok", [
+      { text: "Open mid-heist.", rationale: "Immediate stakes." },
+    ]);
+
+    expect(docStore["books/book-1/system/openingSuggestion"]).toMatchObject({
+      state: "ok",
+      openings: [{ text: "Open mid-heist.", rationale: "Immediate stakes." }],
     });
   });
 });

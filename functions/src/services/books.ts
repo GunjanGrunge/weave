@@ -201,32 +201,87 @@ export async function updateVisionDocument(
 }
 
 export async function upsertOpeningSuggestionMessage(bookId: string, text: string): Promise<void> {
-  const messages = firestore().collection("books").doc(bookId).collection("messages");
+  const db = firestore();
+  const messages = db.collection("books").doc(bookId).collection("messages");
   const messageRef = messages.doc("opening-suggestion");
-  const existing = await messageRef.get();
 
-  if (existing.exists) {
-    const currentOrder = existing.data()?.order;
-    await messageRef.set({
+  await db.runTransaction(async (transaction) => {
+    const existing = await transaction.get(messageRef);
+
+    if (existing.exists) {
+      const currentOrder = existing.data()?.order;
+      transaction.set(messageRef, {
+        type: "structural_note",
+        text,
+        order: typeof currentOrder === "number" ? currentOrder : 0,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      return;
+    }
+
+    const lastMessage = await transaction.get(messages.orderBy("order", "desc").limit(1));
+    const nextOrder = lastMessage.empty ? 0 : (lastMessage.docs[0]?.data().order as number) + 1;
+
+    const message: ChatMessage = {
       type: "structural_note",
       text,
-      order: typeof currentOrder === "number" ? currentOrder : 0,
+      order: nextOrder,
       createdAt: FieldValue.serverTimestamp(),
-    });
-    return;
-  }
+    };
 
-  const lastMessage = await messages.orderBy("order", "desc").limit(1).get();
-  const nextOrder = lastMessage.empty ? 0 : (lastMessage.docs[0]?.data().order as number) + 1;
+    transaction.set(messageRef, message);
+  });
+}
 
-  const message: ChatMessage = {
-    type: "structural_note",
-    text,
-    order: nextOrder,
-    createdAt: FieldValue.serverTimestamp(),
-  };
+type OpeningSuggestionAttemptState = "pending" | "ok" | "failed";
+type OpeningSuggestionAttemptResult = {
+  status: "ok" | "failed";
+  openings: { text: string; rationale: string }[];
+};
 
-  await messageRef.set(message);
+function openingSuggestionStateRef(bookId: string) {
+  return firestore().collection("books").doc(bookId).collection("system").doc("openingSuggestion");
+}
+
+// Claims the right to run an opening-suggestion attempt, or reports the
+// result of one already in flight/completed — this is the dedup guard that
+// stops a retry from racing a still-running attempt (the server-side
+// timeout only stops waiting on the client side, it doesn't cancel the
+// underlying call) or from re-billing a model call once one already
+// succeeded.
+export async function claimOpeningSuggestionAttempt(
+  bookId: string,
+): Promise<{ shouldRun: boolean; existingResult?: OpeningSuggestionAttemptResult }> {
+  const ref = openingSuggestionStateRef(bookId);
+
+  return firestore().runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    const data = snapshot.data() as
+      | { state: OpeningSuggestionAttemptState; openings?: OpeningSuggestionAttemptResult["openings"] }
+      | undefined;
+
+    if (data?.state === "ok") {
+      return { shouldRun: false, existingResult: { status: "ok", openings: data.openings ?? [] } };
+    }
+    if (data?.state === "pending") {
+      return { shouldRun: false, existingResult: { status: "failed", openings: [] } };
+    }
+
+    transaction.set(ref, { state: "pending", updatedAt: FieldValue.serverTimestamp() });
+    return { shouldRun: true };
+  });
+}
+
+export async function resolveOpeningSuggestionAttempt(
+  bookId: string,
+  status: "ok" | "failed",
+  openings: OpeningSuggestionAttemptResult["openings"],
+): Promise<void> {
+  await openingSuggestionStateRef(bookId).set({
+    state: status,
+    openings,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
 }
 
 export async function getMessages(bookId: string): Promise<ChatMessage[]> {

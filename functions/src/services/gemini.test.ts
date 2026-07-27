@@ -215,6 +215,23 @@ describe("generateOpeningSuggestions", () => {
     ).rejects.toBeInstanceOf(GeminiError);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("records each usage entry using an auto-generated doc id, so a retry doesn't overwrite prior attempts' cost", async () => {
+    const { generateOpeningSuggestions } = await import("./gemini.js");
+    fetchMock.mockResolvedValue(openAIResponseFor(validOpenings));
+
+    await generateOpeningSuggestions("book-1", vision, {
+      openai: "fake-openai-key",
+      gemini: "fake-gemini-key",
+    });
+    await generateOpeningSuggestions("book-1", vision, {
+      openai: "fake-openai-key",
+      gemini: "fake-gemini-key",
+    });
+
+    expect(usageWrites).toHaveLength(2);
+    expect(usageDocIds).toEqual([undefined, undefined]);
+  });
 });
 
 function openAITextResponseFor(text: string, inputTokens = 10, outputTokens = 20) {

@@ -303,7 +303,6 @@ export async function generateOpeningSuggestions(
     result.model,
     result.inputTokens,
     result.outputTokens,
-    "openingSuggestion",
   );
 
   return { openings };

@@ -1,5 +1,6 @@
 import { onRequest } from "firebase-functions/v2/https";
 
+import { allowedOrigins } from "../config/cors.js";
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "../config/secrets.js";
 import { runIntakeOpeningSuggestion } from "../pipelines/intake.js";
 import { verifyIdToken, assertOwnership, AuthError } from "../services/auth.js";
@@ -25,7 +26,9 @@ function parseBookId(body: unknown): string | undefined {
     return undefined;
   }
   const bookId = (body as Record<string, unknown>).bookId;
-  return typeof bookId === "string" && bookId.length > 0 ? bookId : undefined;
+  // Firestore auto-IDs never contain "/" — reject anything that would
+  // resolve .doc(bookId) to an unintended nested path.
+  return typeof bookId === "string" && bookId.length > 0 && !bookId.includes("/") ? bookId : undefined;
 }
 
 function runOpeningSuggestionWithTimeout(
@@ -87,7 +90,7 @@ export async function buildRetryOpeningSuggestionResponse(
 
 export const retryOpeningSuggestion = onRequest(
   {
-    cors: ["https://backupapp-bbf71.web.app"],
+    cors: allowedOrigins(),
     region: "us-central1",
     secrets: [GOOGLE_API_KEY, OPENAI_API_KEY],
   },

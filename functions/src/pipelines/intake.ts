@@ -1,6 +1,11 @@
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 
-import { getVisionDocument, upsertOpeningSuggestionMessage } from "../services/books.js";
+import {
+  claimOpeningSuggestionAttempt,
+  getVisionDocument,
+  resolveOpeningSuggestionAttempt,
+  upsertOpeningSuggestionMessage,
+} from "../services/books.js";
 import {
   generateOpeningSuggestions,
   type AIProviderKeys,
@@ -23,15 +28,27 @@ function formatOpenings(openings: OpeningSuggestion[]): string {
 async function openingSuggestionNode(
   state: typeof IntakeState.State,
 ): Promise<Partial<typeof IntakeState.State>> {
-  const vision = await getVisionDocument(state.bookId);
-  if (!vision) {
-    return { status: "failed", openings: [] };
+  const claim = await claimOpeningSuggestionAttempt(state.bookId);
+  if (!claim.shouldRun) {
+    return claim.existingResult ?? { status: "failed", openings: [] };
   }
 
-  const { openings } = await generateOpeningSuggestions(state.bookId, vision, state.apiKeys);
-  await upsertOpeningSuggestionMessage(state.bookId, formatOpenings(openings));
+  try {
+    const vision = await getVisionDocument(state.bookId);
+    if (!vision) {
+      await resolveOpeningSuggestionAttempt(state.bookId, "failed", []);
+      return { status: "failed", openings: [] };
+    }
 
-  return { status: "ok", openings };
+    const { openings } = await generateOpeningSuggestions(state.bookId, vision, state.apiKeys);
+    await upsertOpeningSuggestionMessage(state.bookId, formatOpenings(openings));
+    await resolveOpeningSuggestionAttempt(state.bookId, "ok", openings);
+
+    return { status: "ok", openings };
+  } catch (error) {
+    await resolveOpeningSuggestionAttempt(state.bookId, "failed", []);
+    throw error;
+  }
 }
 
 const graph = new StateGraph(IntakeState)
