@@ -380,6 +380,85 @@ describe("updateVisionDocument", () => {
       guidanceDial: "normal",
     });
   });
+
+  it("returns undefined instead of throwing when the vision document does not exist", async () => {
+    docStore = {};
+
+    const vision = await updateVisionDocument("missing-book", {
+      theme: "new",
+      premise: "new premise",
+      characterIntents: [],
+      threads: [],
+    });
+
+    expect(vision).toBeUndefined();
+    expect(updateCalls).toHaveLength(0);
+  });
+
+  it("preserves each thread's stored appearances instead of trusting the client-supplied value", async () => {
+    docStore["books/book-1/vision/main"] = {
+      theme: "old",
+      premise: "old premise",
+      characterIntents: [],
+      structureMap: [],
+      guidanceDial: "normal",
+      threads: [
+        {
+          id: "thread-1",
+          surface: "A locked door",
+          meaning: "Trust broken",
+          subtlety: "subtle",
+          payoffIntent: "Reveal in Act 3",
+          status: "open",
+          appearances: ["scene-1", "scene-4"],
+        },
+      ],
+    };
+
+    const vision = await updateVisionDocument("book-1", {
+      theme: "old",
+      premise: "old premise",
+      characterIntents: [],
+      threads: [
+        {
+          id: "thread-1",
+          surface: "A locked door",
+          meaning: "Trust broken, edited",
+          subtlety: "subtle",
+          payoffIntent: "Reveal in Act 3",
+          status: "open",
+          appearances: ["client-forged-entry"],
+        },
+      ],
+    });
+
+    expect(vision?.threads).toEqual([
+      expect.objectContaining({ id: "thread-1", appearances: ["scene-1", "scene-4"] }),
+    ]);
+  });
+
+  it("gives a genuinely new thread id an empty appearances array regardless of client input", async () => {
+    const vision = await updateVisionDocument("book-1", {
+      theme: "old",
+      premise: "old premise",
+      characterIntents: [],
+      threads: [
+        {
+          id: "brand-new-thread",
+          surface: "A stranger",
+          meaning: "Old debt",
+          subtlety: "explicit",
+          payoffIntent: "Confrontation",
+          status: "open",
+          appearances: ["client-forged-entry"],
+        },
+      ],
+    });
+
+    expect(vision?.threads).toEqual([
+      expect.objectContaining({ id: "brand-new-thread", appearances: [] }),
+    ]);
+  });
 });
 
 describe("upsertOpeningSuggestionMessage", () => {

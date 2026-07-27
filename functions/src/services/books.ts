@@ -194,7 +194,26 @@ export async function updateVisionDocument(
     .collection("vision")
     .doc("main");
 
-  await visionRef.update(patch);
+  const existing = await visionRef.get();
+  if (!existing.exists) {
+    return undefined;
+  }
+
+  // appearances is system-owned (populated by future Epic 3 scene/Muse work,
+  // never by the writer) — always carry forward the stored value for a
+  // known thread id rather than trusting whatever the client sent.
+  const existingAppearancesById = new Map(
+    ((existing.data() as VisionDocument).threads ?? []).map((thread) => [
+      thread.id,
+      thread.appearances,
+    ]),
+  );
+  const threads = patch.threads.map((thread) => ({
+    ...thread,
+    appearances: existingAppearancesById.get(thread.id) ?? [],
+  }));
+
+  await visionRef.update({ ...patch, threads });
 
   const snapshot = await visionRef.get();
   return snapshot.exists ? (snapshot.data() as VisionDocument) : undefined;

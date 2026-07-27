@@ -167,6 +167,38 @@ describe("VisionPage", () => {
     ]);
   });
 
+  it("removes a narrative thread", async () => {
+    authenticatedFetchMock.mockResolvedValueOnce(jsonResponse(loadedVision));
+
+    render(<VisionPage bookId="book-1" />);
+
+    await screen.findByLabelText(/thread 1 surface detail/i);
+    fireEvent.click(screen.getByRole("button", { name: /remove thread 1/i }));
+
+    expect(screen.queryByLabelText(/thread 1 surface detail/i)).not.toBeInTheDocument();
+    expect(screen.getByText("No narrative threads yet.")).toBeInTheDocument();
+  });
+
+  it("shows a distinct message when the caller doesn't own the book (401)", async () => {
+    authenticatedFetchMock.mockResolvedValueOnce(jsonResponse({ code: "unauthenticated" }, 401));
+
+    render(<VisionPage bookId="book-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByText("You don't have access to this book.")).toBeInTheDocument(),
+    );
+  });
+
+  it("shows a distinct message when the book or vision is not found (404)", async () => {
+    authenticatedFetchMock.mockResolvedValueOnce(jsonResponse({ code: "not-found" }, 404));
+
+    render(<VisionPage bookId="book-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByText("This book's Vision could not be found.")).toBeInTheDocument(),
+    );
+  });
+
   it("does not import or use the client Firestore SDK", () => {
     const source = readFileSync("src/routes/books.$bookId.vision.tsx", "utf8");
 

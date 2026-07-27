@@ -141,6 +141,7 @@ describe("buildUpdateVisionResponse", () => {
 
   it("returns 400 for malformed thread subtlety or status", async () => {
     verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    getBookMock.mockResolvedValue(book);
 
     const result = await buildUpdateVisionResponse("Bearer valid", {
       bookId: "book-1",
@@ -151,6 +152,71 @@ describe("buildUpdateVisionResponse", () => {
     });
 
     expect(result.statusCode).toBe(400);
-    expect(getBookMock).not.toHaveBeenCalled();
+  });
+
+  it("checks ownership before validating the body, so a cross-owner request 401s without leaking validation errors", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-b" });
+    getBookMock.mockResolvedValue(book);
+
+    const result = await buildUpdateVisionResponse("Bearer valid", {
+      bookId: "book-1",
+      vision: {
+        ...visionPayload,
+        threads: [{ ...visionPayload.threads[0], subtlety: "loud" }],
+      },
+    });
+
+    expect(result.statusCode).toBe(401);
+    expect(updateVisionDocumentMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate thread ids in the same request", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    getBookMock.mockResolvedValue(book);
+
+    const result = await buildUpdateVisionResponse("Bearer valid", {
+      bookId: "book-1",
+      vision: {
+        ...visionPayload,
+        threads: [
+          { ...visionPayload.threads[0], id: "dup" },
+          { ...visionPayload.threads[0], id: "dup" },
+        ],
+      },
+    });
+
+    expect(result.statusCode).toBe(400);
+    expect(updateVisionDocumentMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a thread with a blank surface, meaning, or payoffIntent", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    getBookMock.mockResolvedValue(book);
+
+    const result = await buildUpdateVisionResponse("Bearer valid", {
+      bookId: "book-1",
+      vision: {
+        ...visionPayload,
+        threads: [{ ...visionPayload.threads[0], surface: "   " }],
+      },
+    });
+
+    expect(result.statusCode).toBe(400);
+    expect(updateVisionDocumentMock).not.toHaveBeenCalled();
+  });
+
+  it("strips embedded newlines from a character intent instead of letting it split on the next save", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    getBookMock.mockResolvedValue(book);
+    updateVisionDocumentMock.mockResolvedValue({ ...book, ...visionPayload });
+
+    await buildUpdateVisionResponse("Bearer valid", {
+      bookId: "book-1",
+      vision: { ...visionPayload, characterIntents: ["Mara\nthe engineer"] },
+    });
+
+    expect(updateVisionDocumentMock.mock.calls[0][1].characterIntents).toEqual([
+      "Mara the engineer",
+    ]);
   });
 });

@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 
 import { onRequest } from "firebase-functions/v2/https";
 
+import { allowedOrigins } from "../config/cors.js";
 import { verifyIdToken, assertOwnership, AuthError } from "../services/auth.js";
 import { getBook, updateVisionDocument, type VisionUpdatePatch } from "../services/books.js";
 import type {
@@ -46,6 +47,9 @@ function parseCharacterIntents(value: unknown): string[] {
   }
   return value
     .map((item) => cleanString(item, "characterIntent", MAX_SHORT_TEXT))
+    // The frontend round-trips intents as one-per-line text; an embedded
+    // newline would silently split into two entries on the next save.
+    .map((item) => item.replace(/\s*\n\s*/g, " ").trim())
     .filter(Boolean)
     .slice(0, MAX_INTENTS);
 }
@@ -65,29 +69,41 @@ function parseThread(value: unknown): NarrativeThread {
     throw new ValidationError("Thread status is invalid.");
   }
 
-  const rawAppearances = value.appearances;
-  const appearances = Array.isArray(rawAppearances)
-    ? rawAppearances
-        .map((appearance) => cleanString(appearance, "appearance", MAX_SHORT_TEXT))
-        .filter(Boolean)
-    : [];
+  const surface = cleanString(value.surface, "surface", MAX_LONG_TEXT);
+  const meaning = cleanString(value.meaning, "meaning", MAX_LONG_TEXT);
+  const payoffIntent = cleanString(value.payoffIntent, "payoffIntent", MAX_LONG_TEXT);
+  if (!surface || !meaning || !payoffIntent) {
+    throw new ValidationError("Thread surface, meaning, and payoffIntent must not be blank.");
+  }
 
   return {
     id:
       typeof value.id === "string" && value.id.trim()
         ? value.id.trim().slice(0, MAX_SHORT_TEXT)
         : randomUUID(),
-    surface: cleanString(value.surface, "surface", MAX_LONG_TEXT),
-    meaning: cleanString(value.meaning, "meaning", MAX_LONG_TEXT),
+    surface,
+    meaning,
     subtlety: subtlety as ThreadSubtlety,
-    payoffIntent: cleanString(value.payoffIntent, "payoffIntent", MAX_LONG_TEXT),
+    payoffIntent,
     status: status as ThreadStatus,
-    appearances,
+    // appearances is system-owned (Epic 3 scene/Muse work) — the service
+    // layer always overwrites this with the stored value for the thread's
+    // id, so whatever the client sends here is never trusted.
+    appearances: [],
   };
 }
 
-function parseVisionPatch(body: unknown): { bookId: string; patch: VisionUpdatePatch } {
-  if (!isRecord(body) || typeof body.bookId !== "string" || !isRecord(body.vision)) {
+function parseBookId(body: unknown): string {
+  if (!isRecord(body) || typeof body.bookId !== "string" || body.bookId.length === 0) {
+    throw new ValidationError("Request body must include bookId and vision.");
+  }
+  return body.bookId;
+}
+
+function parseVisionFields(body: unknown): VisionUpdatePatch {
+  // parseBookId already confirmed body is a record with a bookId; re-check
+  // shape defensively rather than trusting the caller passed the same body.
+  if (!isRecord(body) || !isRecord(body.vision)) {
     throw new ValidationError("Request body must include bookId and vision.");
   }
 
@@ -96,14 +112,20 @@ function parseVisionPatch(body: unknown): { bookId: string; patch: VisionUpdateP
     throw new ValidationError("threads must be an array.");
   }
 
+  const parsedThreads = threads.map(parseThread).slice(0, MAX_THREADS);
+  const seenIds = new Set<string>();
+  for (const thread of parsedThreads) {
+    if (seenIds.has(thread.id)) {
+      throw new ValidationError("Thread ids must be unique.");
+    }
+    seenIds.add(thread.id);
+  }
+
   return {
-    bookId: body.bookId,
-    patch: {
-      theme: cleanString(body.vision.theme, "theme", MAX_SHORT_TEXT),
-      premise: cleanString(body.vision.premise, "premise", MAX_LONG_TEXT),
-      characterIntents: parseCharacterIntents(body.vision.characterIntents),
-      threads: threads.map(parseThread).slice(0, MAX_THREADS),
-    },
+    theme: cleanString(body.vision.theme, "theme", MAX_SHORT_TEXT),
+    premise: cleanString(body.vision.premise, "premise", MAX_LONG_TEXT),
+    characterIntents: parseCharacterIntents(body.vision.characterIntents),
+    threads: parsedThreads,
   };
 }
 
@@ -113,7 +135,7 @@ export async function buildUpdateVisionResponse(
 ): Promise<UpdateVisionResult> {
   try {
     const decoded = await verifyIdToken(authorizationHeader);
-    const { bookId, patch } = parseVisionPatch(body);
+    const bookId = parseBookId(body);
 
     const book = await getBook(bookId);
     if (!book) {
@@ -121,6 +143,7 @@ export async function buildUpdateVisionResponse(
     }
     assertOwnership(decoded.uid, book.uid);
 
+    const patch = parseVisionFields(body);
     const vision = await updateVisionDocument(bookId, patch);
     if (!vision) {
       return { statusCode: 404, body: { code: "not-found", message: "Vision document not found." } };
@@ -140,7 +163,7 @@ export async function buildUpdateVisionResponse(
 
 export const updateVision = onRequest(
   {
-    cors: ["https://backupapp-bbf71.web.app"],
+    cors: allowedOrigins(),
     region: "us-central1",
   },
   async (request, response) => {

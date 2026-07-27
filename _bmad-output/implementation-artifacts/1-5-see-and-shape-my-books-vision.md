@@ -4,7 +4,7 @@ baseline_commit: "ab4d684"
 
 # Story 1.5: See and Shape My Book's Vision
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -171,8 +171,24 @@ GPT-5 Codex
 - `src/routes/books.$bookId.vision.test.tsx`
 - `src/routes/books.$bookId.vision.tsx`
 
+### Review Findings
+
+- [x] [Review][Patch] `updateVisionDocument` throws a 500 instead of a clean 404 when the Vision doc is missing [functions/src/services/books.ts `updateVisionDocument`] — Firestore's real `.update()` rejects with `NOT_FOUND` on a nonexistent doc, which isn't caught by `buildUpdateVisionResponse`'s `AuthError`/`ValidationError`-only catch, so it falls through to the generic 500 handler; the `if (!vision) return 404` code after the `.update()` call is unreachable dead code. Fix: check existence before calling `.update()` and return `undefined` (mapped to 404) if missing, matching `getVision`'s behavior for the identical condition.
+- [x] [Review][Patch] Ownership check happens after body validation in `updateVision.ts`, reversing the order Task 2 specifies ("verify ID token first, parse body, assert ownership, validate...") and AD-7's intent that ownership gates access before further processing — confirmed by `updateVision.test.ts`'s malformed-thread test asserting `getBookMock` was never called. Fix: load the book and assert ownership before validating the request body.
+- [x] [Review][Patch] No uniqueness check on client-supplied narrative thread IDs [functions/src/handlers/updateVision.ts `parseThread`/`parseVisionPatch`] — duplicate IDs in the same `threads[]` payload are persisted as-is, breaking the frontend's `key={thread.id}` React keys and any future Epic-3 logic keyed on thread identity.
+- [x] [Review][Patch] Blank/whitespace-only threads can be saved, and there is no way to delete a thread [functions/src/handlers/updateVision.ts `parseThread`; src/routes/books.$bookId.vision.tsx] — `cleanString` accepts an empty post-trim string for `surface`/`meaning`/`payoffIntent`, and the UI has an "Add Thread" button but no remove control, so a misclick permanently persists an empty thread with no way to undo it in-app.
+- [x] [Review][Patch] `appearances` is freely client-writable despite being a system-owned field per AC-3/Dev Notes ("keep appearances empty on create... future Epic 3 work will append appearances; do not prebuild that") [functions/src/handlers/updateVision.ts `parseThread`] — any caller of `/updateVision` can inject arbitrary `appearances` entries today, with only frontend convention (never sending them) as the actual guard. Fix: server should always derive `appearances` from the existing stored thread (matched by id), ignoring whatever the client sends, defaulting to `[]` for genuinely new threads.
+- [x] [Review][Patch] All non-ok Vision-load responses (401/404/500) collapse into one generic "Vision unavailable" message [src/routes/books.$bookId.vision.tsx `loadVision`] — Task 3 explicitly requires distinguishable "not-found/unauthorized/error" states; currently every failure shows the same copy regardless of cause.
+- [x] [Review][Patch] Embedded newline in a character intent can silently corrupt on the next save round-trip [functions/src/handlers/updateVision.ts `cleanString`/`parseCharacterIntents`; src/routes/books.$bookId.vision.tsx] — the frontend round-trips intents via `join("\n")`/`split("\n")`; the server never rejects/strips embedded `\n` within a single intent value, so a value written by a non-UI caller with an internal newline gets silently split into two entries the next time the UI saves.
+- [x] [Review][Patch] `getVision.ts` and `updateVision.ts` both hardcode `cors: ["https://backupapp-bbf71.web.app"]` — these are new files in this story that predate the shared `functions/src/config/cors.ts` helper (added in Story 1.3's review); should use `allowedOrigins()` like `createBook.ts`/`whoami.ts`/`retryOpeningSuggestion.ts` now do.
+- [x] [Review][Defer] Last-write-wins full replace of theme/premise/characterIntents/threads with no concurrency guard [functions/src/services/books.ts `updateVisionDocument`; src/routes/books.$bookId.vision.tsx `saveVision`] — a stale second tab/device can silently revert changes made by a first save. Deferred: low likelihood for a single owner editing their own private book; a real fix needs either optimistic-concurrency versioning or per-field partial updates, disproportionate effort at 3-user scale right now.
+- [x] [Review][Defer] Inconsistent 401 vs 404 lets an authenticated caller distinguish "book doesn't exist" from "book exists but isn't mine" by probing `bookId` values against `/getVision`/`/updateVision` [functions/src/handlers/getVision.ts, updateVision.ts]. Deferred: low severity for 3 trusted private accounts; revisit if the user base ever grows beyond mutually-trusted accounts.
+- [x] [Review][Defer] `slice()` truncation of `theme`/thread text at `MAX_SHORT_TEXT`/`MAX_LONG_TEXT` can split a UTF-16 surrogate pair, corrupting a boundary character (e.g. an emoji) [functions/src/handlers/updateVision.ts `cleanString`]. Deferred: cosmetic, extremely low likelihood.
+- [x] [Review][Defer] `getVision`/`updateVision` don't restrict HTTP method (a GET is processed identically to POST, just fails body validation incidentally) — deferred, matches the pre-existing pattern across every other handler in the codebase; not a regression introduced by this story.
+
 ## Change Log
 
 - 2026-07-27: Created Story 1.5 context from Epic 1 backlog.
 - 2026-07-27: Implemented protected Vision read/update backend, Vision editor frontend, CI deploy target updates, and local test/build verification.
 - 2026-07-27: Deployed via GitHub Actions, live-verified authenticated Vision read/update behavior, cleaned up test docs, and moved Story 1.5 to review.
+- 2026-07-27: Code review applied 8 patches — fixed `updateVisionDocument` 500-instead-of-404 on a missing Vision doc; reordered ownership check before body validation in `updateVision.ts`; rejected duplicate thread IDs and blank required thread fields; added a thread Remove control; made `appearances` server-derived (ignoring client input) instead of client-writable; distinguished 401/404/error states on the Vision-load screen; stripped embedded newlines from character intents; fixed hardcoded CORS in `getVision.ts`/`updateVision.ts` to use `allowedOrigins()`. 4 low-severity items deferred. All functions (124) and frontend (49) tests pass; `functions verify` and root `bun run build` both green.

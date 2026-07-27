@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Check, Loader2, Plus, Save } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Plus, Save, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { authenticatedFetch } from "@/lib/api";
@@ -88,7 +88,15 @@ export function VisionPage({ bookId }: { bookId: string }) {
           body: JSON.stringify({ bookId }),
         });
         if (!response.ok) {
-          throw new Error("Vision not found.");
+          if (cancelled) return;
+          if (response.status === 401) {
+            setLoadState({ status: "error", message: "You don't have access to this book." });
+          } else if (response.status === 404) {
+            setLoadState({ status: "error", message: "This book's Vision could not be found." });
+          } else {
+            setLoadState({ status: "error", message: "Could not load this book's Vision." });
+          }
+          return;
         }
         const result = (await response.json()) as { book: BookSummary; vision: VisionDocument };
         if (cancelled) return;
@@ -127,6 +135,11 @@ export function VisionPage({ bookId }: { bookId: string }) {
         threadIndex === index ? { ...thread, ...patch } : thread,
       ),
     );
+    markDirty();
+  }
+
+  function removeThread(index: number) {
+    setThreads((current) => current.filter((_thread, threadIndex) => threadIndex !== index));
     markDirty();
   }
 
@@ -340,7 +353,15 @@ export function VisionPage({ bookId }: { bookId: string }) {
                       />
                     </label>
                   </div>
-                  <div className="mt-3 flex justify-end">
+                  <div className="mt-3 flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      aria-label={`Remove thread ${index + 1}`}
+                      onClick={() => removeThread(index)}
+                    >
+                      <Trash2 className="size-4" /> Remove
+                    </Button>
                     <Button
                       type="button"
                       variant={thread.status === "paid_off" ? "secondary" : "outline"}

@@ -1,5 +1,6 @@
 import { onRequest } from "firebase-functions/v2/https";
 
+import { allowedOrigins } from "../config/cors.js";
 import { verifyIdToken, assertOwnership, AuthError } from "../services/auth.js";
 import { getBook, getVisionDocument } from "../services/books.js";
 import type { Book } from "../types/book.js";
@@ -64,7 +65,7 @@ export async function buildGetVisionResponse(
 
 export const getVision = onRequest(
   {
-    cors: ["https://backupapp-bbf71.web.app"],
+    cors: allowedOrigins(),
     region: "us-central1",
   },
   async (request, response) => {
