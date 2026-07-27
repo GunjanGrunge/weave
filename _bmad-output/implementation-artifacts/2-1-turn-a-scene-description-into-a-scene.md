@@ -4,7 +4,7 @@ baseline_commit: "8239fba"
 
 # Story 2.1: Turn a Scene Description Into a Scene
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -80,8 +80,8 @@ so that the blocker between imagination and finished prose disappears.
 - [x] Task 9: Verify and deploy (AC: 1–6)
   - [x] `npm run verify` in `functions/` passed: lint, seam lint, build, 15 files / 91 tests.
   - [x] `bun run test` at repo root passed: 9 files / 38 tests. `bun run build` passed (pre-existing chunk-size warning only).
-  - [ ] Push to `main` and confirm CI/CD deploy passes.
-  - [ ] Live-verify with one writer account and clean up disposable data.
+  - [x] Push to `main` and confirm CI/CD deploy passes.
+  - [x] Live-verify with one writer account and clean up disposable data.
 
 ## Dev Notes
 
@@ -169,13 +169,50 @@ Exact field names are implementation's to finalize; the invariant that must hold
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Sonnet 5
 
 ### Debug Log References
 
+- `functions/`: `npm run verify` passed (lint, seam lint, build, 15 files / 91 tests).
+- Repo root: `bun run test` passed (9 files / 38 tests); `bun run build` passed (pre-existing chunk-size warning only).
+- CI deploy `30246986163` failed: Hosting rewrites for `/getMessages` and `/generateScene` referenced Cloud Functions not in the deploy workflow's `--only` allowlist ("Cloud Run service `generateScene` does not exist"). Fixed `.github/workflows/firebase-deploy.yml`; redeploy `30247207276` passed.
+- Live verification (disposable custom-token UID, disposable Book) found `generate`'s primary model (`gpt-5.6-sol`) completed successfully (confirmed via a real `usage` log entry with 972 output tokens) but exceeded the handler's 25s internal timeout, returning a spurious 502 to the client. Switched `generate`'s primary to `gpt-5.6-terra` and raised the timeout to 55s; redeploy `30254722945` passed.
+- Final live verification passed end to end: `createBook` → `getMessages` (pre) → `generateScene` (200, scene appended as `assistant_scene`, session id returned, no context/prompt leaked) → empty-description 400 → `getMessages` (post, scene present at correct order) → Firestore `usage` subcollection showing separate `openingSuggestion` and `generate` docs with correct `provider`/`model`. Disposable Book and the disposable custom-token Firebase Auth user were both deleted after verification.
+
 ### Completion Notes List
 
+- Implemented the Generate pipeline (`assembleContext` → `composePrompt` → `generateScene` → `persistSession`) as a LangGraph `StateGraph`, matching the existing `intake.ts` pattern.
+- Per AD-4, `assembleContext`'s cached output is retrieval-only (`chapterId`, `priorScenesText`); `composePrompt` reads Book/Vision/Style/Threads live on every call (including future regenerates), never from the cached session.
+- Extended `services/gemini.ts` with a schema-optional raw call path shared between `generateOpeningSuggestions` (JSON schema) and the new `generateScene` (plain text); added per-call (auto-id) usage logging for `generate`, distinct from `openingSuggestion`'s fixed-id idempotent logging.
+- Built the real per-book Chat surface (`books.$bookId.chat.tsx`) — it did not exist before this story — with message history, free-text input, client-side empty-submission blocking, loading state, and error+Retry handling.
+- Mid-implementation architecture correction: amended `ARCHITECTURE-SPINE.md` AD-9 to formally reconcile the already-live OpenAI-primary model registry (made outside a story before this session), then again to record the `gpt-5.6-sol` → `gpt-5.6-terra` swap found necessary during live verification.
+- Fixed a deploy-workflow gap (`.github/workflows/firebase-deploy.yml` `--only` allowlist) that would have affected any future story adding new Cloud Functions.
+
 ### File List
+
+- `.github/workflows/firebase-deploy.yml`
+- `_bmad-output/implementation-artifacts/2-1-turn-a-scene-description-into-a-scene.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `firebase.json`
+- `functions/scripts/seedModelRegistry.mjs`
+- `functions/src/handlers/generateScene.test.ts`
+- `functions/src/handlers/generateScene.ts`
+- `functions/src/handlers/getMessages.test.ts`
+- `functions/src/handlers/getMessages.ts`
+- `functions/src/index.ts`
+- `functions/src/pipelines/assembleContext.test.ts`
+- `functions/src/pipelines/assembleContext.ts`
+- `functions/src/pipelines/composePrompt.test.ts`
+- `functions/src/pipelines/composePrompt.ts`
+- `functions/src/pipelines/generate.test.ts`
+- `functions/src/pipelines/generate.ts`
+- `functions/src/services/books.test.ts`
+- `functions/src/services/books.ts`
+- `functions/src/services/gemini.test.ts`
+- `functions/src/services/gemini.ts`
+- `functions/src/types/scene.ts`
+- `src/routes/books.$bookId.chat.test.tsx`
+- `src/routes/books.$bookId.chat.tsx`
 
 ## Change Log
 
