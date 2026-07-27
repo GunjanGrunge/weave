@@ -81,6 +81,27 @@ vi.mock("firebase-admin/firestore", () => ({
       set: (ref: { path: string }, data: unknown) => setCalls.push({ path: ref.path, data }),
       commit: commitMock,
     }),
+    runTransaction: async <T,>(
+      updateFn: (transaction: {
+        get: (query: { get: () => Promise<unknown> }) => Promise<unknown>;
+        set: (ref: { path: string }, data: unknown) => void;
+      }) => Promise<T>,
+    ): Promise<T> => {
+      const transaction = {
+        get: (query: { get: () => Promise<unknown> }) => query.get(),
+        set: (ref: { path: string }, data: unknown) => {
+          setCalls.push({ path: ref.path, data });
+          const parentPath = ref.path.split("/").slice(0, -1).join("/");
+          if (parentPath.endsWith("/messages")) {
+            messagesStore[parentPath] = [
+              ...(messagesStore[parentPath] ?? []),
+              data as StoredDoc,
+            ];
+          }
+        },
+      };
+      return updateFn(transaction);
+    },
   })),
 }));
 
@@ -379,6 +400,14 @@ describe("appendChatMessage", () => {
     const message = await appendChatMessage("empty-book", "assistant_scene", "First scene.");
 
     expect(message.order).toBe(0);
+  });
+
+  it("assigns the last-order read and the write within one transaction, so sequential appends get distinct incrementing orders", async () => {
+    const first = await appendChatMessage("book-1", "user", "First message.");
+    const second = await appendChatMessage("book-1", "assistant_scene", "Second message.");
+
+    expect(first.order).toBe(0);
+    expect(second.order).toBe(1);
   });
 });
 

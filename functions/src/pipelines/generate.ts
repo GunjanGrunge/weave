@@ -36,10 +36,14 @@ async function assembleContextNode(state: GenerateStateValue): Promise<Partial<G
 
 async function composePromptNode(state: GenerateStateValue): Promise<Partial<GenerateStateValue>> {
   if (!state.assembledContext) {
+    console.error("generate/composePrompt: no assembled context", { bookId: state.bookId });
     return { status: "failed" };
   }
   const composed = await composePrompt(state.bookId, state.assembledContext, state.description);
   if (!composed) {
+    console.error("generate/composePrompt: composePrompt returned undefined (missing book or vision)", {
+      bookId: state.bookId,
+    });
     return { status: "failed" };
   }
   return { prompt: composed.prompt };
@@ -52,31 +56,43 @@ async function generateSceneNode(state: GenerateStateValue): Promise<Partial<Gen
   try {
     const result = await generateSceneCall(state.bookId, state.prompt, state.apiKeys);
     return { text: result.text, provider: result.provider, model: result.model, status: "ok" };
-  } catch {
+  } catch (error) {
+    console.error("generate/generateScene: model call failed", { bookId: state.bookId, error });
     return { status: "failed" };
   }
 }
 
+/**
+ * A session-persistence failure must not discard an already-generated,
+ * already-billed scene: the node logs the error and omits `sessionId`
+ * rather than flipping `status` to `failed` (see `runGenerate`'s success
+ * check, which treats a missing `sessionId` as a degraded-but-real success).
+ */
 async function persistSessionNode(state: GenerateStateValue): Promise<Partial<GenerateStateValue>> {
   if (state.status !== "ok" || !state.assembledContext || !state.prompt) {
     return {};
   }
 
-  const sessionRef = firestore()
-    .collection("books")
-    .doc(state.bookId)
-    .collection("sessions")
-    .doc();
+  try {
+    const sessionRef = firestore()
+      .collection("books")
+      .doc(state.bookId)
+      .collection("sessions")
+      .doc();
 
-  await sessionRef.set({
-    bookId: state.bookId,
-    chapterId: state.assembledContext.chapterId ?? null,
-    assembledContext: { priorScenesText: state.assembledContext.priorScenesText },
-    composedPrompt: state.prompt,
-    createdAt: FieldValue.serverTimestamp(),
-  });
+    await sessionRef.set({
+      bookId: state.bookId,
+      chapterId: state.assembledContext.chapterId ?? null,
+      assembledContext: { priorScenesText: state.assembledContext.priorScenesText },
+      composedPrompt: state.prompt,
+      createdAt: FieldValue.serverTimestamp(),
+    });
 
-  return { sessionId: sessionRef.id };
+    return { sessionId: sessionRef.id };
+  } catch (error) {
+    console.error("generate/persistSession: session write failed", { bookId: state.bookId, error });
+    return {};
+  }
 }
 
 const graph = new StateGraph(GenerateState)
@@ -113,13 +129,17 @@ export async function runGenerate(
     sessionId: undefined,
   });
 
-  if (result.status === "ok" && result.text && result.provider && result.model && result.sessionId) {
+  // A missing sessionId (persistSession failed) does not discard an
+  // already-generated, already-billed scene — the generation itself is
+  // what matters to the caller; regenerate simply won't have a session
+  // to reuse for this one request.
+  if (result.status === "ok" && result.text && result.provider && result.model) {
     return {
       status: "ok",
       text: result.text,
       provider: result.provider,
       model: result.model,
-      sessionId: result.sessionId,
+      sessionId: result.sessionId ?? "",
     };
   }
 

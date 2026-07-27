@@ -33,14 +33,14 @@ describe("buildGenerateSceneResponse", () => {
     runGenerateMock.mockReset();
   });
 
-  it("returns the generated scene and appends it as an assistant_scene chat message", async () => {
+  it("returns the generated scene and appends both the user's description and the assistant_scene chat message", async () => {
     verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
     getBookMock.mockResolvedValue(book);
     runGenerateMock.mockResolvedValue({
       status: "ok",
       text: "The vault door groaned open.",
       provider: "openai",
-      model: "gpt-5.6-sol",
+      model: "gpt-5.6-terra",
       sessionId: "session-1",
     });
     appendChatMessageMock.mockResolvedValue({
@@ -62,14 +62,50 @@ describe("buildGenerateSceneResponse", () => {
         sessionId: "session-1",
         text: "The vault door groaned open.",
         provider: "openai",
-        model: "gpt-5.6-sol",
+        model: "gpt-5.6-terra",
       },
     });
-    expect(appendChatMessageMock).toHaveBeenCalledWith(
+    expect(appendChatMessageMock).toHaveBeenNthCalledWith(
+      1,
+      "book-1",
+      "user",
+      "Mara breaks into the vault.",
+    );
+    expect(appendChatMessageMock).toHaveBeenNthCalledWith(
+      2,
       "book-1",
       "assistant_scene",
       "The vault door groaned open.",
     );
+  });
+
+  it("still returns the generated scene when appendChatMessage fails after a successful generation", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    getBookMock.mockResolvedValue(book);
+    runGenerateMock.mockResolvedValue({
+      status: "ok",
+      text: "The vault door groaned open.",
+      provider: "openai",
+      model: "gpt-5.6-terra",
+      sessionId: "session-1",
+    });
+    appendChatMessageMock.mockRejectedValue(new Error("Firestore write failed"));
+
+    const result = await buildGenerateSceneResponse(
+      "Bearer valid",
+      { bookId: "book-1", description: "Mara breaks into the vault." },
+      apiKeys,
+    );
+
+    expect(result).toEqual({
+      statusCode: 200,
+      body: {
+        sessionId: "session-1",
+        text: "The vault door groaned open.",
+        provider: "openai",
+        model: "gpt-5.6-terra",
+      },
+    });
   });
 
   it("returns 400 and never runs the pipeline when the description is empty or whitespace", async () => {
@@ -78,6 +114,20 @@ describe("buildGenerateSceneResponse", () => {
     const result = await buildGenerateSceneResponse(
       "Bearer valid",
       { bookId: "book-1", description: "   " },
+      apiKeys,
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(getBookMock).not.toHaveBeenCalled();
+    expect(runGenerateMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 and never runs the pipeline when the description exceeds the max length", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+
+    const result = await buildGenerateSceneResponse(
+      "Bearer valid",
+      { bookId: "book-1", description: "x".repeat(4001) },
       apiKeys,
     );
 

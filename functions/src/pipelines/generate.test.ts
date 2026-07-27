@@ -62,7 +62,7 @@ describe("runGenerate", () => {
     generateSceneMock.mockResolvedValue({
       text: "The vault door groaned open.",
       provider: "openai",
-      model: "gpt-5.6-sol",
+      model: "gpt-5.6-terra",
     });
 
     const result = await runGenerate("book-1", "A heist scene.", apiKeys);
@@ -71,7 +71,7 @@ describe("runGenerate", () => {
       status: "ok",
       text: "The vault door groaned open.",
       provider: "openai",
-      model: "gpt-5.6-sol",
+      model: "gpt-5.6-terra",
       sessionId: "session-auto-id",
     });
     expect(assembleContextMock).toHaveBeenCalledWith("book-1");
@@ -89,7 +89,7 @@ describe("runGenerate", () => {
   it("never leaks the assembled context or composed prompt to the returned result", async () => {
     assembleContextMock.mockResolvedValue(assembledContext);
     composePromptMock.mockResolvedValue({ prompt: "Composed prompt text.", style: { presetIds: [] } });
-    generateSceneMock.mockResolvedValue({ text: "Scene text.", provider: "openai", model: "gpt-5.6-sol" });
+    generateSceneMock.mockResolvedValue({ text: "Scene text.", provider: "openai", model: "gpt-5.6-terra" });
 
     const result = await runGenerate("book-1", "A heist scene.", apiKeys);
 
@@ -118,5 +118,26 @@ describe("runGenerate", () => {
 
     expect(result).toEqual({ status: "failed" });
     expect(sessionSetMock).not.toHaveBeenCalled();
+  });
+
+  it("still returns the generated scene text as a success when session persistence fails", async () => {
+    assembleContextMock.mockResolvedValue(assembledContext);
+    composePromptMock.mockResolvedValue({ prompt: "Composed prompt text.", style: { presetIds: [] } });
+    generateSceneMock.mockResolvedValue({
+      text: "The vault door groaned open.",
+      provider: "openai",
+      model: "gpt-5.6-terra",
+    });
+    sessionSetMock.mockRejectedValue(new Error("Firestore write failed"));
+
+    const result = await runGenerate("book-1", "A heist scene.", apiKeys);
+
+    expect(result).toEqual({
+      status: "ok",
+      text: "The vault door groaned open.",
+      provider: "openai",
+      model: "gpt-5.6-terra",
+      sessionId: "",
+    });
   });
 });

@@ -4,7 +4,7 @@ baseline_commit: "8239fba"
 
 # Story 2.1: Turn a Scene Description Into a Scene
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,7 +19,7 @@ so that the blocker between imagination and finished prose disappears.
 1. **Given** my Book is open in the Chat, **When** I submit a non-empty free-text scene description, **Then** the Generate pipeline (LangGraph: `assembleContext` → `composePrompt` → `generateScene` → `persistSession`) returns scene prose in the Book's active Style as an `assistant_scene` chat message, with a loading state throughout and a visible response within ~15 seconds for typical scene length (NFR-4).
 2. **Given** the same request, **When** the pipeline assembles context, **Then** the assembled context is the graceful-degradation set — Book metadata, Vision Document with open Threads, the active Chapter's scenes, and the current Style — never any full-manuscript concatenation (AD-3).
 3. **Given** the same request, **When** context assembly completes, **Then** it is persisted server-side keyed by an opaque session id returned to the client; the context itself never reaches the browser (AD-4).
-4. **Given** the same request, **When** the scene is generated, **Then** the call is made through `services/gemini.ts` using the registry's `generate` task (per the amended AD-9: primary `openai:gpt-5.6-sol`, fallback `gemini:gemini-2.5-pro`) and logged to `books/{bookId}/usage` with `provider` and `model` recorded.
+4. **Given** the same request, **When** the scene is generated, **Then** the call is made through `services/gemini.ts` using the registry's `generate` task (per the amended AD-9: primary `openai:gpt-5.6-terra`, fallback `gemini:gemini-2.5-pro` — swapped from the originally-amended `gpt-5.6-sol` after live verification found it exceeded the response-time budget) and logged to `books/{bookId}/usage` with `provider` and `model` recorded.
 5. **Given** I submit an empty description, **When** I try to send, **Then** it is blocked client-side with a message and no API call occurs (FR-2).
 6. **Given** the Gemini/OpenAI call fails or times out, **When** the error surfaces, **Then** I see a clear error with an explicit retry option and my typed description is still in the input, unlost (NFR-1).
 
@@ -75,13 +75,33 @@ so that the blocker between imagination and finished prose disappears.
   - [x] `gemini.test.ts` extended (+4 tests, 9 total, all passing including the pre-existing 5): `generateScene` primary/fallback/both-fail, and an explicit auto-id-vs-fixed-id usage-doc assertion.
   - [x] `generateScene.test.ts` (8 tests): success + message append, empty/whitespace 400, missing bookId 400, 401, 404, cross-owner 401, pipeline-failure 502, timeout 502.
   - [x] `books.$bookId.chat.test.tsx` (5 tests): loads existing messages, blocks empty submit, blocks whitespace submit, renders successful generation, shows error+Retry with input preserved.
-  - [x] Also added `getMessages.test.ts` (5 tests) and extended `books.test.ts` (+8 tests: `getMessages`, `appendChatMessage`, `getActiveChapterScenes`) and `generate.test.ts` (4 tests, the pipeline graph itself).
+  - [x] Also added `getMessages.test.ts` (5 tests) and extended `books.test.ts` (+7 tests: `getMessages`, `appendChatMessage`, `getActiveChapterScenes`) and `generate.test.ts` (4 tests, the pipeline graph itself).
 
 - [x] Task 9: Verify and deploy (AC: 1–6)
   - [x] `npm run verify` in `functions/` passed: lint, seam lint, build, 15 files / 91 tests.
   - [x] `bun run test` at repo root passed: 9 files / 38 tests. `bun run build` passed (pre-existing chunk-size warning only).
   - [x] Push to `main` and confirm CI/CD deploy passes.
   - [x] Live-verify with one writer account and clean up disposable data.
+
+### Review Findings
+
+- [x] [Review][Patch] Successful/billed scene generations can be silently discarded on timeout or downstream write failure [functions/src/handlers/generateScene.ts:41-60,95; functions/src/pipelines/generate.ts:60-80]
+- [x] [Review][Patch] `description` has no maximum length, allowing unbounded prompt size/cost/latency [functions/src/handlers/generateScene.ts:26-39]
+- [x] [Review][Patch] Chat textarea isn't disabled during generation — text typed mid-request can be silently wiped on success [src/routes/books.$bookId.chat.tsx]
+- [x] [Review][Patch] No re-entrancy guard on scene submission — concurrent submits race on non-transactional message-order assignment [src/routes/books.$bookId.chat.tsx; functions/src/services/books.ts:218-236]
+- [x] [Review][Patch] Pipeline failure paths swallow the real error with zero logging, indistinguishable from a provider outage [functions/src/pipelines/generate.ts:37-58; functions/src/handlers/generateScene.ts:55-58]
+- [x] [Review][Patch] AC4 and Dev Notes still cite `gpt-5.6-sol` as the shipped `generate` primary; actual shipped/AD-9 model is `gpt-5.6-terra` [story doc AC4, Dev Notes AD-9 subsection]
+- [x] [Review][Patch] Test fixtures in `gemini.test.ts`, `generate.test.ts`, `generateScene.test.ts`, `books.$bookId.chat.test.tsx` still hardcode `gpt-5.6-sol` for the `generate` task's model, no longer matching the shipped `gpt-5.6-terra`
+- [x] [Review][Patch] The user's own typed scene description is never persisted server-side — only the resulting `assistant_scene` message is appended; reload loses the request that produced a scene [functions/src/handlers/generateScene.ts:95]
+- [x] [Review][Patch] Story's Task 8 claims "+8 tests" for extended `books.test.ts`; diff shows 7 new test cases [story doc Task 8]
+- [x] [Review][Patch] Optimistic local chat messages use a fabricated `order: -1`, a latent landmine if future code trusts local `order` values [src/routes/books.$bookId.chat.tsx]
+- [x] [Review][Defer] Unbounded prompt growth from concatenating all prior scenes in the active chapter verbatim, no per-chapter cap — deferred, belongs to Epic 3's chapter-summarization work (AD-3) [functions/src/pipelines/composePrompt.ts]
+- [x] [Review][Defer] `getMessages` has no pagination — deferred, acceptable at 3-user V1 scale, no spec requirement [functions/src/services/books.ts:207-216]
+- [x] [Review][Defer] Thread `subtlety`/`status` holding an unrecognized enum value degrades the prompt silently — deferred, only reachable via malformed data the Story 1.5 validation path already prevents [functions/src/pipelines/composePrompt.ts]
+- [x] [Review][Defer] Non-ok HTTP responses (401/404/502) handled identically on the frontend with no differentiated reauth/not-found UX — deferred, pre-existing pattern from Stories 1.3/1.5, not a 2.1 regression [src/routes/books.$bookId.chat.tsx]
+- [x] [Review][Defer] NFR-4's ~15s target not empirically measured for `gpt-5.6-terra`, only confirmed to complete within the 55s window once — deferred, needs a dedicated latency-measurement pass
+- [x] [Review][Defer] `persistSessionNode` writes `chapterId: null` for a chapterless book — deferred, currently unreachable since `createBookWithIntake` always creates exactly one chapter atomically [functions/src/pipelines/generate.ts:60-80]
+- [x] [Review][Defer] `generate.ts` defines its own local `firestore()` helper instead of centralizing in `services/` — deferred, matches existing precedent already set by `services/gemini.ts` before this story [functions/src/pipelines/generate.ts:10-15]
 
 ## Dev Notes
 
@@ -96,7 +116,7 @@ This story ships the free-text input mode (FR-2) end-to-end, including the Chat 
 - **AD-4**: the assembled context and composed prompt are persisted server-side (`persistSession`), keyed by an opaque session id; only that id crosses to the client. Do not have the handler return context/prompt content directly, even for debugging.
 - **AD-5**: this story's Generate pipeline is a direct request/response call (the user is waiting for their scene) — it is NOT the async/event-triggered pattern; that pattern applies to FR-9/FR-11 background work (Epic 3), which this story does not touch.
 - **AD-6**: no new top-level collections. `sessions` (Task 5) and `scenes` (Task 2, type only — no writes yet) are new subcollections of `books/{bookId}` and `chapters/{chapterId}` respectively, consistent with the containment model. `order` fields are explicit numeric, never array position.
-- **AD-9 (amended 2026-07-27 this session)**: the `generate` task's primary is `openai:gpt-5.6-sol` with fallback `gemini:gemini-2.5-pro` — call it through `services/gemini.ts`'s registry read, exactly like `openingSuggestion` does. Every Scene-producing call records `provider` and `model` in the usage log; this story's `generate` calls do not yet write a `modelUsed` field onto a persisted Scene document because no Scene document is created yet (that's Story 2.4) — but the pipeline's returned data must carry `provider`/`model` so 2.4 can attach it when it persists.
+- **AD-9 (amended 2026-07-27 this session)**: the `generate` task's primary is `openai:gpt-5.6-terra` with fallback `gemini:gemini-2.5-pro` (swapped from `gpt-5.6-sol` after live verification found it exceeded the response-time budget — see Change Log) — call it through `services/gemini.ts`'s registry read, exactly like `openingSuggestion` does. Every Scene-producing call records `provider` and `model` in the usage log; this story's `generate` calls do not yet write a `modelUsed` field onto a persisted Scene document because no Scene document is created yet (that's Story 2.4) — but the pipeline's returned data must carry `provider`/`model` so 2.4 can attach it when it persists.
 - **AD-11**: facts (none exist yet) and threads are architecturally separate; only threads are available to this story's `composePrompt`, with subtlety-aware prompt roles — never merge a thread's `meaning` into anything resembling a "fact."
 - Seam rule (unchanged): `handlers/` never touches Firestore directly; `pipelines/` nodes never touch the HTTP response; all provider calls go through `services/gemini.ts`.
 
@@ -219,3 +239,4 @@ Claude Sonnet 5
 - 2026-07-27: Created Story 2.1 context from Epic 2 backlog; amended `ARCHITECTURE-SPINE.md` AD-9 and Stack table to formally reconcile the already-live OpenAI-primary model registry (verified `gpt-5.6-sol/terra/luna` and `gpt-5.4-nano` as real, current OpenAI model IDs via web search before amending).
 - 2026-07-27: Implemented the Generate pipeline (assembleContext → composePrompt → generateScene → persistSession), the `generateScene`/`getMessages` handlers, and the `books.$bookId.chat.tsx` Chat surface. `npm run verify` (15 files/91 tests) and `bun run test`/`bun run build` (9 files/38 tests) passed. Pushed to `weave/main`; CI deploy `30246986163` failed (Hosting rewrite referenced two Cloud Functions not yet in the deploy workflow's `--only` allowlist); fixed the workflow and redeployed successfully (`30247207276`).
 - 2026-07-27: Live verification found `generate`'s primary model (`gpt-5.6-sol`, the frontier reasoning tier) completed successfully but took longer than a 25s handler timeout for full scene prose, missing the ~15s NFR-4 target. Switched `generate`'s primary to `gpt-5.6-terra` (the balanced tier, already proven fast for `openingSuggestion`) and raised the handler's internal timeout to 55s for headroom; updated `seedModelRegistry.mjs` and AD-9 accordingly.
+- 2026-07-27: Code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) found 10 patch-worthy issues, all fixed: (1) a successful/billed generation could be silently discarded on timeout or if `appendChatMessage`/`persistSession`'s Firestore write failed afterward — both paths now degrade gracefully and still return the generated text to the client, with the underlying error logged instead of swallowed; (2) `description` now has a 4,000-character cap; (3) the Chat textarea is now disabled during generation so mid-request typing can't be wiped; (4) `submitDescription` now no-ops while already loading, and `appendChatMessage`'s order assignment now runs inside a Firestore transaction so concurrent appends can't collide; (5) all pipeline failure branches now `console.error` the real cause; (6)/(7) stale `gpt-5.6-sol` references in AC4, Dev Notes, and four test fixtures updated to the shipped `gpt-5.6-terra`; (8) the user's own scene description is now persisted via `appendChatMessage` alongside the `assistant_scene` reply, so reload no longer loses the request that produced a scene; (9) Task 8's test-count claim corrected from +8 to +7; (10) optimistic local chat messages now use a real incrementing local order instead of a fabricated `-1`. 7 additional findings deferred (pre-existing patterns, out-of-scope architecture work, or unreachable given current data-validation guarantees) — see the story's Review Findings section and `deferred-work.md`. Verification after fixes: `npm run verify` (15 files/95 tests) and `bun run test`/`bun run build` (9 files/39 tests) passed.

@@ -60,7 +60,7 @@ vi.mock("firebase-admin/firestore", () => ({
 
 const validRegistry = {
   generate: {
-    primary: { provider: "openai", model: "gpt-5.6-sol" },
+    primary: { provider: "openai", model: "gpt-5.6-terra" },
     fallback: { provider: "gemini", model: "gemini-2.5-pro" },
   },
   openingSuggestion: {
@@ -258,11 +258,11 @@ describe("generateScene", () => {
     expect(result).toEqual({
       text: "The vault door groaned open.",
       provider: "openai",
-      model: "gpt-5.6-sol",
+      model: "gpt-5.6-terra",
     });
     expect(generateContentMock).not.toHaveBeenCalled();
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
-    expect(JSON.parse(request.body as string)).toMatchObject({ model: "gpt-5.6-sol" });
+    expect(JSON.parse(request.body as string)).toMatchObject({ model: "gpt-5.6-terra" });
   });
 
   it("falls back to Gemini when the OpenAI primary call fails", async () => {
@@ -309,8 +309,8 @@ describe("generateScene", () => {
     expect(usageWrites).toHaveLength(2);
     expect(usageDocIds).toEqual([undefined, undefined]);
     expect(usageWrites).toEqual([
-      expect.objectContaining({ task: "generate", provider: "openai", model: "gpt-5.6-sol" }),
-      expect.objectContaining({ task: "generate", provider: "openai", model: "gpt-5.6-sol" }),
+      expect.objectContaining({ task: "generate", provider: "openai", model: "gpt-5.6-terra" }),
+      expect.objectContaining({ task: "generate", provider: "openai", model: "gpt-5.6-terra" }),
     ]);
   });
 });

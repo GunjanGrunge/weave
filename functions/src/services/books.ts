@@ -215,23 +215,34 @@ export async function getMessages(bookId: string): Promise<ChatMessage[]> {
   return snapshot.docs.map((doc) => doc.data() as ChatMessage);
 }
 
+/**
+ * Runs the last-order read and the new message write in one Firestore
+ * transaction, so two concurrent calls (e.g. a double-submit) cannot both
+ * read the same "last order" and write colliding order values.
+ */
 export async function appendChatMessage(
   bookId: string,
   type: ChatMessageType,
   text: string,
 ): Promise<ChatMessage> {
-  const messages = firestore().collection("books").doc(bookId).collection("messages");
-  const lastMessage = await messages.orderBy("order", "desc").limit(1).get();
-  const nextOrder = lastMessage.empty ? 0 : (lastMessage.docs[0]?.data().order as number) + 1;
+  const db = firestore();
+  const messages = db.collection("books").doc(bookId).collection("messages");
+  const newMessageRef = messages.doc();
 
-  const message: ChatMessage = {
-    type,
-    text,
-    order: nextOrder,
-    createdAt: FieldValue.serverTimestamp(),
-  };
+  const message: ChatMessage = await db.runTransaction(async (transaction) => {
+    const lastMessage = await transaction.get(messages.orderBy("order", "desc").limit(1));
+    const nextOrder = lastMessage.empty ? 0 : (lastMessage.docs[0]?.data().order as number) + 1;
 
-  await messages.doc().set(message);
+    const entry: ChatMessage = {
+      type,
+      text,
+      order: nextOrder,
+      createdAt: FieldValue.serverTimestamp(),
+    };
+    transaction.set(newMessageRef, entry);
+    return entry;
+  });
+
   return message;
 }
 

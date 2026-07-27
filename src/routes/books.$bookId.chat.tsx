@@ -86,15 +86,10 @@ export function ChatPage({ bookId }: { bookId: string }) {
     };
   }, [bookId]);
 
-  function appendMessage(message: ChatMessage) {
-    setLoadState((current) =>
-      current.status === "ready"
-        ? { status: "ready", messages: [...current.messages, message] }
-        : { status: "ready", messages: [message] },
-    );
-  }
-
   async function submitDescription() {
+    if (generationState.status === "loading") {
+      return;
+    }
     const trimmed = description.trim();
     if (!trimmed) {
       setValidationError("Describe what happens in the scene before sending.");
@@ -119,8 +114,18 @@ export function ChatPage({ bookId }: { bookId: string }) {
         model: string;
       };
 
-      appendMessage({ type: "user", text: trimmed, order: -1 });
-      appendMessage({ type: "assistant_scene", text: result.text, order: -1 });
+      setLoadState((current) => {
+        const priorMessages = current.status === "ready" ? current.messages : [];
+        const nextOrder = priorMessages.length;
+        return {
+          status: "ready",
+          messages: [
+            ...priorMessages,
+            { type: "user", text: trimmed, order: nextOrder },
+            { type: "assistant_scene", text: result.text, order: nextOrder + 1 },
+          ],
+        };
+      });
       setSessionId(result.sessionId);
       setDescription("");
       setGenerationState({ status: "idle" });
@@ -223,7 +228,8 @@ export function ChatPage({ bookId }: { bookId: string }) {
           onChange={(event) => setDescription(event.target.value)}
           aria-label="Scene description"
           rows={2}
-          className="flex-1 resize-none bg-transparent text-sm outline-none"
+          disabled={isLoading}
+          className="flex-1 resize-none bg-transparent text-sm outline-none disabled:opacity-50"
         />
         <button
           type="button"

@@ -7,6 +7,7 @@ import { appendChatMessage, getBook } from "../services/books.js";
 import type { AIProviderKeys } from "../services/gemini.js";
 
 const GENERATE_SCENE_TIMEOUT_MS = 55_000;
+const MAX_DESCRIPTION_LENGTH = 4_000;
 
 export type GenerateSceneSuccess = {
   sessionId: string;
@@ -32,7 +33,11 @@ function parseInput(body: unknown): { bookId: string; description: string } | un
   if (typeof bookId !== "string" || bookId.length === 0) {
     return undefined;
   }
-  if (typeof description !== "string" || description.trim().length === 0) {
+  if (
+    typeof description !== "string" ||
+    description.trim().length === 0 ||
+    description.length > MAX_DESCRIPTION_LENGTH
+  ) {
     return undefined;
   }
   return { bookId, description };
@@ -52,7 +57,8 @@ function runGenerateWithTimeout(
         clearTimeout(timeout);
         resolve(result);
       })
-      .catch(() => {
+      .catch((error) => {
+        console.error("generateScene: runGenerate rejected", { bookId, error });
         clearTimeout(timeout);
         resolve({ status: "failed" });
       });
@@ -92,7 +98,18 @@ export async function buildGenerateSceneResponse(
       };
     }
 
-    await appendChatMessage(input.bookId, "assistant_scene", result.text);
+    // The generation already succeeded and was billed at this point — a
+    // Firestore write failure here must not discard it from the response,
+    // only fail to persist it to chat history.
+    try {
+      await appendChatMessage(input.bookId, "user", input.description);
+      await appendChatMessage(input.bookId, "assistant_scene", result.text);
+    } catch (error) {
+      console.error("generateScene: appendChatMessage failed after a successful generation", {
+        bookId: input.bookId,
+        error,
+      });
+    }
 
     return {
       statusCode: 200,

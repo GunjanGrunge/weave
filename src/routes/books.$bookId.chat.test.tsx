@@ -85,7 +85,7 @@ describe("ChatPage", () => {
           sessionId: "session-1",
           text: "The vault door groaned open.",
           provider: "openai",
-          model: "gpt-5.6-sol",
+          model: "gpt-5.6-terra",
         }),
       );
 
@@ -107,6 +107,43 @@ describe("ChatPage", () => {
         body: JSON.stringify({ bookId: "book-1", description: "Mara breaks into the vault." }),
       }),
     );
+  });
+
+  it("ignores a second Send click while a generation is already in flight", async () => {
+    let resolveGenerate!: (value: Response) => void;
+    const pendingGenerate = new Promise<Response>((resolve) => {
+      resolveGenerate = resolve;
+    });
+
+    authenticatedFetchMock
+      .mockResolvedValueOnce(jsonResponse({ messages: [] }))
+      .mockReturnValueOnce(pendingGenerate);
+
+    render(<ChatPage bookId="book-1" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/scene description/i), {
+      target: { value: "Mara breaks into the vault." },
+    });
+    fireEvent.click(screen.getByLabelText("Send"));
+    fireEvent.click(screen.getByLabelText("Send"));
+    fireEvent.click(screen.getByLabelText("Send"));
+
+    expect(authenticatedFetchMock).toHaveBeenCalledTimes(2);
+
+    resolveGenerate(
+      jsonResponse({
+        sessionId: "session-1",
+        text: "The vault door groaned open.",
+        provider: "openai",
+        model: "gpt-5.6-terra",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("The vault door groaned open.")).toBeInTheDocument(),
+    );
+    expect(authenticatedFetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("shows an error with Retry and keeps the typed description on failure", async () => {
