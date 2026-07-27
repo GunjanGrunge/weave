@@ -7,7 +7,7 @@ import { getFirestore } from "firebase-admin/firestore";
 // credentials that can write to that project's Firestore.
 const registry = {
   generate: {
-    primary: { provider: "openai", model: "gpt-5.6-sol" },
+    primary: { provider: "openai", model: "gpt-5.6-terra" },
     fallback: { provider: "gemini", model: "gemini-2.5-pro" },
   },
   openingSuggestion: {

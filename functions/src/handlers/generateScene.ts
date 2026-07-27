@@ -6,7 +6,7 @@ import { verifyIdToken, assertOwnership, AuthError } from "../services/auth.js";
 import { appendChatMessage, getBook } from "../services/books.js";
 import type { AIProviderKeys } from "../services/gemini.js";
 
-const GENERATE_SCENE_TIMEOUT_MS = 25_000;
+const GENERATE_SCENE_TIMEOUT_MS = 55_000;
 
 export type GenerateSceneSuccess = {
   sessionId: string;
