@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
-const { signInMock, signOutMock, authenticatedFetchMock } = vi.hoisted(() => ({
+const { signInMock, authenticatedFetchMock } = vi.hoisted(() => ({
   signInMock: vi.fn(),
-  signOutMock: vi.fn(),
   authenticatedFetchMock: vi.fn(),
 }));
 
@@ -12,7 +11,6 @@ vi.mock("firebase/auth", async () => {
   return {
     ...actual,
     signInWithEmailAndPassword: signInMock,
-    signOut: signOutMock,
   };
 });
 
@@ -29,7 +27,6 @@ import { LoginForm } from "./login";
 describe("LoginForm", () => {
   beforeEach(() => {
     signInMock.mockReset();
-    signOutMock.mockReset();
     authenticatedFetchMock.mockReset();
     authenticatedFetchMock.mockResolvedValue(new Response(JSON.stringify({ uid: "user-a" })));
   });
@@ -69,10 +66,11 @@ describe("LoginForm", () => {
     consoleSpy.mockRestore();
   });
 
-  it("shows a distinct message (not a credential error) when whoami can't be reached", async () => {
+  it("keeps the valid session and enters the workspace when whoami can't be reached", async () => {
     signInMock.mockResolvedValue({ user: { uid: "user-a" } });
     authenticatedFetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
     const onSuccess = vi.fn();
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     render(<LoginForm onSuccess={onSuccess} />);
 
@@ -80,14 +78,17 @@ describe("LoginForm", () => {
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: "correct-horse" } });
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/couldn't verify/i));
-    expect(onSuccess).not.toHaveBeenCalled();
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
   });
 
-  it("treats a malformed whoami body (e.g. the SPA fallback page) as unverified, not a pass", async () => {
+  it("does not revoke the valid session for a malformed whoami response", async () => {
     signInMock.mockResolvedValue({ user: { uid: "user-a" } });
     authenticatedFetchMock.mockResolvedValue(new Response("<!doctype html>", { status: 200 }));
     const onSuccess = vi.fn();
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     render(<LoginForm onSuccess={onSuccess} />);
 
@@ -95,8 +96,9 @@ describe("LoginForm", () => {
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: "correct-horse" } });
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
-    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
-    expect(onSuccess).not.toHaveBeenCalled();
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    consoleSpy.mockRestore();
   });
 
   it("shows a clear inline error when sign-in fails", async () => {
@@ -111,12 +113,13 @@ describe("LoginForm", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
   });
 
-  it("does not call onSuccess when whoami verification fails", async () => {
+  it("does not revoke the valid session when whoami rejects the probe", async () => {
     signInMock.mockResolvedValue({ user: { uid: "user-a" } });
     authenticatedFetchMock.mockResolvedValue(
       new Response(JSON.stringify({ code: "bad" }), { status: 401 }),
     );
     const onSuccess = vi.fn();
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     render(<LoginForm onSuccess={onSuccess} />);
 
@@ -124,8 +127,9 @@ describe("LoginForm", () => {
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: "correct-horse" } });
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
-    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
-    expect(onSuccess).not.toHaveBeenCalled();
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    consoleSpy.mockRestore();
   });
 
   it("does not render any signup or self-registration affordance", () => {

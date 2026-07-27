@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
-import { signInWithEmailAndPassword, signOut, type AuthError } from "firebase/auth";
+import { signInWithEmailAndPassword, type AuthError } from "firebase/auth";
 import { BookOpenCheck, LockKeyhole, ShieldCheck } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { authenticatedFetch } from "@/lib/api";
@@ -81,20 +81,22 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
     setSubmitting(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      await verifySignedInUser();
-      onSuccess();
     } catch (err) {
-      if (auth.currentUser) {
-        await signOut(auth);
-      }
-      setError(
-        err instanceof WhoamiVerificationError
-          ? "Signed in, but couldn't verify your account. Please try again."
-          : friendlyAuthError(err),
-      );
-    } finally {
       setSubmitting(false);
+      setError(friendlyAuthError(err));
+      return;
     }
+
+    try {
+      await verifySignedInUser();
+    } catch (err) {
+      // Backend handlers still validate the ID token on every protected
+      // request. A failed diagnostic probe must not revoke a valid session.
+      console.warn("Signed in, but the whoami verification probe failed:", err);
+    }
+
+    setSubmitting(false);
+    onSuccess();
   }
 
   return (
