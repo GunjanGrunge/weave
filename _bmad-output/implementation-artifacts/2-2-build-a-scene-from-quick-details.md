@@ -4,7 +4,7 @@ baseline_commit: "743c1a6"
 
 # Story 2.2: Build a Scene From Quick Details
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -54,8 +54,8 @@ so that I can write even when I can't articulate the scene as a paragraph.
 - [x] Task 6: Verify and deploy (AC: 1–5)
   - [x] `npm run verify` in `functions/` passed: lint, seam lint, build, 15 files / 102 tests.
   - [x] `bun run test` (9 files / 42 tests) and `bun run build` passed at repo root.
-  - [ ] Push to `main` (`weave` remote) and confirm CI/CD deploy passes.
-  - [ ] Live-verify with one writer account and clean up disposable data.
+  - [x] Push to `main` (`weave` remote) and confirm CI/CD deploy passes.
+  - [x] Live-verify with one writer account and clean up disposable data.
 
 ## Dev Notes
 
@@ -123,14 +123,39 @@ No new Firestore fields or collections. The persisted "user" chat message for st
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Sonnet 5
 
 ### Debug Log References
 
+- `functions/`: `npm run verify` passed (lint, seam lint, build, 15 files / 102 tests).
+- Repo root: `bun run test` passed (9 files / 42 tests); `bun run build` passed (pre-existing chunk-size warning only).
+- Pushed to `weave/main`; CI deploy `30263529664` passed (no new Cloud Functions, so the Story 2.1 Hosting-rewrite-allowlist failure mode did not recur, as anticipated).
+- Live verification (disposable custom-token UID, disposable Book): `generateScene` with `mode: "structured", fields: {mood: "tense"}` returned 200 with genuinely tense prose (`gpt-5.6-terra`); all-empty structured submission returned 400; `getMessages` confirmed the persisted "user" message read exactly `"Mood: tense."` (not four labeled-but-empty fields); Firestore `usage` subcollection showed the `generate` entry with `provider`/`model` recorded. Disposable Book and Firebase Auth test user both deleted after verification.
+
 ### Completion Notes List
 
+- Added `functions/src/types/sceneInput.ts` — the `SceneInput` discriminated union (`free-text` | `structured`) shared by the handler, the Generate pipeline's `GenerateState`, and `composePrompt`.
+- Refactored `composePrompt.ts` to extract the shared style/vision/threads/prior-scenes lines into `buildSharedLines`, then append either the free-text description or the structured-fields template (`Scene goal:`/`Mood:`/`POV/character:`/`Setting:`, only for fields actually supplied) via `appendInputLines`. The `mood` field gets an explicit tone directive so a "tense" mood produces recognizably tense prose — confirmed live.
+- Threaded `SceneInput` through `generate.ts`'s `GenerateState`/`runGenerate` in place of the old raw `description: string`, without touching any of Story 2.1's code-review fixes in that file (verified by re-reading the file before editing, not just trusting the original Story 2.1 story doc).
+- Extended `generateScene.ts`'s `parseInput` to branch on `mode: "structured"` (anything else defaults to free-text, preserving Story 2.1 request-shape compatibility with no client migration needed); added `summarizeSceneInput` to build the persisted "user" chat message for structured mode from only the supplied fields.
+- Built the structured-details Chat UI: a "Describe it" / "Quick details" mode toggle and four labeled inputs inside the existing `books.$bookId.chat.tsx` route (no new route/screen), reusing Story 2.1's `isLoading` disable-during-generation and no-op-while-loading guards for the new inputs and submit path.
+- All of Story 2.1's post-code-review fixes (transactional `appendChatMessage`, persist-failure resilience, error logging, textarea/button disable-during-loading) were preserved verbatim — confirmed via the full regression suite passing and via live verification.
+
 ### File List
+
+- `_bmad-output/implementation-artifacts/2-2-build-a-scene-from-quick-details.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `functions/src/handlers/generateScene.test.ts`
+- `functions/src/handlers/generateScene.ts`
+- `functions/src/pipelines/composePrompt.test.ts`
+- `functions/src/pipelines/composePrompt.ts`
+- `functions/src/pipelines/generate.test.ts`
+- `functions/src/pipelines/generate.ts`
+- `functions/src/types/sceneInput.ts`
+- `src/routes/books.$bookId.chat.test.tsx`
+- `src/routes/books.$bookId.chat.tsx`
 
 ## Change Log
 
 - 2026-07-27: Created Story 2.2 context from Epic 2 backlog, building directly on Story 2.1's post-code-review file state (composePrompt/generate/generateScene/books.$bookId.chat.tsx), with explicit preservation notes for the 10 fixes from that story's review.
+- 2026-07-27: Implemented the `SceneInput` discriminated union and threaded it through `composePrompt`/`generate`/`generateScene`; built the structured-details Chat UI. `npm run verify` (15 files/102 tests) and `bun run test`/`bun run build` (9 files/42 tests) passed. Pushed to `weave/main`; CI deploy `30263529664` passed on the first attempt. Live verification confirmed structured-mode generation, the summarized "user" message, all-empty-field blocking, and usage logging all work correctly in production. Disposable test data cleaned up.
