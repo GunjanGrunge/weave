@@ -32,6 +32,10 @@ type GenerationState = { status: "idle" | "loading" } | { status: "error"; messa
 
 type InputMode = "free-text" | "structured";
 
+// Mirrors the server's per-field cap (functions/src/handlers/generateScene.ts)
+// so a paste can't trigger a server-side 400 the user has no way to see coming.
+const MAX_STRUCTURED_FIELD_LENGTH = 500;
+
 type StructuredFields = {
   sceneGoal: string;
   mood: string;
@@ -192,6 +196,12 @@ export function ChatPage({ bookId }: { bookId: string }) {
     void submitScene();
   }
 
+  function switchInputMode(mode: InputMode) {
+    setInputMode(mode);
+    setValidationError(null);
+    setGenerationState({ status: "idle" });
+  }
+
   if (loadState.status === "loading") {
     return (
       <div className="grid min-h-full place-items-center bg-background">
@@ -276,7 +286,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
       <div className="mt-4 flex gap-2">
         <button
           type="button"
-          onClick={() => setInputMode("free-text")}
+          onClick={() => switchInputMode("free-text")}
           aria-pressed={inputMode === "free-text"}
           disabled={isLoading}
           className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
@@ -289,7 +299,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
         </button>
         <button
           type="button"
-          onClick={() => setInputMode("structured")}
+          onClick={() => switchInputMode("structured")}
           aria-pressed={inputMode === "structured"}
           disabled={isLoading}
           className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
@@ -335,7 +345,8 @@ export function ChatPage({ bookId }: { bookId: string }) {
                   }
                   aria-label={label}
                   disabled={isLoading}
-                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm normal-case text-foreground outline-none focus:border-accent disabled:opacity-50"
+                  maxLength={MAX_STRUCTURED_FIELD_LENGTH}
+                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-accent disabled:opacity-50"
                 />
               </label>
             ))}

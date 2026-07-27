@@ -8,9 +8,15 @@ import type { AIProviderKeys } from "../services/gemini.js";
 import type { SceneInput, StructuredSceneFields } from "../types/sceneInput.js";
 
 const GENERATE_SCENE_TIMEOUT_MS = 55_000;
-// Shared cap for the free-text description and each individual structured
-// field — same budget rationale (prompt size/cost/latency) applies to both.
+// Cap for the free-text description — prompt size/cost/latency budget.
 const MAX_DESCRIPTION_LENGTH = 4_000;
+// Structured fields are short quick-fill phrases, not paragraphs — a much
+// smaller per-field cap than the free-text budget. With 4 fields this bounds
+// worst-case combined structured input to 2,000 chars, half of free-text's
+// 4,000, closing the gap where 4 fields at the old shared 4,000-char cap
+// could smuggle ~4x the prompt volume free-text allows (the exact class of
+// timeout risk Story 2.1's live verification found with an oversized prompt).
+const MAX_STRUCTURED_FIELD_LENGTH = 500;
 
 export type GenerateSceneSuccess = {
   sessionId: string;
@@ -45,7 +51,7 @@ function parseStructuredFields(rawFields: unknown): StructuredSceneFields | unde
     if (trimmed.length === 0) {
       continue;
     }
-    if (trimmed.length > MAX_DESCRIPTION_LENGTH) {
+    if (trimmed.length > MAX_STRUCTURED_FIELD_LENGTH) {
       return undefined;
     }
     fields[key] = trimmed;
@@ -91,7 +97,7 @@ function summarizeSceneInput(input: SceneInput): string {
   const labels: Record<keyof StructuredSceneFields, string> = {
     sceneGoal: "Scene goal",
     mood: "Mood",
-    povCharacter: "POV",
+    povCharacter: "POV/character",
     setting: "Setting",
   };
 

@@ -155,8 +155,16 @@ describe("runGenerate", () => {
     });
 
     const structuredInput = { mode: "structured" as const, fields: { mood: "tense" } };
-    await runGenerate("book-1", structuredInput, apiKeys);
+    const result = await runGenerate("book-1", structuredInput, apiKeys);
 
     expect(composePromptMock).toHaveBeenCalledWith("book-1", assembledContext, structuredInput);
+    expect(generateSceneMock).toHaveBeenCalledWith("book-1", "Composed prompt text.", apiKeys);
+    expect(result).toEqual({
+      status: "ok",
+      text: "Scene text.",
+      provider: "openai",
+      model: "gpt-5.6-terra",
+      sessionId: "session-auto-id",
+    });
   });
 });

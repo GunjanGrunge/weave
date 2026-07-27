@@ -204,7 +204,7 @@ describe("ChatPage", () => {
     );
   });
 
-  it("keeps structured field values on generation failure", async () => {
+  it("keeps all four structured field values on generation failure", async () => {
     authenticatedFetchMock
       .mockResolvedValueOnce(jsonResponse({ messages: [] }))
       .mockResolvedValueOnce(jsonResponse({ code: "generation-failed" }, 502));
@@ -213,13 +213,65 @@ describe("ChatPage", () => {
     await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /quick details/i }));
+    fireEvent.change(screen.getByLabelText("Scene goal"), { target: { value: "Escape the vault" } });
     fireEvent.change(screen.getByLabelText("Mood"), { target: { value: "tense" } });
+    fireEvent.change(screen.getByLabelText("POV/character"), { target: { value: "Mara" } });
+    fireEvent.change(screen.getByLabelText("Setting"), { target: { value: "Loading dock at 3am" } });
     fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
 
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument(),
     );
+    expect(screen.getByLabelText("Scene goal")).toHaveValue("Escape the vault");
     expect(screen.getByLabelText("Mood")).toHaveValue("tense");
+    expect(screen.getByLabelText("POV/character")).toHaveValue("Mara");
+    expect(screen.getByLabelText("Setting")).toHaveValue("Loading dock at 3am");
+  });
+
+  it("blocks structured submission when all fields are whitespace-only", async () => {
+    authenticatedFetchMock.mockResolvedValue(jsonResponse({ messages: [] }));
+
+    render(<ChatPage bookId="book-1" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /quick details/i }));
+    fireEvent.change(screen.getByLabelText("Mood"), { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/fill in at least one detail/i);
+    expect(authenticatedFetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves values in both modes when switching back and forth", async () => {
+    authenticatedFetchMock.mockResolvedValue(jsonResponse({ messages: [] }));
+
+    render(<ChatPage bookId="book-1" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/scene description/i), {
+      target: { value: "Mara breaks into the vault." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /quick details/i }));
+    fireEvent.change(screen.getByLabelText("Mood"), { target: { value: "tense" } });
+    fireEvent.click(screen.getByRole("button", { name: /describe it/i }));
+
+    expect(screen.getByLabelText(/scene description/i)).toHaveValue("Mara breaks into the vault.");
+
+    fireEvent.click(screen.getByRole("button", { name: /quick details/i }));
+    expect(screen.getByLabelText("Mood")).toHaveValue("tense");
+  });
+
+  it("clears a stale validation error when switching input mode", async () => {
+    authenticatedFetchMock.mockResolvedValue(jsonResponse({ messages: [] }));
+
+    render(<ChatPage bookId="book-1" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText("Send"));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /quick details/i }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("shows an error with Retry and keeps the typed description on failure", async () => {

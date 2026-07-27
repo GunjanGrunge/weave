@@ -253,7 +253,7 @@ describe("buildGenerateSceneResponse", () => {
       1,
       "book-1",
       "user",
-      "Scene goal: Escape the vault. Mood: tense. POV: Mara. Setting: Loading dock at 3am.",
+      "Scene goal: Escape the vault. Mood: tense. POV/character: Mara. Setting: Loading dock at 3am.",
     );
   });
 
@@ -290,6 +290,51 @@ describe("buildGenerateSceneResponse", () => {
     expect(result.statusCode).toBe(400);
     expect(getBookMock).not.toHaveBeenCalled();
     expect(runGenerateMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when a single structured field exceeds the per-field length cap", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+
+    const result = await buildGenerateSceneResponse(
+      "Bearer valid",
+      { bookId: "book-1", mode: "structured", fields: { mood: "x".repeat(501) } },
+      apiKeys,
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(runGenerateMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts four fields each at the per-field cap, bounding worst-case structured input well under the free-text budget", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    getBookMock.mockResolvedValue(book);
+    runGenerateMock.mockResolvedValue({
+      status: "ok",
+      text: "Scene text.",
+      provider: "openai",
+      model: "gpt-5.6-terra",
+      sessionId: "session-1",
+    });
+
+    const result = await buildGenerateSceneResponse(
+      "Bearer valid",
+      {
+        bookId: "book-1",
+        mode: "structured",
+        fields: {
+          sceneGoal: "x".repeat(500),
+          mood: "x".repeat(500),
+          povCharacter: "x".repeat(500),
+          setting: "x".repeat(500),
+        },
+      },
+      apiKeys,
+    );
+
+    expect(result.statusCode).toBe(200);
+    const [, sceneInput] = runGenerateMock.mock.calls[0] as [string, { mode: string; fields: Record<string, string> }];
+    const combinedLength = Object.values(sceneInput.fields).reduce((total, v) => total + v.length, 0);
+    expect(combinedLength).toBeLessThan(4_000);
   });
 
   it("returns a structured 502 error when the pipeline call times out", async () => {

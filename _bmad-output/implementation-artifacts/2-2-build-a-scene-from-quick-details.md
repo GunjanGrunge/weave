@@ -4,7 +4,7 @@ baseline_commit: "743c1a6"
 
 # Story 2.2: Build a Scene From Quick Details
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -56,6 +56,16 @@ so that I can write even when I can't articulate the scene as a paragraph.
   - [x] `bun run test` (9 files / 42 tests) and `bun run build` passed at repo root.
   - [x] Push to `main` (`weave` remote) and confirm CI/CD deploy passes.
   - [x] Live-verify with one writer account and clean up disposable data.
+
+### Review Findings
+
+- [x] [Review][Patch] Structured fields lack a sane length budget — each of 4 fields independently allowed 4,000 chars (up to ~16k total vs free-text's 4,000 cap), risking the same timeout class Story 2.1's live verification already hit; no client-side `maxLength` either, so a long paste could trigger a server 400 the user had no way to anticipate. Fixed: introduced a 500-char `MAX_STRUCTURED_FIELD_LENGTH` per field (bounding worst-case combined structured input to 2,000 chars, half of free-text's budget) plus a matching client-side `maxLength`; an initial combined-length check was added then removed as dead code once the per-field cap alone made it mathematically unreachable (500 × 4 = 2,000 ≤ 4,000, always) [functions/src/handlers/generateScene.ts; src/routes/books.$bookId.chat.tsx structured inputs]
+- [x] [Review][Patch] POV label mismatch between the client's optimistic summary ("POV/character") and the server-persisted summary ("POV") — the chat bubble's label silently changes on reload [src/routes/books.$bookId.chat.tsx:45; functions/src/handlers/generateScene.ts:94]
+- [x] [Review][Patch] Switching input mode doesn't clear a stale `validationError`/`generationState` error banner from the previous mode [src/routes/books.$bookId.chat.tsx mode-toggle buttons]
+- [x] [Review][Patch] Test coverage gaps: failure-preservation test only asserts one of four structured fields survives; `generate.test.ts`'s structured pass-through test doesn't assert the return value like its sibling tests; no whitespace-only structured-field test; no cross-mode content-retention test
+- [x] [Review][Patch] Vestigial `normal-case` class on structured `<input>` elements — copy-paste residue from a component with an uppercase-transformed label; the wrapping `<label>` here has no such transform, so the class is a no-op [src/routes/books.$bookId.chat.tsx structured inputs]
+- [x] [Review][Defer] Structured field values aren't newline-sanitized before being embedded as `Label: value` prompt lines, letting a value like `"tense\nSetting: ..."` fabricate an extra prompt line — deferred, same injection class the free-text mode already fully permits (arbitrary unsanitized text into the prompt); no downstream code trusts the `Label:` boundary as structured/authoritative [functions/src/pipelines/composePrompt.ts:63-83]
+- [x] [Review][Defer] `composePrompt`/`runGenerate` would accept a structured `SceneInput` with an empty `fields` object if called directly, bypassing the handler's non-empty-field validation — deferred, unreachable today (only the handler constructs `SceneInput`, and it always validates first); defense-in-depth for a hypothetical future direct caller [functions/src/pipelines/composePrompt.ts; functions/src/pipelines/generate.ts]
 
 ## Dev Notes
 
@@ -159,3 +169,4 @@ Claude Sonnet 5
 
 - 2026-07-27: Created Story 2.2 context from Epic 2 backlog, building directly on Story 2.1's post-code-review file state (composePrompt/generate/generateScene/books.$bookId.chat.tsx), with explicit preservation notes for the 10 fixes from that story's review.
 - 2026-07-27: Implemented the `SceneInput` discriminated union and threaded it through `composePrompt`/`generate`/`generateScene`; built the structured-details Chat UI. `npm run verify` (15 files/102 tests) and `bun run test`/`bun run build` (9 files/42 tests) passed. Pushed to `weave/main`; CI deploy `30263529664` passed on the first attempt. Live verification confirmed structured-mode generation, the summarized "user" message, all-empty-field blocking, and usage logging all work correctly in production. Disposable test data cleaned up.
+- 2026-07-27: Code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) found 5 patch-worthy issues, all fixed: (1) a shared 4,000-char cap on 4 structured fields could smuggle ~4x the free-text prompt budget — reduced to a 500-char per-field cap (bounding worst-case combined input to 2,000 chars) with a matching client-side `maxLength`; (2) the client's optimistic "POV/character" label and the server's persisted "POV" label disagreed, causing the chat bubble to silently reword on reload — aligned to "POV/character" everywhere; (3) switching input mode left a stale error banner visible — added a `switchInputMode` helper that clears `validationError`/`generationState`; (4) removed a vestigial no-op `normal-case` class; (5) strengthened test coverage (all 4 fields asserted on failure-preservation, `generate.test.ts`'s structured test now asserts the full return value, added whitespace-only and cross-mode-retention tests). One implementation bug was caught and fixed during the patch pass itself: an initial combined-length check was mathematically unreachable given the new 500-char per-field cap (500×4=2,000 can never exceed 4,000) and was removed as dead code. 2 findings deferred (pre-existing injection-surface class shared with free-text mode; an unreachable defense-in-depth gap) — see Deferred from: code review of 2-2 in `deferred-work.md`. Verification after fixes: `npm run verify` (15 files/104 tests) and `bun run test`/`bun run build` (9 files/45 tests) passed.
