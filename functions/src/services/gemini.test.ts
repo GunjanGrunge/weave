@@ -2,12 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import type { VisionDocument } from "../types/vision.js";
 
-const { fetchMock, generateContentMock, usageWrites, serverTimestampMock } = vi.hoisted(() => ({
-  fetchMock: vi.fn(),
-  generateContentMock: vi.fn(),
-  usageWrites: [] as unknown[],
-  serverTimestampMock: vi.fn(() => "server-time"),
-}));
+const { fetchMock, generateContentMock, usageWrites, usageDocIds, serverTimestampMock } = vi.hoisted(
+  () => ({
+    fetchMock: vi.fn(),
+    generateContentMock: vi.fn(),
+    usageWrites: [] as unknown[],
+    usageDocIds: [] as Array<string | undefined>,
+    serverTimestampMock: vi.fn(() => "server-time"),
+  }),
+);
 
 let registryData: unknown;
 
@@ -40,8 +43,9 @@ vi.mock("firebase-admin/firestore", () => ({
         return {
           doc: () => ({
             collection: () => ({
-              doc: () => ({
+              doc: (id?: string) => ({
                 set: async (data: unknown) => {
+                  usageDocIds.push(id);
                   usageWrites.push(data);
                 },
               }),
@@ -55,6 +59,10 @@ vi.mock("firebase-admin/firestore", () => ({
 }));
 
 const validRegistry = {
+  generate: {
+    primary: { provider: "openai", model: "gpt-5.6-sol" },
+    fallback: { provider: "gemini", model: "gemini-2.5-pro" },
+  },
   openingSuggestion: {
     primary: { provider: "openai", model: "gpt-5.6-terra" },
     fallback: { provider: "gemini", model: "gemini-2.5-pro" },
@@ -101,6 +109,7 @@ describe("generateOpeningSuggestions", () => {
     vi.stubGlobal("fetch", fetchMock);
     generateContentMock.mockReset();
     usageWrites.length = 0;
+    usageDocIds.length = 0;
     registryData = validRegistry;
   });
 
@@ -205,5 +214,103 @@ describe("generateOpeningSuggestions", () => {
       }),
     ).rejects.toBeInstanceOf(GeminiError);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+function openAITextResponseFor(text: string, inputTokens = 10, outputTokens = 20) {
+  return {
+    ok: true,
+    json: async () => ({
+      output_text: text,
+      usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+    }),
+  };
+}
+
+function geminiTextResponseFor(text: string, promptTokenCount = 5, candidatesTokenCount = 8) {
+  return { text, usageMetadata: { promptTokenCount, candidatesTokenCount } };
+}
+
+describe("generateScene", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    generateContentMock.mockReset();
+    usageWrites.length = 0;
+    usageDocIds.length = 0;
+    registryData = validRegistry;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("calls the registry's generate primary (OpenAI) and returns plain prose text", async () => {
+    const { generateScene } = await import("./gemini.js");
+    fetchMock.mockResolvedValue(openAITextResponseFor("The vault door groaned open."));
+
+    const result = await generateScene("book-1", "Write a heist scene.", {
+      openai: "fake-openai-key",
+      gemini: "fake-gemini-key",
+    });
+
+    expect(result).toEqual({
+      text: "The vault door groaned open.",
+      provider: "openai",
+      model: "gpt-5.6-sol",
+    });
+    expect(generateContentMock).not.toHaveBeenCalled();
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(request.body as string)).toMatchObject({ model: "gpt-5.6-sol" });
+  });
+
+  it("falls back to Gemini when the OpenAI primary call fails", async () => {
+    const { generateScene } = await import("./gemini.js");
+    fetchMock.mockResolvedValue({ ok: false, status: 500 });
+    generateContentMock.mockResolvedValue(geminiTextResponseFor("Fallback scene text."));
+
+    const result = await generateScene("book-1", "Write a heist scene.", {
+      openai: "fake-openai-key",
+      gemini: "fake-gemini-key",
+    });
+
+    expect(result).toEqual({ text: "Fallback scene text.", provider: "gemini", model: "gemini-2.5-pro" });
+  });
+
+  it("throws GeminiError when both primary and fallback fail", async () => {
+    const { generateScene, GeminiError } = await import("./gemini.js");
+    fetchMock.mockResolvedValue({ ok: false, status: 500 });
+    generateContentMock.mockRejectedValue(new Error("down"));
+
+    await expect(
+      generateScene("book-1", "Write a heist scene.", {
+        openai: "fake-openai-key",
+        gemini: "fake-gemini-key",
+      }),
+    ).rejects.toBeInstanceOf(GeminiError);
+    expect(usageWrites).toHaveLength(0);
+  });
+
+  it("records a per-call usage entry using an auto-generated doc id, not the fixed openingSuggestion-style id", async () => {
+    const { generateScene } = await import("./gemini.js");
+    fetchMock.mockResolvedValue(openAITextResponseFor("Scene one."));
+
+    await generateScene("book-1", "Write scene one.", {
+      openai: "fake-openai-key",
+      gemini: "fake-gemini-key",
+    });
+    fetchMock.mockResolvedValue(openAITextResponseFor("Scene two."));
+    await generateScene("book-1", "Write scene two.", {
+      openai: "fake-openai-key",
+      gemini: "fake-gemini-key",
+    });
+
+    expect(usageWrites).toHaveLength(2);
+    expect(usageDocIds).toEqual([undefined, undefined]);
+    expect(usageWrites).toEqual([
+      expect.objectContaining({ task: "generate", provider: "openai", model: "gpt-5.6-sol" }),
+      expect.objectContaining({ task: "generate", provider: "openai", model: "gpt-5.6-sol" }),
+    ]);
   });
 });

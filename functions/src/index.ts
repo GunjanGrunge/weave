@@ -4,3 +4,5 @@ export { createBook } from "./handlers/createBook.js";
 export { retryOpeningSuggestion } from "./handlers/retryOpeningSuggestion.js";
 export { getVision } from "./handlers/getVision.js";
 export { updateVision } from "./handlers/updateVision.js";
+export { getMessages } from "./handlers/getMessages.js";
+export { generateScene } from "./handlers/generateScene.js";

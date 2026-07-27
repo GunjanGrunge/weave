@@ -49,6 +49,20 @@
         }
       },
       {
+        "source": "/getMessages",
+        "function": {
+          "functionId": "getMessages",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/generateScene",
+        "function": {
+          "functionId": "generateScene",
+          "region": "us-central1"
+        }
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

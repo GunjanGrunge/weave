@@ -9,8 +9,19 @@ const { setCalls, updateCalls, commitMock, serverTimestampMock } = vi.hoisted(()
   serverTimestampMock: vi.fn(() => "server-time"),
 }));
 
+type StoredDoc = { id?: string; order: number } & Record<string, unknown>;
+
 let docStore: Record<string, unknown> = {};
-let messagesStore: Record<string, Array<{ order: number }>> = {};
+let messagesStore: Record<string, StoredDoc[]> = {};
+let chaptersStore: Record<string, StoredDoc[]> = {};
+let scenesStore: Record<string, StoredDoc[]> = {};
+
+function collectionData(path: string): StoredDoc[] {
+  if (path.endsWith("/messages")) return messagesStore[path] ?? [];
+  if (path.endsWith("/chapters")) return chaptersStore[path] ?? [];
+  if (path.endsWith("/scenes")) return scenesStore[path] ?? [];
+  return [];
+}
 
 function makeDoc(path: string) {
   return {
@@ -33,16 +44,23 @@ function makeDoc(path: string) {
 }
 
 function makeCollection(path: string) {
+  const sortedDocs = (direction: "asc" | "desc") => {
+    const list = collectionData(path);
+    return [...list].sort((a, b) => (direction === "desc" ? b.order - a.order : a.order - b.order));
+  };
+
   return {
     doc: (id?: string) => makeDoc(`${path}/${id ?? "book-auto-id"}`),
-    orderBy: (_field: string, direction: "asc" | "desc") => ({
+    orderBy: (_field: string, direction: "asc" | "desc" = "asc") => ({
+      get: async () => {
+        const docs = sortedDocs(direction).map((item) => ({ id: item.id, data: () => item }));
+        return { empty: docs.length === 0, docs };
+      },
       limit: (n: number) => ({
         get: async () => {
-          const list = messagesStore[path] ?? [];
-          const sorted = [...list].sort((a, b) =>
-            direction === "desc" ? b.order - a.order : a.order - b.order,
-          );
-          const docs = sorted.slice(0, n).map((item) => ({ data: () => item }));
+          const docs = sortedDocs(direction)
+            .slice(0, n)
+            .map((item) => ({ id: item.id, data: () => item }));
           return { empty: docs.length === 0, docs };
         },
       }),
@@ -67,8 +85,11 @@ vi.mock("firebase-admin/firestore", () => ({
 }));
 
 import {
+  appendChatMessage,
   createBookWithIntake,
+  getActiveChapterScenes,
   getBook,
+  getMessages,
   getVisionDocument,
   updateVisionDocument,
   upsertOpeningSuggestionMessage,
@@ -311,5 +332,88 @@ describe("upsertOpeningSuggestionMessage", () => {
       text: "New suggestion",
       order: 8,
     });
+  });
+});
+
+describe("getMessages", () => {
+  beforeEach(() => {
+    messagesStore = {};
+  });
+
+  it("returns messages ordered ascending by order", async () => {
+    messagesStore["books/book-1/messages"] = [
+      { order: 2, type: "user", text: "third" },
+      { order: 0, type: "system", text: "first" },
+      { order: 1, type: "user", text: "second" },
+    ];
+
+    const messages = await getMessages("book-1");
+
+    expect(messages.map((message) => message.text)).toEqual(["first", "second", "third"]);
+  });
+
+  it("returns an empty array when there are no messages", async () => {
+    const messages = await getMessages("empty-book");
+
+    expect(messages).toEqual([]);
+  });
+});
+
+describe("appendChatMessage", () => {
+  beforeEach(() => {
+    setCalls.length = 0;
+    messagesStore = {};
+  });
+
+  it("appends a message at the next order after the last message", async () => {
+    messagesStore["books/book-1/messages"] = [{ order: 0 }, { order: 1 }];
+
+    const message = await appendChatMessage("book-1", "assistant_scene", "A generated scene.");
+
+    expect(message).toMatchObject({ type: "assistant_scene", text: "A generated scene.", order: 2 });
+    const write = setCalls.find((call) => call.path === "books/book-1/messages/book-auto-id");
+    expect(write?.data).toMatchObject({ type: "assistant_scene", order: 2 });
+  });
+
+  it("starts at order 0 when there are no existing messages", async () => {
+    const message = await appendChatMessage("empty-book", "assistant_scene", "First scene.");
+
+    expect(message.order).toBe(0);
+  });
+});
+
+describe("getActiveChapterScenes", () => {
+  beforeEach(() => {
+    chaptersStore = {};
+    scenesStore = {};
+  });
+
+  it("returns scenes from the lowest-order chapter, ordered ascending", async () => {
+    chaptersStore["books/book-1/chapters"] = [{ id: "chapter-1", order: 0 }];
+    scenesStore["books/book-1/chapters/chapter-1/scenes"] = [
+      { order: 1, text: "second scene", modelUsed: "gpt-5.6-sol", provider: "openai" },
+      { order: 0, text: "first scene", modelUsed: "gpt-5.6-sol", provider: "openai" },
+    ];
+
+    const result = await getActiveChapterScenes("book-1");
+
+    expect(result.chapterId).toBe("chapter-1");
+    expect(result.scenes.map((scene) => scene.text)).toEqual(["first scene", "second scene"]);
+  });
+
+  it("returns an empty scenes array when the active chapter has no scenes yet", async () => {
+    chaptersStore["books/book-1/chapters"] = [{ id: "chapter-1", order: 0 }];
+
+    const result = await getActiveChapterScenes("book-1");
+
+    expect(result.chapterId).toBe("chapter-1");
+    expect(result.scenes).toEqual([]);
+  });
+
+  it("returns no chapterId when the book has no chapters", async () => {
+    const result = await getActiveChapterScenes("book-without-chapters");
+
+    expect(result.chapterId).toBeUndefined();
+    expect(result.scenes).toEqual([]);
   });
 });

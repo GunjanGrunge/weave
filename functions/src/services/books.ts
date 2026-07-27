@@ -4,7 +4,8 @@ import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { DEFAULT_STYLE_PRESET_ID, STYLE_PRESETS } from "../config/stylePresets.js";
 import type { Book, Style } from "../types/book.js";
 import type { Chapter } from "../types/chapter.js";
-import type { ChatMessage } from "../types/chatMessage.js";
+import type { ChatMessage, ChatMessageType } from "../types/chatMessage.js";
+import type { Scene } from "../types/scene.js";
 import type { VisionDocument } from "../types/vision.js";
 
 export type PremiseAnswers = {
@@ -201,4 +202,67 @@ export async function upsertOpeningSuggestionMessage(bookId: string, text: strin
   };
 
   await messageRef.set(message);
+}
+
+export async function getMessages(bookId: string): Promise<ChatMessage[]> {
+  const snapshot = await firestore()
+    .collection("books")
+    .doc(bookId)
+    .collection("messages")
+    .orderBy("order", "asc")
+    .get();
+
+  return snapshot.docs.map((doc) => doc.data() as ChatMessage);
+}
+
+export async function appendChatMessage(
+  bookId: string,
+  type: ChatMessageType,
+  text: string,
+): Promise<ChatMessage> {
+  const messages = firestore().collection("books").doc(bookId).collection("messages");
+  const lastMessage = await messages.orderBy("order", "desc").limit(1).get();
+  const nextOrder = lastMessage.empty ? 0 : (lastMessage.docs[0]?.data().order as number) + 1;
+
+  const message: ChatMessage = {
+    type,
+    text,
+    order: nextOrder,
+    createdAt: FieldValue.serverTimestamp(),
+  };
+
+  await messages.doc().set(message);
+  return message;
+}
+
+async function getActiveChapterId(bookId: string): Promise<string | undefined> {
+  const snapshot = await firestore()
+    .collection("books")
+    .doc(bookId)
+    .collection("chapters")
+    .orderBy("order", "asc")
+    .limit(1)
+    .get();
+
+  return snapshot.empty ? undefined : snapshot.docs[0]?.id;
+}
+
+export async function getActiveChapterScenes(
+  bookId: string,
+): Promise<{ chapterId: string | undefined; scenes: Scene[] }> {
+  const chapterId = await getActiveChapterId(bookId);
+  if (!chapterId) {
+    return { chapterId: undefined, scenes: [] };
+  }
+
+  const snapshot = await firestore()
+    .collection("books")
+    .doc(bookId)
+    .collection("chapters")
+    .doc(chapterId)
+    .collection("scenes")
+    .orderBy("order", "asc")
+    .get();
+
+  return { chapterId, scenes: snapshot.docs.map((doc) => doc.data() as Scene) };
 }

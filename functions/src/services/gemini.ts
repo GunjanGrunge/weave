@@ -113,8 +113,8 @@ function parseOpenings(responseText: string | undefined, provider = "AI"): Openi
   return valid.slice(0, 3);
 }
 
-type ModelCallResult = {
-  openings: OpeningSuggestion[];
+type RawModelCallResult = {
+  text: string | undefined;
   provider: "openai" | "gemini";
   model: string;
   inputTokens: number;
@@ -147,11 +147,12 @@ function extractOpenAIText(response: unknown): string | undefined {
   return undefined;
 }
 
-async function callOpenAIModel(
+async function callOpenAIRaw(
   apiKey: string,
   model: string,
   prompt: string,
-): Promise<ModelCallResult> {
+  schema?: { name: string; schema: object },
+): Promise<RawModelCallResult> {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -161,14 +162,13 @@ async function callOpenAIModel(
     body: JSON.stringify({
       model,
       input: prompt,
-      text: {
-        format: {
-          type: "json_schema",
-          name: "opening_suggestions",
-          schema: OPENING_SUGGESTION_SCHEMA,
-          strict: true,
-        },
-      },
+      ...(schema
+        ? {
+            text: {
+              format: { type: "json_schema", name: schema.name, schema: schema.schema, strict: true },
+            },
+          }
+        : {}),
     }),
   });
 
@@ -181,7 +181,7 @@ async function callOpenAIModel(
   };
 
   return {
-    openings: parseOpenings(extractOpenAIText(body), "OpenAI"),
+    text: extractOpenAIText(body),
     provider: "openai",
     model,
     inputTokens: body.usage?.input_tokens ?? 0,
@@ -189,26 +189,25 @@ async function callOpenAIModel(
   };
 }
 
-async function callGeminiModel(
+async function callGeminiRaw(
   apiKey: string,
   model: string,
   prompt: string,
-): Promise<ModelCallResult> {
+  schema?: object,
+): Promise<RawModelCallResult> {
   const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
     model,
     contents: prompt,
-    config: {
-      responseSchema: OPENING_SUGGESTION_SCHEMA,
-      responseMimeType: "application/json",
-    },
+    ...(schema
+      ? { config: { responseSchema: schema, responseMimeType: "application/json" } }
+      : {}),
   });
 
-  const openings = parseOpenings(response.text, "Gemini");
   const usage = response.usageMetadata;
 
   return {
-    openings,
+    text: response.text,
     provider: "gemini",
     model,
     inputTokens: usage?.promptTokenCount ?? 0,
@@ -216,6 +215,13 @@ async function callGeminiModel(
   };
 }
 
+/**
+ * Per-task usage doc id: `openingSuggestion` uses a fixed id so a bounded
+ * retry (Story 1.4) can overwrite the same doc instead of double-logging a
+ * retried call. `generate` fires once per scene request, so it must use an
+ * auto-generated id — reusing the fixed-id scheme here would silently
+ * overwrite every prior scene's usage entry with the latest one.
+ */
 async function recordUsage(
   bookId: string,
   task: string,
@@ -223,8 +229,11 @@ async function recordUsage(
   model: string,
   inputTokens: number,
   outputTokens: number,
+  docId?: string,
 ): Promise<void> {
-  await firestore().collection("books").doc(bookId).collection("usage").doc(task).set({
+  const usage = firestore().collection("books").doc(bookId).collection("usage");
+  const ref = docId ? usage.doc(docId) : usage.doc();
+  await ref.set({
     task,
     provider,
     model,
@@ -234,15 +243,42 @@ async function recordUsage(
   });
 }
 
-async function callConfiguredModel(
+async function callConfiguredModelRaw(
   modelConfig: TextModelConfig["primary"],
   keys: AIProviderKeys,
   prompt: string,
-): Promise<ModelCallResult> {
+  schema?: { name: string; schema: object },
+): Promise<RawModelCallResult> {
   if (modelConfig.provider === "openai") {
-    return callOpenAIModel(keys.openai, modelConfig.model, prompt);
+    return callOpenAIRaw(keys.openai, modelConfig.model, prompt, schema);
   }
-  return callGeminiModel(keys.gemini, modelConfig.model, prompt);
+  return callGeminiRaw(keys.gemini, modelConfig.model, prompt, schema?.schema);
+}
+
+async function callWithFallback(
+  modelConfig: TextModelConfig,
+  keys: AIProviderKeys,
+  prompt: string,
+  schema?: { name: string; schema: object },
+): Promise<RawModelCallResult> {
+  try {
+    return await callConfiguredModelRaw(modelConfig.primary, keys, prompt, schema);
+  } catch (primaryError) {
+    if (!modelConfig.fallback) {
+      if (primaryError instanceof GeminiError) {
+        throw primaryError;
+      }
+      throw new GeminiError("Primary AI call failed and no fallback is configured.");
+    }
+    try {
+      return await callConfiguredModelRaw(modelConfig.fallback, keys, prompt, schema);
+    } catch (fallbackError) {
+      if (fallbackError instanceof GeminiError) {
+        throw fallbackError;
+      }
+      throw new GeminiError("Both the primary and fallback AI calls failed.");
+    }
+  }
 }
 
 export async function generateOpeningSuggestions(
@@ -252,27 +288,13 @@ export async function generateOpeningSuggestions(
 ): Promise<{ openings: OpeningSuggestion[] }> {
   const registry = await readModelRegistry();
   const prompt = buildOpeningSuggestionPrompt(vision);
-  const modelConfig = registry.openingSuggestion;
 
-  let result: ModelCallResult;
-  try {
-    result = await callConfiguredModel(modelConfig.primary, apiKeys, prompt);
-  } catch (primaryError) {
-    if (!modelConfig.fallback) {
-      if (primaryError instanceof GeminiError) {
-        throw primaryError;
-      }
-      throw new GeminiError("Primary AI call failed and no fallback is configured.");
-    }
-    try {
-      result = await callConfiguredModel(modelConfig.fallback, apiKeys, prompt);
-    } catch (fallbackError) {
-      if (fallbackError instanceof GeminiError) {
-        throw fallbackError;
-      }
-      throw new GeminiError("Both the primary and fallback AI calls failed.");
-    }
-  }
+  const result = await callWithFallback(registry.openingSuggestion, apiKeys, prompt, {
+    name: "opening_suggestions",
+    schema: OPENING_SUGGESTION_SCHEMA,
+  });
+
+  const openings = parseOpenings(result.text, result.provider === "openai" ? "OpenAI" : "Gemini");
 
   await recordUsage(
     bookId,
@@ -281,7 +303,27 @@ export async function generateOpeningSuggestions(
     result.model,
     result.inputTokens,
     result.outputTokens,
+    "openingSuggestion",
   );
 
-  return { openings: result.openings };
+  return { openings };
+}
+
+export async function generateScene(
+  bookId: string,
+  prompt: string,
+  apiKeys: AIProviderKeys,
+): Promise<{ text: string; provider: "openai" | "gemini"; model: string }> {
+  const registry = await readModelRegistry();
+  const result = await callWithFallback(registry.generate, apiKeys, prompt);
+
+  if (!result.text) {
+    throw new GeminiError(
+      `${result.provider === "openai" ? "OpenAI" : "Gemini"} response had no text content.`,
+    );
+  }
+
+  await recordUsage(bookId, "generate", result.provider, result.model, result.inputTokens, result.outputTokens);
+
+  return { text: result.text, provider: result.provider, model: result.model };
 }
