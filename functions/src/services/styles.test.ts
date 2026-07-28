@@ -143,6 +143,7 @@ describe("style catalog and normalization", () => {
       "two",
     ],
     [{ presetIds: [], customInstruction: "x".repeat(1_001) }, "1,000"],
+    [{ presetIds: [], customInstruction: " ".repeat(1_001) }, "1,000"],
   ])("rejects invalid client style %#", (value, message) => {
     expect(() => parseStyleInput(value)).toThrowError(new RegExp(message, "i"));
   });

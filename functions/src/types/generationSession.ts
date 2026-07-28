@@ -6,13 +6,27 @@ export type SceneAttempt = {
   model: string;
 };
 
+export type CandidateResult = {
+  sessionId: string;
+  messageId: string;
+  text: string;
+  revision: number;
+  candidateStatus: "active" | "accepted";
+  provider: "openai" | "gemini";
+  model: string;
+  previousAttempt?: SceneAttempt;
+  acceptedSceneId?: string;
+  acceptedSceneOrder?: number;
+};
+
 export type GenerationOperation = {
   idempotencyKey: string;
   attemptToken: string;
   leaseExpiresAt: number;
   expectedRevision: number;
   manuscriptRevision: number;
-  status: "in-progress" | "completed";
+  status: "in-progress" | "completed" | "failed";
+  result?: CandidateResult;
 };
 
 export type GenerationSession = {

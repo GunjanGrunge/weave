@@ -5,7 +5,7 @@ export type ChatMessage = {
   type: ChatMessageType;
   text: string;
   order: number;
-  createdAt: unknown;
+  createdAt?: unknown;
   sessionId?: string;
   revision?: number;
   status?: "active" | "accepted";

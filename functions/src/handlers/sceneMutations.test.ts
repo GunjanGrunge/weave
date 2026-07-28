@@ -7,6 +7,7 @@ const {
   revertMock,
   acceptMock,
   regenerateMock,
+  fenceRegenerationMock,
 } = vi.hoisted(() => ({
   verifyIdTokenMock: vi.fn(),
   getBookMock: vi.fn(),
@@ -14,6 +15,7 @@ const {
   revertMock: vi.fn(),
   acceptMock: vi.fn(),
   regenerateMock: vi.fn(),
+  fenceRegenerationMock: vi.fn(),
 }));
 
 vi.mock("../services/auth.js", async () => {
@@ -32,6 +34,7 @@ vi.mock("../services/scenes.js", async () => {
     saveGeneratedCandidate: saveMock,
     revertGeneratedCandidate: revertMock,
     acceptGeneratedCandidate: acceptMock,
+    fenceTimedOutRegeneration: fenceRegenerationMock,
   };
 });
 vi.mock("../pipelines/generate.js", () => ({ runRegenerate: regenerateMock }));
@@ -58,6 +61,7 @@ describe("scene mutation handlers", () => {
     vi.clearAllMocks();
     verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
     getBookMock.mockResolvedValue({ uid: "user-a" });
+    fenceRegenerationMock.mockResolvedValue({ status: "fenced" });
   });
 
   it("autosaves server canonical text and revision", async () => {
@@ -151,6 +155,25 @@ describe("scene mutation handlers", () => {
       statusCode: 502,
       body: { code: "generation-failed" },
     });
+  });
+
+  it("fences a timed-out regeneration before returning failure", async () => {
+    regenerateMock.mockReturnValue(new Promise(() => undefined));
+    const body = { ...base, idempotencyKey: "regen-123" };
+
+    await expect(
+      buildRegenerateSceneResponse(
+        "Bearer token",
+        body,
+        { openai: "key", gemini: "key" },
+        1,
+      ),
+    ).resolves.toMatchObject({ statusCode: 502 });
+    expect(fenceRegenerationMock).toHaveBeenCalledWith(
+      "book-1",
+      "session-1",
+      "regen-123",
+    );
   });
 
   it("enforces ownership before any mutation service runs", async () => {

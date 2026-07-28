@@ -350,6 +350,31 @@ describe("NewBook intake chat", () => {
     expect(screen.getByText("What do you want to write?")).toBeInTheDocument();
   });
 
+  it("preserves an overlong restored style instruction and blocks creation", async () => {
+    const overlong = "x".repeat(1_001);
+    localStorage.setItem(
+      "story:intake:user-a",
+      JSON.stringify({
+        version: 1,
+        answers: {},
+        messages: [{ type: "system", text: "Choose a starting style." }],
+        questionIndex: 3,
+        reply: "",
+        selectedPresets: [],
+        customInstruction: overlong,
+        idempotencyKey: "legacy-key",
+      }),
+    );
+
+    render(<NewBook />);
+
+    const instruction = await screen.findByLabelText(/custom style instruction/i);
+    expect(instruction).toHaveValue(overlong);
+    expect(screen.getByRole("alert")).toHaveTextContent(/up to 1,000 characters/i);
+    expect(screen.getByRole("button", { name: /create book/i })).toBeDisabled();
+    expect(authenticatedFetchMock).not.toHaveBeenCalled();
+  });
+
   it("preserves the draft when createBook returns an invalid success payload", async () => {
     authenticatedFetchMock.mockResolvedValue(
       new Response(JSON.stringify({ bookId: "", openingSuggestion: "ok", openings: [] }), {

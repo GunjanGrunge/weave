@@ -487,4 +487,76 @@ describe("ChatPage", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument());
     expect(screen.getByLabelText(/scene description/i)).toHaveValue("Mara breaks into the vault.");
   });
+
+  it("uses a new idempotency key when the input changes after an ambiguous failure", async () => {
+    authenticatedFetchMock
+      .mockResolvedValueOnce(jsonResponse({ messages: [] }))
+      .mockResolvedValueOnce(jsonResponse({ code: "generation-failed" }, 502))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          sessionId: "session-2",
+          text: "A different scene.",
+          provider: "openai",
+          model: "gpt-test",
+        }),
+      );
+    render(<ChatPage bookId="book-1" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/scene description/i), {
+      target: { value: "First request." },
+    });
+    fireEvent.click(screen.getByLabelText("Send"));
+    await screen.findByRole("button", { name: /retry/i });
+    const firstBody = JSON.parse(authenticatedFetchMock.mock.calls[1][1].body);
+
+    fireEvent.change(screen.getByLabelText(/scene description/i), {
+      target: { value: "Changed request." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    await screen.findByText("A different scene.");
+    const secondBody = JSON.parse(authenticatedFetchMock.mock.calls[2][1].body);
+
+    expect(secondBody.idempotencyKey).not.toBe(firstBody.idempotencyKey);
+  });
+
+  it("ignores an old generation response after navigating A to B to A", async () => {
+    let resolveOldGeneration!: (value: Response) => void;
+    authenticatedFetchMock.mockImplementation((url: string) => {
+      if (url === "/getMessages") {
+        return Promise.resolve(jsonResponse({ messages: [] }));
+      }
+      return new Promise<Response>((resolve) => {
+        resolveOldGeneration = resolve;
+      });
+    });
+    const { rerender } = render(<ChatPage bookId="book-a" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/scene description/i), {
+      target: { value: "Old request." },
+    });
+    fireEvent.click(screen.getByLabelText("Send"));
+
+    rerender(<ChatPage bookId="book-b" />);
+    await waitFor(() =>
+      expect(authenticatedFetchMock).toHaveBeenCalledWith(
+        "/getMessages",
+        expect.objectContaining({ body: JSON.stringify({ bookId: "book-b" }) }),
+      ),
+    );
+    rerender(<ChatPage bookId="book-a" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+
+    resolveOldGeneration(
+      jsonResponse({
+        sessionId: "old-session",
+        text: "Stale generated prose.",
+        provider: "openai",
+        model: "gpt-test",
+      }),
+    );
+    await Promise.resolve();
+
+    expect(screen.queryByText("Stale generated prose.")).not.toBeInTheDocument();
+  });
 });

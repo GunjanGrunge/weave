@@ -125,7 +125,9 @@ export function parseStyleConfigResponse(value: unknown): StyleConfigResponse | 
     return config;
   }
   const state = parseBookStyleState(envelope, true);
-  return state ? { ...config, ...state } : undefined;
+  return state && state.style.presetIds.every((id) => ids.has(id))
+    ? { ...config, ...state }
+    : undefined;
 }
 
 export function styleCatalogQueryKey(uid: string | undefined) {

@@ -8,6 +8,8 @@ const {
   persistGeneratedCandidateMock,
   claimRegenerationMock,
   commitRegenerationMock,
+  failInitialGenerationMock,
+  failRegenerationMock,
   getBookMock,
 } = vi.hoisted(() => ({
   assembleContextMock: vi.fn(),
@@ -17,6 +19,8 @@ const {
   persistGeneratedCandidateMock: vi.fn(),
   claimRegenerationMock: vi.fn(),
   commitRegenerationMock: vi.fn(),
+  failInitialGenerationMock: vi.fn(),
+  failRegenerationMock: vi.fn(),
   getBookMock: vi.fn(),
 }));
 
@@ -29,6 +33,8 @@ vi.mock("../services/scenes.js", () => ({
   persistGeneratedCandidate: persistGeneratedCandidateMock,
   claimRegeneration: claimRegenerationMock,
   commitRegeneration: commitRegenerationMock,
+  failInitialGeneration: failInitialGenerationMock,
+  failRegeneration: failRegenerationMock,
 }));
 
 import { runGenerate, runRegenerate } from "./generate.js";
@@ -121,6 +127,23 @@ describe("generation pipelines", () => {
     });
   });
 
+  it("releases an initial claim immediately when the provider fails", async () => {
+    generateSceneMock.mockRejectedValue(new Error("provider down"));
+
+    await expect(
+      runGenerate("book-1", { mode: "free-text", description: "x" }, keys, {
+        idempotencyKey: "request-123",
+        userMessage: "x",
+      }),
+    ).resolves.toEqual({ status: "failed" });
+
+    expect(failInitialGenerationMock).toHaveBeenCalledWith(
+      "book-1",
+      "request-123",
+      "token-1",
+    );
+  });
+
   it("reuses cached retrieval at the same manuscript revision while composing live", async () => {
     claimRegenerationMock.mockResolvedValue({
       status: "claimed",
@@ -191,5 +214,10 @@ describe("generation pipelines", () => {
       status: "failed",
     });
     expect(commitRegenerationMock).not.toHaveBeenCalled();
+    expect(failRegenerationMock).toHaveBeenCalledWith(
+      "book-1",
+      "session-1",
+      "regen-token",
+    );
   });
 });

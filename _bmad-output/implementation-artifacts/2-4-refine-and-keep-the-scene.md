@@ -4,7 +4,7 @@ baseline_commit: f7524f9fd486a4b86cf9978cd01834e10156dc78
 
 # Story 2.4: Refine and Keep the Scene
 
-Status: review
+Status: done
 
 ## Story
 
@@ -84,6 +84,17 @@ so that I stay the author and nothing enters my manuscript without my approval.
   - [x] Run focused red/green tests for every task, full frontend tests/build, Functions `npm run verify`, seam lint, and `git diff --check`.
   - [x] Smoke-test generation -> edit/autosave -> regenerate -> compare/revert -> accept -> reload using a real owned Book when authenticated deployment access is available; clean up test data.
   - [x] Update File List, completion notes, Change Log, and sprint status only after all checks pass.
+
+### Review Findings
+
+- [x] [Review][Patch] Fence a regeneration that outlives its HTTP timeout so it cannot replace the candidate after the API reports failure [functions/src/handlers/regenerateScene.ts:25]
+- [x] [Review][Patch] Release or fail completed provider-error claims while retaining timeout leases, so immediate retries are actually retryable [functions/src/pipelines/generate.ts:143]
+- [x] [Review][Patch] Bind initial-generation idempotency keys to an input snapshot or reset them when the writer changes input after an ambiguous failure [src/routes/books.$bookId.chat.tsx:205]
+- [x] [Review][Patch] Persist and replay the completed regeneration result instead of returning whichever mutable candidate the session has later [functions/src/services/scenes.ts:299]
+- [x] [Review][Patch] Use a request-generation token, not only `bookId`, to reject stale A -> B -> A generation responses [src/routes/books.$bookId.chat.tsx:221]
+- [x] [Review][Patch] Project an explicit allowlist from message documents before returning `/getMessages` responses [functions/src/services/books.ts:371]
+- [x] [Review][Patch] Deploy required Functions before Hosting and prevent cancellation from leaving production on a mixed frontend/backend version [.github/workflows/firebase-deploy.yml:11]
+- [x] [Review][Patch] Add the claimed concurrency, accepted-lock, retry, degraded-output, route-reset, and responsive Scene Review coverage [functions/src/services/scenes.test.ts:1]
 
 ## Dev Notes
 
@@ -192,6 +203,7 @@ GPT-5 Codex
 - 2026-07-28: Functions verification passed: lint, seam lint, TypeScript build, 19 files, 146 tests.
 - 2026-07-28: Firebase Hosting, Functions, and Firestore rules deployed successfully to `https://backupapp-bbf71.web.app`.
 - 2026-07-28: Live smoke passed for `/login`, `/health`, and the unauthenticated boundary on all five generation/scene mutation endpoints.
+- 2026-07-29: Code-review patches passed Functions verification (22 files / 177 tests) and frontend regression/build verification (20 files / 113 tests).
 
 ### Completion Notes List
 
@@ -203,6 +215,7 @@ GPT-5 Codex
 - Hardened CI deployment to roll Functions in sequential quota-safe batches after one verified build, avoiding simultaneous Cloud Run revision CPU exhaustion.
 - Deployed all new functions, Hosting rewrites, and Firestore rules. Live authenticated writer-flow verification was not run because no writer password is stored in this environment; service/handler/component coverage verifies the complete flow, and live endpoints verify the deployed authentication boundary.
 - Firestore emulator execution remains unavailable because Java is not installed; focused static rules tests and the production rules compiler both passed.
+- Closed all review findings: timeout fencing, provider-failure retry release, immutable regeneration replay, request/input identity guards, public message projection, compatible deploy ordering, and focused race/regression coverage.
 
 ### File List
 
@@ -245,3 +258,4 @@ GPT-5 Codex
 
 - 2026-07-28: Implemented Story 2.4 durable scene refinement and acceptance lifecycle; deployed to Firebase and moved the story to review.
 - 2026-07-28: Batched CI Function rollouts after regional Cloud Run CPU quota rejected an all-at-once redeploy.
+- 2026-07-29: Applied all code-review patches and moved Story 2.4 to done.

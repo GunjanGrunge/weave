@@ -117,7 +117,7 @@ function loadIntakeDraft(uid: string): IntakeDraft | null {
         : [],
       customInstruction:
         typeof parsed.customInstruction === "string"
-          ? parsed.customInstruction.slice(0, MAX_CUSTOM_INSTRUCTION_LENGTH)
+          ? parsed.customInstruction
           : "",
       idempotencyKey: parsed.idempotencyKey.trim(),
     };
@@ -286,6 +286,12 @@ export default function NewBook() {
   async function createBook() {
     if (!styleConfig) {
       setError("Style options are still unavailable. Retry loading them first.");
+      return;
+    }
+    if (customInstruction.length > MAX_CUSTOM_INSTRUCTION_LENGTH) {
+      setError(
+        `Custom style instructions can be up to ${MAX_CUSTOM_INSTRUCTION_LENGTH.toLocaleString()} characters.`,
+      );
       return;
     }
     setSubmitting(true);
@@ -571,13 +577,28 @@ export default function NewBook() {
               {customInstruction.length.toLocaleString()} /{" "}
               {MAX_CUSTOM_INSTRUCTION_LENGTH.toLocaleString()}
             </p>
+            {customInstruction.length > MAX_CUSTOM_INSTRUCTION_LENGTH && (
+              <p role="alert" className="mt-2 text-sm text-destructive">
+                Custom style instructions can be up to{" "}
+                {MAX_CUSTOM_INSTRUCTION_LENGTH.toLocaleString()} characters. Shorten the restored
+                draft before creating the book.
+              </p>
+            )}
             {error && (
               <p role="alert" className="mt-3 text-sm text-destructive">
                 {error}
               </p>
             )}
             <div className="mt-3 flex justify-end">
-              <Button type="button" onClick={createBook} disabled={submitting || !styleConfig}>
+              <Button
+                type="button"
+                onClick={createBook}
+                disabled={
+                  submitting ||
+                  !styleConfig ||
+                  customInstruction.length > MAX_CUSTOM_INSTRUCTION_LENGTH
+                }
+              >
                 {submitting ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (

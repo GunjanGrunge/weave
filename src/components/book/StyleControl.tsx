@@ -51,6 +51,7 @@ export function StyleControl({ bookId }: { bookId: string }) {
   const savePromiseRef = useRef<Promise<boolean> | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const conflictRef = useRef<BookStyleState | null>(null);
+  const loadRequestRef = useRef(0);
 
   const [open, setOpen] = useState(false);
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
@@ -71,11 +72,13 @@ export function StyleControl({ bookId }: { bookId: string }) {
   }
 
   async function load(requestBookId: string) {
+    const requestId = ++loadRequestRef.current;
     setLoadState({ status: "loading" });
     try {
       const response = await fetchStyleConfig(requestBookId);
       if (
         identityRef.current !== requestBookId ||
+        loadRequestRef.current !== requestId ||
         !response.style ||
         typeof response.styleRevision !== "number"
       ) {
@@ -83,12 +86,12 @@ export function StyleControl({ bookId }: { bookId: string }) {
       }
       setLoadState({
         status: "ready",
-        presets: response.presets.filter((preset) => preset.active),
+        presets: response.presets,
         defaultPresetId: response.defaultPresetId,
       });
       applyCanonical({ style: response.style, styleRevision: response.styleRevision });
     } catch {
-      if (identityRef.current === requestBookId) {
+      if (identityRef.current === requestBookId && loadRequestRef.current === requestId) {
         setLoadState({ status: "error" });
       }
     }
@@ -96,6 +99,7 @@ export function StyleControl({ bookId }: { bookId: string }) {
 
   useEffect(() => {
     identityRef.current = bookId;
+    loadRequestRef.current += 1;
     setOpen(false);
     setConflict(null);
     conflictRef.current = null;
@@ -155,7 +159,9 @@ export function StyleControl({ bookId }: { bookId: string }) {
         return false;
       })
       .finally(() => {
-        savePromiseRef.current = null;
+        if (savePromiseRef.current === work) {
+          savePromiseRef.current = null;
+        }
       });
     savePromiseRef.current = work;
     const succeeded = await work;
@@ -198,9 +204,13 @@ export function StyleControl({ bookId }: { bookId: string }) {
     setSaveStatus("Saving");
   }
 
-  function togglePreset(id: string) {
+  function togglePreset(preset: StylePreset) {
+    const { id } = preset;
     if (style.presetIds.includes(id)) {
       changeStyle({ ...style, presetIds: style.presetIds.filter((presetId) => presetId !== id) });
+      return;
+    }
+    if (!preset.active) {
       return;
     }
     if (style.presetIds.length >= 2) {
@@ -288,21 +298,26 @@ export function StyleControl({ bookId }: { bookId: string }) {
         {loadState.status === "ready" && (
           <div className="mt-6 space-y-5">
             <div className="space-y-2">
-              {loadState.presets.map((preset) => {
+              {loadState.presets
+                .filter((preset) => preset.active || style.presetIds.includes(preset.id))
+                .map((preset) => {
                 const selected = style.presetIds.includes(preset.id);
                 return (
                   <button
                     key={preset.id}
                     type="button"
                     aria-pressed={selected}
-                    onClick={() => togglePreset(preset.id)}
+                    onClick={() => togglePreset(preset)}
                     className={`w-full rounded-md border p-3 text-left transition-colors ${
                       selected
                         ? "border-accent bg-accent/10"
                         : "border-border hover:border-accent/50"
                     }`}
                   >
-                    <span className="block text-sm font-medium">{preset.label}</span>
+                    <span className="block text-sm font-medium">
+                      {preset.label}
+                      {!preset.active && " (Retired)"}
+                    </span>
                     <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
                       {preset.description}
                     </span>

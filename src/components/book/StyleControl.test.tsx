@@ -66,6 +66,29 @@ describe("StyleControl", () => {
     expect(fetchMock).toHaveBeenCalledWith("book-1");
   });
 
+  it("shows a selected retired preset and lets the writer remove it", async () => {
+    fetchMock.mockResolvedValue({
+      ...loaded,
+      style: { presetIds: ["retired"] },
+    });
+    updateMock.mockResolvedValue({
+      style: { presetIds: ["warm-character-driven"] },
+      styleRevision: 3,
+    });
+    render(<StyleControl bookId="book-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /book style/i }));
+    const retired = await screen.findByRole("button", { name: /retired/i });
+    expect(retired).toHaveAttribute("aria-pressed", "true");
+
+    vi.useFakeTimers();
+    fireEvent.click(retired);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(650);
+    });
+
+    expect(updateMock).toHaveBeenCalledWith("book-1", { presetIds: [] }, 2);
+  });
+
   it("debounces a style update and shows the saved state", async () => {
     updateMock.mockResolvedValue({
       style: { presetIds: ["warm-character-driven", "sparse-cinematic"] },
@@ -90,6 +113,51 @@ describe("StyleControl", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Saved");
   });
 
+  it("coalesces edits made during an in-flight save onto the returned revision", async () => {
+    let resolveFirst!: (value: {
+      style: { presetIds: string[] };
+      styleRevision: number;
+    }) => void;
+    updateMock
+      .mockReturnValueOnce(new Promise((resolve) => (resolveFirst = resolve)))
+      .mockResolvedValueOnce({
+        style: {
+          presetIds: ["warm-character-driven", "sparse-cinematic"],
+          customInstruction: "Keep it close.",
+        },
+        styleRevision: 4,
+      });
+    render(<StyleControl bookId="book-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /book style/i }));
+    const sparse = await screen.findByRole("button", { name: /sparse & cinematic/i });
+    const instruction = screen.getByLabelText(/custom style instruction/i);
+    vi.useFakeTimers();
+    fireEvent.click(sparse);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(650);
+    });
+    fireEvent.change(instruction, { target: { value: "Keep it close." } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(650);
+      resolveFirst({
+        style: { presetIds: ["warm-character-driven", "sparse-cinematic"] },
+        styleRevision: 3,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect(updateMock).toHaveBeenLastCalledWith(
+      "book-1",
+      {
+        presetIds: ["warm-character-driven", "sparse-cinematic"],
+        customInstruction: "Keep it close.",
+      },
+      3,
+    );
+  });
+
   it("offers reload and keep-mine actions after a revision conflict", async () => {
     updateMock.mockRejectedValueOnce(
       new StyleConflictError("Changed elsewhere.", {
@@ -111,6 +179,54 @@ describe("StyleControl", () => {
     expect(screen.getByText("Changed elsewhere.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /reload/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /keep mine/i })).toBeInTheDocument();
+  });
+
+  it("keeps the local style by retrying against the conflict revision", async () => {
+    updateMock
+      .mockRejectedValueOnce(
+        new StyleConflictError("Changed elsewhere.", {
+          style: { presetIds: ["sparse-cinematic"] },
+          styleRevision: 5,
+        }),
+      )
+      .mockResolvedValueOnce({
+        style: {
+          presetIds: ["warm-character-driven"],
+          customInstruction: "Keep my direction.",
+        },
+        styleRevision: 6,
+      });
+    render(<StyleControl bookId="book-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /book style/i }));
+    const instruction = await screen.findByLabelText(/custom style instruction/i);
+    vi.useFakeTimers();
+    fireEvent.change(instruction, { target: { value: "Keep my direction." } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(650);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /keep mine/i }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect(updateMock).toHaveBeenLastCalledWith(
+      "book-1",
+      {
+        presetIds: ["warm-character-driven"],
+        customInstruction: "Keep my direction.",
+      },
+      5,
+    );
+  });
+
+  it("uses a full-width sheet with a bounded desktop width", async () => {
+    render(<StyleControl bookId="book-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /book style/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveClass("w-full", "sm:max-w-md");
   });
 
   it("blocks a third preset without replacing either selected preset", async () => {
@@ -194,6 +310,35 @@ describe("StyleControl", () => {
     fireEvent.click(screen.getByRole("button", { name: /book style/i }));
 
     expect(await screen.findByRole("button", { name: /sparse & cinematic/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("rejects an old A response after navigating A to B to A", async () => {
+    let resolveOldA!: (value: typeof loaded) => void;
+    fetchMock
+      .mockReturnValueOnce(new Promise((resolve) => (resolveOldA = resolve)))
+      .mockResolvedValueOnce({
+        ...loaded,
+        style: { presetIds: ["sparse-cinematic"] },
+        styleRevision: 5,
+      })
+      .mockResolvedValueOnce({
+        ...loaded,
+        style: { presetIds: ["mythic-expansive"] },
+        styleRevision: 9,
+      });
+    const { rerender } = render(<StyleControl bookId="book-a" />);
+    rerender(<StyleControl bookId="book-b" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("book-b"));
+    rerender(<StyleControl bookId="book-a" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    await act(async () => resolveOldA(loaded));
+    fireEvent.click(screen.getByRole("button", { name: /book style/i }));
+
+    expect(await screen.findByRole("button", { name: /mythic & expansive/i })).toHaveAttribute(
       "aria-pressed",
       "true",
     );

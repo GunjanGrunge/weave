@@ -4,7 +4,7 @@ baseline_commit: f9d34e52c98ae0a96398ae9ea4d1982eccf71d47
 
 # Story 2.5: Change My Book's Voice at Any Time
 
-Status: review
+Status: done
 
 ## Story
 
@@ -89,6 +89,17 @@ so that a style shift is a decision, not a re-setup.
   - [x] Prove exact instruction composition and one model-service invocation in automated tests; do not log or persist composed prompts for live inspection.
   - [x] When writer credentials are available, verify live: load active Style, blend two, add custom guidance, reload, generate/regenerate successfully, confirm one usage entry per operation, and confirm previously accepted Scene data is unchanged; restore the test Book's prior Style and remove test data.
   - [x] Update File List, completion notes, Change Log, and sprint status only after verification passes.
+
+### Review Findings
+
+- [x] [Review][Patch] Keep inactive presets visible/removable for existing Books and permit valid updates that retain or replace a deprecated selection [functions/src/services/styles.ts:130]
+- [x] [Review][Patch] Normalize legacy overlong custom instructions on Book-list reads so one old Book cannot invalidate the entire shelf response [functions/src/services/books.ts:47]
+- [x] [Review][Patch] Use a request-generation token to reject stale A -> B -> A Style loads [src/components/book/StyleControl.tsx:73]
+- [x] [Review][Patch] Clear the Style single-flight promise only when the settling request still owns the ref [src/components/book/StyleControl.tsx:158]
+- [x] [Review][Patch] Enforce the 1,000 UTF-16-unit request limit before trimming whitespace [functions/src/services/styles.ts:143]
+- [x] [Review][Patch] Preserve overlong restored intake guidance and surface validation instead of silently truncating writer text [src/routes/books.new.tsx:118]
+- [x] [Review][Patch] Validate canonical Style preset ids against the returned catalog while still accepting known inactive ids [src/lib/styles.ts:84]
+- [x] [Review][Patch] Add the claimed autosave-coalescing, conflict resolution, narrow layout, canonical intake, live-style generation, and exact-composition tests [src/components/book/StyleControl.test.tsx:1]
 
 ## Dev Notes
 
@@ -215,6 +226,7 @@ GPT-5 Codex
 - Compiled catalog smoke: built `lib/services/styles.js` loaded `warm-character-driven` and all 6 presets.
 - Deployment: GitHub Actions run `30354302468` for `f051a37` succeeded, including Hosting, Firestore, registry seeding, and all sequential Functions batches.
 - Live unauthenticated smoke: `/login` returned 200; `/getStyleConfig` and `/updateBookStyle` returned 401 without a token.
+- Code-review verification: frontend 20 files / 113 tests and production build; Functions 22 files / 177 tests with lint, seam lint, and TypeScript build.
 
 ### Completion Notes List
 
@@ -224,6 +236,7 @@ GPT-5 Codex
 - Migrated new-book intake and Book response parsing to runtime-validated server Style data; removed both duplicated TypeScript catalogs.
 - Preserved one registry-resolved model call and live Style reads for generation/regeneration without mutating prior prose, candidates, or manuscript revision.
 - Authenticated live mutation/generation cleanup was not repeated because this environment contains no writer credentials; this conditional gap is reported explicitly.
+- Closed all review findings: deprecated-style retention/removal, legacy normalization, stale-load and save-ownership guards, raw input limits, non-destructive draft restoration, catalog-bound response validation, and the missing autosave/conflict/responsive tests.
 
 ### File List
 
@@ -265,3 +278,4 @@ GPT-5 Codex
 ## Change Log
 
 - 2026-07-28: Implemented and deployed server-authoritative, revisioned Book Style selection and live generation composition; moved story to review.
+- 2026-07-29: Applied all code-review patches and moved Story 2.5 to done.

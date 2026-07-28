@@ -6,10 +6,13 @@ import type { Chapter } from "../types/chapter.js";
 import type { ChatMessage, ChatMessageType } from "../types/chatMessage.js";
 import type { Scene } from "../types/scene.js";
 import type { VisionDocument } from "../types/vision.js";
-import { getStyleCatalog, parseStyleInput } from "./styles.js";
+import {
+  getStyleCatalog,
+  normalizeStoredStyle as normalizeCanonicalStoredStyle,
+  parseStyleInput,
+} from "./styles.js";
 
 const STYLE_CATALOG = getStyleCatalog();
-const DEFAULT_STYLE_PRESET_ID = STYLE_CATALOG.defaultPresetId;
 const STYLE_PRESETS = STYLE_CATALOG.presets;
 
 export type PremiseAnswers = {
@@ -45,34 +48,8 @@ function normalizeStyle(style: Style): Style {
   return parseStyleInput(style);
 }
 
-function legacyNormalizeStyle(style: Style): Style {
-  const knownIds = new Set(STYLE_PRESETS.map((preset) => preset.id));
-  const presetIds = [...new Set(style.presetIds.filter((id) => knownIds.has(id)))].slice(0, 2);
-  const customInstruction = clean(style.customInstruction);
-  // Only fall back to the default preset when style choice was skipped
-  // entirely — a pure custom instruction with no preset is a valid, distinct
-  // choice under AC-1 and must not be silently tagged with the default preset.
-  const skippedStyleEntirely = presetIds.length === 0 && !customInstruction;
-  const normalizedPresetIds = skippedStyleEntirely ? [DEFAULT_STYLE_PRESET_ID] : presetIds;
-
-  return customInstruction
-    ? { presetIds: normalizedPresetIds, customInstruction }
-    : { presetIds: normalizedPresetIds };
-}
-
 function normalizeStoredStyle(value: unknown): Style {
-  if (typeof value !== "object" || value === null) {
-    return { presetIds: [DEFAULT_STYLE_PRESET_ID] };
-  }
-
-  const storedStyle = value as Record<string, unknown>;
-  const presetIds = Array.isArray(storedStyle.presetIds)
-    ? storedStyle.presetIds.filter((id): id is string => typeof id === "string")
-    : [];
-  const customInstruction =
-    typeof storedStyle.customInstruction === "string" ? storedStyle.customInstruction : undefined;
-
-  return legacyNormalizeStyle({ presetIds, customInstruction });
+  return normalizeCanonicalStoredStyle(value);
 }
 
 function styleSummary(style: Style): string {
@@ -376,7 +353,22 @@ export async function getMessages(bookId: string): Promise<ChatMessage[]> {
     .orderBy("order", "asc")
     .get();
 
-  return snapshot.docs.map((doc) => ({ ...(doc.data() as ChatMessage), id: doc.id }));
+  return snapshot.docs.map((doc) => {
+    const data = doc.data() as ChatMessage;
+    return {
+      id: doc.id,
+      type: data.type,
+      text: data.text,
+      order: data.order,
+      ...(data.sessionId ? { sessionId: data.sessionId } : {}),
+      ...(typeof data.revision === "number" ? { revision: data.revision } : {}),
+      ...(data.status ? { status: data.status } : {}),
+      ...(data.provider ? { provider: data.provider } : {}),
+      ...(data.model ? { model: data.model } : {}),
+      ...(data.previousAttempt ? { previousAttempt: data.previousAttempt } : {}),
+      ...(data.acceptedSceneId ? { acceptedSceneId: data.acceptedSceneId } : {}),
+    };
+  });
 }
 
 /**

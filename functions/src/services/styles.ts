@@ -112,7 +112,10 @@ export function getStyleCatalog(): StyleConfig {
   };
 }
 
-export function parseStyleInput(value: unknown): Style {
+export function parseStyleInput(
+  value: unknown,
+  options: { allowInactivePresetIds?: ReadonlySet<string> } = {},
+): Style {
   if (!isRecord(value) || !Array.isArray(value.presetIds)) {
     throw new StyleValidationError("Style presetIds must be an array.");
   }
@@ -132,7 +135,7 @@ export function parseStyleInput(value: unknown): Style {
     if (!preset) {
       throw new StyleValidationError(`Style preset id is unknown: ${id}`);
     }
-    if (!preset.active) {
+    if (!preset.active && !options.allowInactivePresetIds?.has(id)) {
       throw new StyleValidationError(`Style preset is no longer selectable: ${id}`);
     }
   }
@@ -140,13 +143,16 @@ export function parseStyleInput(value: unknown): Style {
   if (value.customInstruction !== undefined && typeof value.customInstruction !== "string") {
     throw new StyleValidationError("Style customInstruction must be a string.");
   }
-  const customInstruction =
-    typeof value.customInstruction === "string" ? value.customInstruction.trim() : "";
-  if (customInstruction.length > MAX_CUSTOM_INSTRUCTION_LENGTH) {
+  if (
+    typeof value.customInstruction === "string" &&
+    value.customInstruction.length > MAX_CUSTOM_INSTRUCTION_LENGTH
+  ) {
     throw new StyleValidationError(
       `Style customInstruction can contain at most ${MAX_CUSTOM_INSTRUCTION_LENGTH.toLocaleString("en-US")} characters.`,
     );
   }
+  const customInstruction =
+    typeof value.customInstruction === "string" ? value.customInstruction.trim() : "";
 
   const canonicalIds =
     presetIds.length === 0 && !customInstruction ? [STYLE_CONFIG.defaultPresetId] : presetIds;
@@ -208,7 +214,6 @@ export async function updateBookStyle(
   if (!Number.isInteger(expectedRevision) || expectedRevision < 0) {
     throw new StyleValidationError("expectedRevision must be a non-negative integer.");
   }
-  const style = parseStyleInput(styleInput);
   const db = firestore();
   const bookRef = db.collection("books").doc(bookId);
 
@@ -219,9 +224,16 @@ export async function updateBookStyle(
     }
     const data = snapshot.data();
     const styleRevision = revisionOf(data?.styleRevision);
+    const currentStyle = normalizeStoredStyle(data?.style);
     if (styleRevision !== expectedRevision) {
-      throw new StyleConflictError(normalizeStoredStyle(data?.style), styleRevision);
+      throw new StyleConflictError(currentStyle, styleRevision);
     }
+    const inactivePresetIds = new Set(
+      currentStyle.presetIds.filter((id) => PRESETS_BY_ID.get(id)?.active === false),
+    );
+    const style = parseStyleInput(styleInput, {
+      allowInactivePresetIds: inactivePresetIds,
+    });
     const result = { style: cloneStyle(style), styleRevision: styleRevision + 1 };
     transaction.update(bookRef, result);
     return result;

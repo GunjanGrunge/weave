@@ -5,6 +5,7 @@ import { FieldValue, getFirestore } from "firebase-admin/firestore";
 
 import type { AssembledContext } from "../pipelines/assembleContext.js";
 import type {
+  CandidateResult,
   GenerationOperation,
   GenerationSession,
   SceneAttempt,
@@ -12,6 +13,7 @@ import type {
 import type { SceneInput } from "../types/sceneInput.js";
 
 const LEASE_MS = 70_000;
+export type { CandidateResult } from "../types/generationSession.js";
 
 function firestore() {
   if (getApps().length === 0) {
@@ -35,19 +37,6 @@ export class SceneSessionError extends Error {
     this.name = "SceneSessionError";
   }
 }
-
-export type CandidateResult = {
-  sessionId: string;
-  messageId: string;
-  text: string;
-  revision: number;
-  candidateStatus: "active" | "accepted";
-  provider: "openai" | "gemini";
-  model: string;
-  previousAttempt?: SceneAttempt;
-  acceptedSceneId?: string;
-  acceptedSceneOrder?: number;
-};
 
 export type GenerationClaim =
   | { status: "claimed"; attemptToken: string }
@@ -210,6 +199,32 @@ export async function persistGeneratedCandidate(input: {
   });
 }
 
+export async function failInitialGeneration(
+  bookId: string,
+  idempotencyKey: string,
+  attemptToken: string,
+): Promise<void> {
+  const ref = firestore()
+    .collection("books")
+    .doc(bookId)
+    .collection("generationRequests")
+    .doc(idempotencyKey);
+
+  await firestore().runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    const request = snapshot.data() as
+      | { status?: string; attemptToken?: string }
+      | undefined;
+    if (request?.status === "in-progress" && request.attemptToken === attemptToken) {
+      transaction.set(
+        ref,
+        { status: "failed", updatedAt: FieldValue.serverTimestamp() },
+        { merge: true },
+      );
+    }
+  });
+}
+
 export async function saveGeneratedCandidate(
   bookId: string,
   sessionId: string,
@@ -301,7 +316,7 @@ export async function claimRegeneration(
       operation?.idempotencyKey === idempotencyKey &&
       operation.status === "completed"
     ) {
-      return { status: "completed", result: canonical };
+      return { status: "completed", result: operation.result ?? canonical };
     }
     if (session.revision !== expectedRevision) {
       throw new SceneSessionError("stale-revision", "A newer candidate exists.", canonical);
@@ -328,6 +343,76 @@ export async function claimRegeneration(
       attemptToken,
       session: { ...session, regenerateOperation },
     };
+  });
+}
+
+export async function failRegeneration(
+  bookId: string,
+  sessionId: string,
+  attemptToken: string,
+): Promise<void> {
+  const sessionRef = firestore()
+    .collection("books")
+    .doc(bookId)
+    .collection("sessions")
+    .doc(sessionId);
+
+  await firestore().runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(sessionRef);
+    if (!snapshot.exists) {
+      return;
+    }
+    const operation = (snapshot.data() as GenerationSession).regenerateOperation;
+    if (operation?.status === "in-progress" && operation.attemptToken === attemptToken) {
+      transaction.update(sessionRef, {
+        "regenerateOperation.status": "failed",
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+  });
+}
+
+export type TimeoutFenceResult =
+  | { status: "fenced" }
+  | { status: "completed"; result: CandidateResult };
+
+export async function fenceTimedOutRegeneration(
+  bookId: string,
+  sessionId: string,
+  idempotencyKey: string,
+): Promise<TimeoutFenceResult> {
+  const sessionRef = firestore()
+    .collection("books")
+    .doc(bookId)
+    .collection("sessions")
+    .doc(sessionId);
+
+  return firestore().runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(sessionRef);
+    if (!snapshot.exists) {
+      return { status: "fenced" };
+    }
+    const session = snapshot.data() as GenerationSession;
+    const operation = session.regenerateOperation;
+    if (
+      operation?.idempotencyKey === idempotencyKey &&
+      operation.status === "completed"
+    ) {
+      return {
+        status: "completed",
+        result: operation.result ?? candidateResult(sessionId, session),
+      };
+    }
+    if (
+      operation?.idempotencyKey === idempotencyKey &&
+      operation.status === "in-progress"
+    ) {
+      transaction.update(sessionRef, {
+        "regenerateOperation.attemptToken": randomUUID(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+    return { status: "fenced" };
   });
 }
 
@@ -390,6 +475,11 @@ export async function commitRegeneration(input: {
       },
       updatedAt: FieldValue.serverTimestamp(),
     };
+    const result = candidateResult(input.sessionId, updated);
+    updated.regenerateOperation = {
+      ...updated.regenerateOperation!,
+      result,
+    };
     transaction.set(sessionRef, updated);
     transaction.update(bookRef.collection("messages").doc(session.messageId), {
       text: input.candidate.text,
@@ -398,7 +488,7 @@ export async function commitRegeneration(input: {
       model: input.candidate.model,
       previousAttempt: session.candidate,
     });
-    return candidateResult(input.sessionId, updated);
+    return result;
   });
 }
 

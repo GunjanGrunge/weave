@@ -96,6 +96,7 @@ function messageStyles(type: ChatMessageType): string {
 
 export function ChatPage({ bookId }: { bookId: string }) {
   const activeBookIdRef = useRef(bookId);
+  const routeVersionRef = useRef(0);
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [description, setDescription] = useState("");
   const [inputMode, setInputMode] = useState<InputMode>("free-text");
@@ -109,11 +110,12 @@ export function ChatPage({ bookId }: { bookId: string }) {
   const [selectedAspects, setSelectedAspects] = useState<PolishAspectId[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [generationState, setGenerationState] = useState<GenerationState>({ status: "idle" });
-  const generationKeyRef = useRef<string | null>(null);
+  const generationRequestRef = useRef<{ key: string; inputSnapshot: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     activeBookIdRef.current = bookId;
+    routeVersionRef.current += 1;
     setDescription("");
     setInputMode("free-text");
     setStructuredFields({ sceneGoal: "", mood: "", povCharacter: "", setting: "" });
@@ -121,7 +123,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
     setSelectedAspects([]);
     setValidationError(null);
     setGenerationState({ status: "idle" });
-    generationKeyRef.current = null;
+    generationRequestRef.current = null;
 
     async function loadMessages() {
       setLoadState({ status: "loading" });
@@ -202,8 +204,15 @@ export function ChatPage({ bookId }: { bookId: string }) {
     setValidationError(null);
     setGenerationState({ status: "loading" });
     const requestBookId = bookId;
-    generationKeyRef.current ??= `generate-${crypto.randomUUID()}`;
-    payload.idempotencyKey = generationKeyRef.current;
+    const requestRouteVersion = routeVersionRef.current;
+    const inputSnapshot = JSON.stringify(payload);
+    if (generationRequestRef.current?.inputSnapshot !== inputSnapshot) {
+      generationRequestRef.current = {
+        key: `generate-${crypto.randomUUID()}`,
+        inputSnapshot,
+      };
+    }
+    payload.idempotencyKey = generationRequestRef.current.key;
 
     try {
       const response = await authenticatedFetch("/generateScene", {
@@ -218,7 +227,10 @@ export function ChatPage({ bookId }: { bookId: string }) {
       if (!result) {
         throw new Error("Invalid generation response.");
       }
-      if (activeBookIdRef.current !== requestBookId) {
+      if (
+        activeBookIdRef.current !== requestBookId ||
+        routeVersionRef.current !== requestRouteVersion
+      ) {
         return;
       }
 
@@ -247,7 +259,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
           ],
         };
       });
-      generationKeyRef.current = null;
+      generationRequestRef.current = null;
       if (inputMode === "free-text") {
         setDescription("");
       } else if (inputMode === "structured") {
@@ -258,7 +270,10 @@ export function ChatPage({ bookId }: { bookId: string }) {
       }
       setGenerationState({ status: "idle" });
     } catch {
-      if (activeBookIdRef.current !== requestBookId) {
+      if (
+        activeBookIdRef.current !== requestBookId ||
+        routeVersionRef.current !== requestRouteVersion
+      ) {
         return;
       }
       setGenerationState({

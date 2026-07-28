@@ -8,7 +8,7 @@ on:
 
 concurrency:
   group: firebase-deploy-main
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   verify-and-deploy:
@@ -76,12 +76,12 @@ jobs:
       - name: Prepare verified Firebase config
         run: jq 'del(.functions[].predeploy)' firebase.json > firebase.ci.json
 
-      - name: Deploy Hosting and Firestore
+      - name: Deploy Firestore
         run: >
           npx firebase-tools deploy
           --config firebase.ci.json
           --project "$FIREBASE_PROJECT_ID"
-          --only hosting,firestore
+          --only firestore
           --non-interactive
 
       - name: Deploy Functions in quota-safe batches
@@ -103,3 +103,11 @@ jobs:
               --only "$batch" \
               --non-interactive
           done
+
+      - name: Deploy Hosting
+        run: >
+          npx firebase-tools deploy
+          --config firebase.ci.json
+          --project "$FIREBASE_PROJECT_ID"
+          --only hosting
+          --non-interactive

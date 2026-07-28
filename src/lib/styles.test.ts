@@ -59,6 +59,32 @@ describe("style API", () => {
         config: { ...config, presets: [{ ...config.presets[0], active: "yes" }] },
       }),
     ).toBeUndefined();
+    expect(
+      parseStyleConfigResponse({
+        config,
+        style: { presetIds: ["unknown-preset"] },
+        styleRevision: 1,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("accepts a known inactive preset in canonical book state", () => {
+    const retired = {
+      id: "retired",
+      label: "Retired",
+      description: "No longer selectable.",
+      active: false,
+    };
+    expect(
+      parseStyleConfigResponse({
+        config: { ...config, presets: [...config.presets, retired] },
+        style: { presetIds: ["retired"] },
+        styleRevision: 3,
+      }),
+    ).toMatchObject({
+      style: { presetIds: ["retired"] },
+      styleRevision: 3,
+    });
   });
 
   it("loads the catalog without a book id", async () => {

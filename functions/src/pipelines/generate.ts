@@ -11,6 +11,8 @@ import {
   claimInitialGeneration,
   claimRegeneration,
   commitRegeneration,
+  failInitialGeneration,
+  failRegeneration,
   persistGeneratedCandidate,
   type CandidateResult,
 } from "../services/scenes.js";
@@ -143,6 +145,7 @@ export async function runGenerate(
 
   const generated = await executeGeneration(bookId, input, apiKeys);
   if (!generated) {
+    await failInitialGeneration(bookId, operation.idempotencyKey, claim.attemptToken);
     return { status: "failed" };
   }
 
@@ -207,6 +210,7 @@ export async function runRegenerate(
 
   const book = await getBook(bookId);
   if (!book) {
+    await failRegeneration(bookId, sessionId, claim.attemptToken);
     return { status: "failed" };
   }
   const currentManuscriptRevision =
@@ -222,6 +226,7 @@ export async function runRegenerate(
     reusableContext,
   );
   if (!generated) {
+    await failRegeneration(bookId, sessionId, claim.attemptToken);
     return { status: "failed" };
   }
 

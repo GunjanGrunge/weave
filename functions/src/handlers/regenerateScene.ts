@@ -4,6 +4,7 @@ import { allowedOrigins } from "../config/cors.js";
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "../config/secrets.js";
 import { runRegenerate } from "../pipelines/generate.js";
 import type { AIProviderKeys } from "../services/gemini.js";
+import { fenceTimedOutRegeneration } from "../services/scenes.js";
 import {
   authorizeBook,
   mutationError,
@@ -20,19 +21,32 @@ export type RegenerateSceneResult =
 
 function withTimeout(
   work: ReturnType<typeof runRegenerate>,
+  onTimeout: () => Promise<Awaited<ReturnType<typeof runRegenerate>>>,
   timeoutMs: number,
 ): Promise<Awaited<ReturnType<typeof runRegenerate>>> {
   return new Promise((resolve) => {
-    const timeout = setTimeout(() => resolve({ status: "failed" }), timeoutMs);
+    let settled = false;
+    const finish = (result: Awaited<ReturnType<typeof runRegenerate>>) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(result);
+    };
+    const timeout = setTimeout(() => {
+      void onTimeout()
+        .then(finish)
+        .catch((error) => {
+          console.error("regenerateScene: timeout fence failed", error);
+          finish({ status: "failed" });
+        });
+    }, timeoutMs);
     work
       .then((result) => {
-        clearTimeout(timeout);
-        resolve(result);
+        finish(result);
       })
       .catch((error) => {
-        clearTimeout(timeout);
         console.error("regenerateScene: pipeline rejected", error);
-        resolve({ status: "failed" });
+        finish({ status: "failed" });
       });
   });
 }
@@ -53,6 +67,7 @@ export async function buildRegenerateSceneResponse(
       },
     };
   }
+  const idempotencyKey = parsed.idempotencyKey;
   try {
     await authorizeBook(authorizationHeader, parsed.bookId);
     const result = await withTimeout(
@@ -60,9 +75,19 @@ export async function buildRegenerateSceneResponse(
         parsed.bookId,
         parsed.sessionId,
         parsed.expectedRevision,
-        parsed.idempotencyKey,
+        idempotencyKey,
         apiKeys,
       ),
+      async () => {
+        const fenced = await fenceTimedOutRegeneration(
+          parsed.bookId,
+          parsed.sessionId,
+          idempotencyKey,
+        );
+        return fenced.status === "completed"
+          ? { status: "ok", actionable: true, ...fenced.result }
+          : { status: "failed" };
+      },
       timeoutMs,
     );
     if (result.status === "in-progress") {

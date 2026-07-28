@@ -389,6 +389,22 @@ describe("listOwnedBooks", () => {
       }),
     ]);
   });
+
+  it("caps an overlong legacy style without failing the shelf response", async () => {
+    docStore["books/book-legacy"] = {
+      uid: "user-a",
+      title: "Legacy book",
+      style: {
+        presetIds: ["warm-character-driven"],
+        customInstruction: "x".repeat(1_001),
+      },
+      createdAt: { toMillis: () => 100 },
+    };
+
+    const books = await listOwnedBooks("user-a");
+
+    expect(books[0]?.style.customInstruction).toHaveLength(1_000);
+  });
 });
 
 describe("getVisionDocument", () => {
@@ -654,6 +670,31 @@ describe("getMessages", () => {
     const messages = await getMessages("book-1");
 
     expect(messages.map((message) => message.text)).toEqual(["first", "second", "third"]);
+  });
+
+  it("projects only public message fields", async () => {
+    messagesStore["books/book-1/messages"] = [
+      {
+        id: "message-1",
+        order: 0,
+        type: "assistant_scene",
+        text: "Public prose.",
+        sessionId: "session-1",
+        assembledContext: { secret: true },
+        prompt: "private prompt",
+        createdAt: "private timestamp",
+      },
+    ];
+
+    const messages = await getMessages("book-1");
+
+    expect(messages[0]).toEqual({
+      id: "message-1",
+      order: 0,
+      type: "assistant_scene",
+      text: "Public prose.",
+      sessionId: "session-1",
+    });
   });
 
   it("returns an empty array when there are no messages", async () => {

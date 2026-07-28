@@ -23,6 +23,9 @@ import {
   acceptGeneratedCandidate,
   claimInitialGeneration,
   claimRegeneration,
+  commitRegeneration,
+  failInitialGeneration,
+  fenceTimedOutRegeneration,
   revertGeneratedCandidate,
   saveGeneratedCandidate,
 } from "./scenes.js";
@@ -194,6 +197,18 @@ describe("scene persistence service", () => {
     });
   });
 
+  it("releases a provider-failed initial request for an immediate retry", async () => {
+    const claim = await claimInitialGeneration("book-1", "request-123");
+    expect(claim).toMatchObject({ status: "claimed" });
+
+    await failInitialGeneration("book-1", "request-123", "attempt-token");
+
+    await expect(claimInitialGeneration("book-1", "request-123")).resolves.toEqual({
+      status: "claimed",
+      attemptToken: "attempt-token",
+    });
+  });
+
   it("autosaves with compare-and-set and updates the linked message by id", async () => {
     db.docs.set("books/book-1/sessions/session-1", activeSession());
     db.docs.set("books/book-1/messages/message-1", {
@@ -237,6 +252,61 @@ describe("scene persistence service", () => {
       status: "completed",
       result: { revision: 1 },
     });
+  });
+
+  it("replays the immutable result of a completed regeneration", async () => {
+    db.docs.set("books/book-1", { manuscriptRevision: 0 });
+    db.docs.set("books/book-1/sessions/session-1", activeSession());
+    db.docs.set("books/book-1/messages/message-1", {});
+
+    const claim = await claimRegeneration("book-1", "session-1", "regen-123", 0);
+    expect(claim).toMatchObject({ status: "claimed" });
+    const committed = await commitRegeneration({
+      bookId: "book-1",
+      sessionId: "session-1",
+      attemptToken: "attempt-token",
+      expectedRevision: 0,
+      assembledContext: {
+        chapterId: "chapter-1",
+        priorScenesText: [],
+        manuscriptRevision: 0,
+      },
+      candidate: { text: "Regenerated.", provider: "gemini", model: "gemini-test" },
+    });
+    await saveGeneratedCandidate("book-1", "session-1", "Edited later.", 1);
+
+    await expect(
+      claimRegeneration("book-1", "session-1", "regen-123", 0),
+    ).resolves.toEqual({ status: "completed", result: committed });
+  });
+
+  it("fences a timed-out regeneration so its late commit cannot replace the candidate", async () => {
+    db.docs.set("books/book-1", { manuscriptRevision: 0 });
+    db.docs.set("books/book-1/sessions/session-1", activeSession());
+    db.docs.set("books/book-1/messages/message-1", {});
+    await claimRegeneration("book-1", "session-1", "regen-123", 0);
+    randomUUIDMock.mockReturnValueOnce("timeout-fence");
+
+    await expect(
+      fenceTimedOutRegeneration("book-1", "session-1", "regen-123"),
+    ).resolves.toEqual({ status: "fenced" });
+    await expect(
+      commitRegeneration({
+        bookId: "book-1",
+        sessionId: "session-1",
+        attemptToken: "attempt-token",
+        expectedRevision: 0,
+        assembledContext: {
+          chapterId: "chapter-1",
+          priorScenesText: [],
+          manuscriptRevision: 0,
+        },
+        candidate: { text: "Too late.", provider: "openai", model: "gpt-test" },
+      }),
+    ).rejects.toMatchObject({ code: "invalid-session" });
+    expect(
+      (db.docs.get("books/book-1/sessions/session-1")?.candidate as Stored).text,
+    ).toBe("Candidate.");
   });
 
   it("returns canonical data for a stale autosave", async () => {
