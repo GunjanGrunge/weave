@@ -8,11 +8,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  useEffect(() => {
-    const stored = typeof window !== "undefined" ? localStorage.getItem("story:theme") : null;
-    if (stored === "dark") document.documentElement.classList.add("dark");
-  }, []);
-
   useEffect(() => setMobileOpen(false), [pathname]);
 
   return (

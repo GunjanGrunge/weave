@@ -38,6 +38,26 @@ describe("fetchBooks", () => {
     await expect(fetchBooks()).rejects.toThrow(/invalid/i);
   });
 
+  it("rejects an empty book ID that cannot open a real chat route", async () => {
+    authenticatedFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          books: [
+            {
+              bookId: " ",
+              title: "Broken link",
+              style: { presetIds: ["warm"] },
+              createdAt: null,
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(fetchBooks()).rejects.toThrow(/invalid/i);
+  });
+
   it("rejects a non-success response", async () => {
     authenticatedFetchMock.mockResolvedValue(new Response(null, { status: 500 }));
 

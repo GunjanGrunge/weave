@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
 import { Moon, Sun, UserRound } from "lucide-react";
 
 import { SectionLabel } from "@/components/common/SectionLabel";
 import { useAuth } from "@/lib/auth-context";
+import { setDarkTheme, useDarkTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/settings")({
@@ -18,19 +18,7 @@ export const Route = createFileRoute("/settings")({
 
 function SettingsPage() {
   const { user } = useAuth();
-  const [dark, setDark] = useState(false);
-
-  useEffect(() => setDark(document.documentElement.classList.contains("dark")), []);
-
-  function setTheme(nextDark: boolean) {
-    setDark(nextDark);
-    document.documentElement.classList.toggle("dark", nextDark);
-    try {
-      localStorage.setItem("story:theme", nextDark ? "dark" : "light");
-    } catch {
-      // The visual change still applies when persistence is unavailable.
-    }
-  }
+  const dark = useDarkTheme();
 
   return (
     <div className="mx-auto max-w-3xl px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
@@ -72,7 +60,7 @@ function SettingsPage() {
         >
           <button
             type="button"
-            onClick={() => setTheme(false)}
+            onClick={() => setDarkTheme(false)}
             aria-pressed={!dark}
             className={cn(
               "inline-flex h-10 items-center justify-center gap-2 rounded-sm text-sm",
@@ -84,7 +72,7 @@ function SettingsPage() {
           </button>
           <button
             type="button"
-            onClick={() => setTheme(true)}
+            onClick={() => setDarkTheme(true)}
             aria-pressed={dark}
             className={cn(
               "inline-flex h-10 items-center justify-center gap-2 rounded-sm text-sm",

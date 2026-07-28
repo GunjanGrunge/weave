@@ -17,7 +17,7 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
-function Dashboard() {
+export function Dashboard() {
   const booksQuery = useBooks();
   const [health, setHealth] = useState<HealthCheckResult>({
     status: "idle",
@@ -36,6 +36,7 @@ function Dashboard() {
   }, []);
 
   const books = booksQuery.data ?? [];
+  const hasBooks = booksQuery.data !== undefined;
   const latestBook = books[0];
 
   return (
@@ -63,7 +64,7 @@ function Dashboard() {
             Books in this account
           </div>
           <div className="mt-2 font-display text-3xl italic">
-            {booksQuery.isPending ? "..." : books.length}
+            {hasBooks ? books.length : booksQuery.isPending ? "..." : "N/A"}
           </div>
         </div>
         <div className="py-5 sm:pl-6">
@@ -102,11 +103,11 @@ function Dashboard() {
           </Link>
         </div>
 
-        {booksQuery.isPending && (
+        {booksQuery.isPending && !hasBooks && (
           <div className="mt-5 h-32 animate-pulse rounded-md border border-border bg-card" />
         )}
 
-        {booksQuery.isError && (
+        {booksQuery.isError && !hasBooks && (
           <div className="mt-5 border-y border-border py-8">
             <p className="text-sm font-medium">Books could not be loaded.</p>
             <button
@@ -119,7 +120,7 @@ function Dashboard() {
           </div>
         )}
 
-        {booksQuery.isSuccess && !latestBook && (
+        {hasBooks && !latestBook && (
           <div className="mt-5 flex flex-wrap items-center justify-between gap-5 border-y border-border py-8">
             <div>
               <p className="font-serif text-lg">No books yet</p>
@@ -136,7 +137,7 @@ function Dashboard() {
           </div>
         )}
 
-        {booksQuery.isSuccess && latestBook && (
+        {hasBooks && latestBook && (
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             {books.slice(0, 4).map((book) => (
               <Link

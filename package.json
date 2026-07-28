@@ -7,7 +7,7 @@
     "dev": "vite dev --config vite.spa.config.ts",
     "build": "vite build --config vite.spa.config.ts && node scripts/write-static-index.mjs",
     "build:dev": "vite build --config vite.spa.config.ts --mode development && node scripts/write-static-index.mjs",
-    "preview": "vite preview",
+    "preview": "vite preview --config vite.spa.config.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run"

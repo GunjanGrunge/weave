@@ -1,18 +1,9 @@
-import { useEffect, useState } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import { Menu, Moon, PanelLeft, Sun } from "lucide-react";
 
+import { pageLabel } from "@/lib/page-label";
+import { setDarkTheme, useDarkTheme } from "@/lib/theme";
 import { UserMenu } from "./UserMenu";
-
-function pageLabel(pathname: string): string {
-  if (pathname === "/") return "Workspace";
-  if (pathname === "/books" || pathname === "/books/") return "My Books";
-  if (pathname === "/books/new") return "New Book";
-  if (pathname.endsWith("/vision")) return "Book Vision";
-  if (pathname.endsWith("/chat")) return "Book Chat";
-  if (pathname === "/settings") return "Settings";
-  return "Story Platform";
-}
 
 export function TopBar({
   onToggleSidebar,
@@ -22,21 +13,10 @@ export function TopBar({
   onOpenMobileSidebar: () => void;
 }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const [dark, setDark] = useState(false);
-
-  useEffect(() => {
-    setDark(document.documentElement.classList.contains("dark"));
-  }, []);
+  const dark = useDarkTheme();
 
   function toggleTheme() {
-    const next = !dark;
-    setDark(next);
-    document.documentElement.classList.toggle("dark", next);
-    try {
-      localStorage.setItem("story:theme", next ? "dark" : "light");
-    } catch {
-      // Theme persistence is optional in restricted browser contexts.
-    }
+    setDarkTheme(!dark);
   }
 
   return (

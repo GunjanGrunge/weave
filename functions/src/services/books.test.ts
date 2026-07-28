@@ -364,6 +364,30 @@ describe("listOwnedBooks", () => {
   it("returns an empty list when the writer owns no books", async () => {
     expect(await listOwnedBooks("user-a")).toEqual([]);
   });
+
+  it("normalizes a malformed legacy book without breaking the entire shelf", async () => {
+    docStore["books/book-valid"] = {
+      uid: "user-a",
+      title: "Valid book",
+      style: { presetIds: ["warm-character-driven"] },
+      createdAt: { toMillis: () => 200 },
+    };
+    docStore["books/book-legacy"] = {
+      uid: "user-a",
+      createdAt: { toMillis: () => 100 },
+    };
+
+    const books = await listOwnedBooks("user-a");
+
+    expect(books).toEqual([
+      expect.objectContaining({ bookId: "book-valid", title: "Valid book" }),
+      expect.objectContaining({
+        bookId: "book-legacy",
+        title: "Untitled Book",
+        style: { presetIds: [DEFAULT_STYLE_PRESET_ID] },
+      }),
+    ]);
+  });
 });
 
 describe("getVisionDocument", () => {

@@ -18,6 +18,7 @@ function isBookSummary(value: unknown): value is BookSummary {
   const book = value as Partial<BookSummary>;
   return (
     typeof book.bookId === "string" &&
+    book.bookId.trim().length > 0 &&
     typeof book.title === "string" &&
     (book.createdAt === null || typeof book.createdAt === "string") &&
     typeof book.style === "object" &&

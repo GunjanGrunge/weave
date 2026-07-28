@@ -55,31 +55,62 @@ function intakeDraftKey(uid: string): string {
   return `story:intake:${uid}`;
 }
 
+function isChatLine(value: unknown): value is ChatLine {
+  if (typeof value !== "object" || value === null) return false;
+  const line = value as Partial<ChatLine>;
+  return (line.type === "system" || line.type === "user") && typeof line.text === "string";
+}
+
+function readDraftAnswers(value: unknown): Partial<Record<PremiseKey, string>> | null {
+  if (value === undefined) return {};
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+
+  const stored = value as Record<string, unknown>;
+  const answers: Partial<Record<PremiseKey, string>> = {};
+  for (const { key } of questions) {
+    const answer = stored[key];
+    if (answer !== undefined && typeof answer !== "string") return null;
+    if (typeof answer === "string") answers[key] = answer;
+  }
+  return answers;
+}
+
 function loadIntakeDraft(uid: string): IntakeDraft | null {
   try {
     const raw = localStorage.getItem(intakeDraftKey(uid));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<IntakeDraft>;
+    const answers = readDraftAnswers(parsed.answers);
     if (
       parsed.version !== 1 ||
-      typeof parsed.questionIndex !== "number" ||
+      !Number.isInteger(parsed.questionIndex) ||
+      (parsed.questionIndex ?? -1) < 0 ||
+      (parsed.questionIndex ?? questions.length + 1) > questions.length ||
       !Array.isArray(parsed.messages) ||
-      typeof parsed.idempotencyKey !== "string"
+      parsed.messages.length === 0 ||
+      !parsed.messages.every(isChatLine) ||
+      answers === null ||
+      typeof parsed.idempotencyKey !== "string" ||
+      !parsed.idempotencyKey.trim()
     ) {
+      localStorage.removeItem(intakeDraftKey(uid));
       return null;
     }
+    const knownPresetIds = new Set(STYLE_PRESETS.map((preset) => preset.id));
     return {
       version: 1,
-      answers: parsed.answers ?? {},
+      answers,
       messages: parsed.messages,
-      questionIndex: Math.max(0, Math.min(questions.length, parsed.questionIndex)),
+      questionIndex: parsed.questionIndex,
       reply: typeof parsed.reply === "string" ? parsed.reply : "",
       selectedPresets: Array.isArray(parsed.selectedPresets)
-        ? parsed.selectedPresets.filter((id): id is string => typeof id === "string").slice(0, 2)
+        ? parsed.selectedPresets
+            .filter((id): id is string => typeof id === "string" && knownPresetIds.has(id))
+            .slice(0, 2)
         : [],
       customInstruction:
         typeof parsed.customInstruction === "string" ? parsed.customInstruction : "",
-      idempotencyKey: parsed.idempotencyKey,
+      idempotencyKey: parsed.idempotencyKey.trim(),
     };
   } catch {
     return null;
@@ -242,11 +273,19 @@ export default function NewBook() {
       if (!response.ok) {
         throw new Error("Book creation failed.");
       }
-      const result = (await response.json()) as {
+      const result = (await response.json()) as Partial<{
         bookId: string;
         openingSuggestion: "ok" | "failed";
         openings: OpeningSuggestion[];
-      };
+      }>;
+      if (
+        typeof result.bookId !== "string" ||
+        !result.bookId.trim() ||
+        (result.openingSuggestion !== "ok" && result.openingSuggestion !== "failed") ||
+        !isOpeningSuggestionArray(result.openings)
+      ) {
+        throw new Error("Book creation returned an invalid response.");
+      }
       setMessages((current) => [
         ...current,
         { type: "user", text: formatStyleChoice(presetIds, customInstruction) },
@@ -257,7 +296,7 @@ export default function NewBook() {
         // The persisted Firestore book is authoritative after creation.
       }
       setHasSavedDraft(false);
-      setBookId(result.bookId);
+      setBookId(result.bookId.trim());
       void queryClient.invalidateQueries({ queryKey: ["books"] });
       setOpeningSuggestion(
         result.openingSuggestion === "ok" && isOpeningSuggestionArray(result.openings)

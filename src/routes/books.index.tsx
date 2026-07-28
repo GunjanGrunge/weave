@@ -17,6 +17,8 @@ export const Route = createFileRoute("/books/")({
 
 export function BooksPage() {
   const booksQuery = useBooks();
+  const books = booksQuery.data;
+  const hasBooks = books !== undefined;
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
@@ -36,7 +38,7 @@ export function BooksPage() {
         </Button>
       </header>
 
-      {booksQuery.isPending && <BooksLoading />}
+      {booksQuery.isPending && !hasBooks && <BooksLoading />}
 
       {booksQuery.isError && (
         <div className="mt-8 border-y border-border py-10 text-center">
@@ -56,7 +58,7 @@ export function BooksPage() {
         </div>
       )}
 
-      {booksQuery.isSuccess && booksQuery.data.length === 0 && (
+      {hasBooks && books.length === 0 && (
         <div className="mt-8 grid min-h-72 place-items-center border-y border-border py-12 text-center">
           <div className="max-w-sm">
             <BookOpen className="mx-auto size-7 text-accent" />
@@ -74,9 +76,9 @@ export function BooksPage() {
         </div>
       )}
 
-      {booksQuery.isSuccess && booksQuery.data.length > 0 && (
+      {hasBooks && books.length > 0 && (
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {booksQuery.data.map((book) => (
+          {books.map((book) => (
             <Link
               key={book.bookId}
               to="/books/$bookId/chat"

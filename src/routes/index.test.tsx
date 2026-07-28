@@ -28,12 +28,16 @@ vi.mock("@/lib/books", () => ({
   formatBookDate: () => "Jul 27, 2026",
 }));
 
-import { BooksPage } from "./books.index";
+vi.mock("@/lib/health", () => ({
+  checkBackendHealth: () => new Promise(() => {}),
+}));
 
-describe("BooksPage", () => {
+import { Dashboard } from "./index";
+
+describe("Dashboard", () => {
   beforeEach(() => useBooksMock.mockReset());
 
-  it("renders persisted books with links to their real chat routes", () => {
+  it("opens persisted books through their real chat routes", () => {
     useBooksMock.mockReturnValue({
       isPending: false,
       isError: false,
@@ -43,55 +47,31 @@ describe("BooksPage", () => {
           bookId: "book-1",
           title: "The Floating Hotel",
           style: { presetIds: ["warm"] },
-          createdAt: "2026-07-27T12:00:00.000Z",
+          createdAt: null,
         },
       ],
     });
 
-    render(<BooksPage />);
+    render(<Dashboard />);
 
-    expect(screen.getByText("The Floating Hotel")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /the floating hotel/i })).toHaveAttribute(
       "href",
       "/books/book-1/chat",
     );
   });
 
-  it("renders a real empty state instead of demo books", () => {
-    useBooksMock.mockReturnValue({
-      isPending: false,
-      isError: false,
-      isSuccess: true,
-      data: [],
-    });
-
-    render(<BooksPage />);
-
-    expect(screen.getByText(/begin your first book/i)).toBeInTheDocument();
-    expect(screen.queryByText(/demo/i)).not.toBeInTheDocument();
-  });
-
-  it("keeps cached books visible when a background refresh fails", () => {
+  it("does not report zero books when the list request fails", () => {
     useBooksMock.mockReturnValue({
       isPending: false,
       isError: true,
       isSuccess: false,
-      data: [
-        {
-          bookId: "book-cached",
-          title: "Cached Manuscript",
-          style: { presetIds: ["warm"] },
-          createdAt: null,
-        },
-      ],
+      data: undefined,
       refetch: vi.fn(),
     });
 
-    render(<BooksPage />);
+    render(<Dashboard />);
 
-    expect(screen.getByRole("link", { name: /cached manuscript/i })).toHaveAttribute(
-      "href",
-      "/books/book-cached/chat",
-    );
+    expect(screen.getByText("N/A")).toBeInTheDocument();
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 });

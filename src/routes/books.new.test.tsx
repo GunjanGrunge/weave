@@ -249,6 +249,59 @@ describe("NewBook intake chat", () => {
     expect(screen.getByText("Who is the main character?")).toBeInTheDocument();
   });
 
+  it("discards a saved intake and returns to the first question", async () => {
+    render(<NewBook />);
+
+    fireEvent.change(screen.getByLabelText(/reply/i), {
+      target: { value: "A mystery inside a lighthouse" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    await waitFor(() => expect(localStorage.getItem("story:intake:user-a")).not.toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: /discard intake/i }));
+
+    expect(screen.queryByText("A mystery inside a lighthouse")).not.toBeInTheDocument();
+    expect(screen.getByText("What do you want to write?")).toBeInTheDocument();
+    expect(localStorage.getItem("story:intake:user-a")).toBeNull();
+  });
+
+  it("ignores a malformed saved intake instead of crashing the route", () => {
+    localStorage.setItem(
+      "story:intake:user-a",
+      JSON.stringify({
+        version: 1,
+        questionIndex: 0,
+        messages: [null],
+        idempotencyKey: "legacy-key",
+      }),
+    );
+
+    render(<NewBook />);
+
+    expect(screen.getByText("What do you want to write?")).toBeInTheDocument();
+  });
+
+  it("preserves the draft when createBook returns an invalid success payload", async () => {
+    authenticatedFetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ bookId: "", openingSuggestion: "ok", openings: [] }), {
+        status: 200,
+      }),
+    );
+    render(<NewBook />);
+
+    fireEvent.change(screen.getByLabelText(/reply/i), {
+      target: { value: "A mystery inside a lighthouse" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+    fireEvent.click(screen.getByRole("button", { name: /create book/i }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/could not create/i));
+    expect(screen.queryByRole("button", { name: /continue to my book/i })).not.toBeInTheDocument();
+    expect(localStorage.getItem("story:intake:user-a")).not.toBeNull();
+  });
+
   it("clears the local intake draft after the book is created", async () => {
     render(<NewBook />);
 

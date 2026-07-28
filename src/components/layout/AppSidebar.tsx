@@ -28,6 +28,7 @@ export function AppSidebar({
   onCloseMobile: () => void;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const showLabels = mobileOpen || !collapsed;
 
   return (
     <>
@@ -50,7 +51,7 @@ export function AppSidebar({
             <span className="grid size-8 shrink-0 place-items-center rounded-md bg-accent font-display text-lg italic text-accent-foreground">
               S
             </span>
-            {!collapsed && (
+            {showLabels && (
               <span className="truncate text-sm font-semibold tracking-tight">Story Platform</span>
             )}
           </Link>
@@ -66,7 +67,7 @@ export function AppSidebar({
         <nav className="flex-1 overflow-y-auto px-3 pb-4">
           {sections.map((section) => (
             <div key={section.heading} className="mt-4 first:mt-2">
-              {!collapsed && (
+              {showLabels && (
                 <div className="mb-1.5 px-2 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
                   {section.heading}
                 </div>
@@ -82,16 +83,17 @@ export function AppSidebar({
                     <Link
                       key={item.to}
                       to={item.to}
+                      onClick={onCloseMobile}
                       className={cn(
                         "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors",
                         active
                           ? "bg-accent/10 text-accent font-medium"
                           : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
                       )}
-                      title={collapsed ? item.label : undefined}
+                      title={showLabels ? undefined : item.label}
                     >
                       <Icon className="size-4 shrink-0" />
-                      {!collapsed && <span className="truncate">{item.label}</span>}
+                      {showLabels && <span className="truncate">{item.label}</span>}
                     </Link>
                   );
                 })}
@@ -105,7 +107,7 @@ export function AppSidebar({
             <div className="grid size-8 shrink-0 place-items-center rounded-full bg-foreground/10 font-mono text-[10px] font-bold text-foreground">
               SP
             </div>
-            {!collapsed && (
+            {showLabels && (
               <div className="min-w-0 flex-1">
                 <div className="truncate text-xs font-semibold">Story Platform</div>
                 <div className="truncate font-mono text-[10px] uppercase tracking-widest text-muted-foreground">

@@ -52,6 +52,23 @@ function normalizeStyle(style: Style): Style {
     : { presetIds: normalizedPresetIds };
 }
 
+function normalizeStoredStyle(value: unknown): Style {
+  if (typeof value !== "object" || value === null) {
+    return { presetIds: [DEFAULT_STYLE_PRESET_ID] };
+  }
+
+  const storedStyle = value as Record<string, unknown>;
+  const presetIds = Array.isArray(storedStyle.presetIds)
+    ? storedStyle.presetIds.filter((id): id is string => typeof id === "string")
+    : [];
+  const customInstruction =
+    typeof storedStyle.customInstruction === "string"
+      ? storedStyle.customInstruction
+      : undefined;
+
+  return normalizeStyle({ presetIds, customInstruction });
+}
+
 function styleSummary(style: Style): string {
   const labels = style.presetIds.map(
     (id) => STYLE_PRESETS.find((preset) => preset.id === id)?.label ?? id,
@@ -181,11 +198,16 @@ export async function listOwnedBooks(uid: string): Promise<OwnedBook[]> {
 
   return snapshot.docs
     .map((doc) => {
-      const book = doc.data() as Book;
+      const book = doc.data() as Record<string, unknown>;
+      const title =
+        typeof book.title === "string" && book.title.trim()
+          ? book.title.trim()
+          : "Untitled Book";
+
       return {
         bookId: doc.id,
-        title: book.title,
-        style: book.style,
+        title,
+        style: normalizeStoredStyle(book.style),
         createdAt: book.createdAt,
       };
     })
