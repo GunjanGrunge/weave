@@ -73,9 +73,32 @@ jobs:
         working-directory: functions
         run: node scripts/seedModelRegistry.mjs
 
-      - name: Deploy to Firebase
+      - name: Prepare verified Firebase config
+        run: jq 'del(.functions[].predeploy)' firebase.json > firebase.ci.json
+
+      - name: Deploy Hosting and Firestore
         run: >
           npx firebase-tools deploy
+          --config firebase.ci.json
           --project "$FIREBASE_PROJECT_ID"
-          --only hosting,firestore,functions:health,functions:whoami,functions:listBooks,functions:createBook,functions:retryOpeningSuggestion,functions:getVision,functions:updateVision,functions:getMessages,functions:generateScene,functions:saveGeneratedScene,functions:regenerateScene,functions:revertGeneratedScene,functions:acceptScene
+          --only hosting,firestore
           --non-interactive
+
+      - name: Deploy Functions in quota-safe batches
+        shell: bash
+        run: |
+          batches=(
+            "functions:health,functions:whoami,functions:listBooks"
+            "functions:createBook,functions:retryOpeningSuggestion,functions:getVision"
+            "functions:updateVision,functions:getMessages,functions:generateScene"
+            "functions:saveGeneratedScene,functions:regenerateScene"
+            "functions:revertGeneratedScene,functions:acceptScene"
+          )
+
+          for batch in "${batches[@]}"; do
+            npx firebase-tools deploy \
+              --config firebase.ci.json \
+              --project "$FIREBASE_PROJECT_ID" \
+              --only "$batch" \
+              --non-interactive
+          done

@@ -200,6 +200,7 @@ GPT-5 Codex
 - Added the inline Scene Review card with coalesced autosave, explicit conflict recovery, stale-response guards, action locking, comparison, revert, and accepted read-only state.
 - Added runtime validation for all scene API payloads while preserving legacy and persistence-degraded messages as read-only.
 - Hardened Firestore rules so writers can read intended manuscript data but cannot read server-only sessions or directly mutate authoritative scene state.
+- Hardened CI deployment to roll Functions in sequential quota-safe batches after one verified build, avoiding simultaneous Cloud Run revision CPU exhaustion.
 - Deployed all new functions, Hosting rewrites, and Firestore rules. Live authenticated writer-flow verification was not run because no writer password is stored in this environment; service/handler/component coverage verifies the complete flow, and live endpoints verify the deployed authentication boundary.
 - Firestore emulator execution remains unavailable because Java is not installed; focused static rules tests and the production rules compiler both passed.
 
@@ -243,3 +244,4 @@ GPT-5 Codex
 ### Change Log
 
 - 2026-07-28: Implemented Story 2.4 durable scene refinement and acceptance lifecycle; deployed to Firebase and moved the story to review.
+- 2026-07-28: Batched CI Function rollouts after regional Cloud Run CPU quota rejected an all-at-once redeploy.
