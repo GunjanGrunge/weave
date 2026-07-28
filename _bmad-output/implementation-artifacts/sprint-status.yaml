@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-26 08:17
-last_updated: 2026-07-28 16:02
+last_updated: 2026-07-28 17:00
 project: Story
 project_key: NOKEY
 tracking_system: file-system
@@ -61,7 +61,7 @@ development_status:
   2-3-polish-my-own-draft: done
   2-3a-replace-mock-workspace-with-real-writer-data: done
   2-4-refine-and-keep-the-scene: review
-  2-5-change-my-books-voice-at-any-time: in-progress
+  2-5-change-my-books-voice-at-any-time: review
   2-6-see-what-my-writing-costs: backlog
   epic-2-retrospective: optional
   epic-3: backlog
