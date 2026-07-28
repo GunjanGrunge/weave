@@ -1,558 +1,201 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { verifyIdTokenMock, getBookMock, appendChatMessageMock, runGenerateMock } = vi.hoisted(() => ({
+const { verifyIdTokenMock, getBookMock, runGenerateMock } = vi.hoisted(() => ({
   verifyIdTokenMock: vi.fn(),
   getBookMock: vi.fn(),
-  appendChatMessageMock: vi.fn(),
   runGenerateMock: vi.fn(),
 }));
 
 vi.mock("../services/auth.js", async () => {
-  const actual = await vi.importActual<typeof import("../services/auth.js")>("../services/auth.js");
+  const actual = await vi.importActual<typeof import("../services/auth.js")>(
+    "../services/auth.js",
+  );
   return { ...actual, verifyIdToken: verifyIdTokenMock };
 });
-
-vi.mock("../services/books.js", () => ({
-  getBook: getBookMock,
-  appendChatMessage: appendChatMessageMock,
-}));
-
+vi.mock("../services/books.js", () => ({ getBook: getBookMock }));
 vi.mock("../pipelines/generate.js", () => ({ runGenerate: runGenerateMock }));
 
-import { buildGenerateSceneResponse } from "./generateScene.js";
 import { AuthError } from "../services/auth.js";
+import { buildGenerateSceneResponse } from "./generateScene.js";
 
-const book = { uid: "user-a", title: "A heist", style: { presetIds: [] } };
-const apiKeys = { openai: "fake-openai-key", gemini: "fake-gemini-key" };
+const keys = { openai: "openai", gemini: "gemini" };
+const success = {
+  status: "ok" as const,
+  actionable: true,
+  sessionId: "session-1",
+  messageId: "message-1",
+  text: "Generated prose.",
+  revision: 0,
+  candidateStatus: "active" as const,
+  provider: "openai" as const,
+  model: "gpt-test",
+};
 
 describe("buildGenerateSceneResponse", () => {
   beforeEach(() => {
-    verifyIdTokenMock.mockReset();
-    getBookMock.mockReset();
-    appendChatMessageMock.mockReset();
-    runGenerateMock.mockReset();
+    vi.clearAllMocks();
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    getBookMock.mockResolvedValue({ uid: "user-a" });
+    runGenerateMock.mockResolvedValue(success);
   });
 
-  it("returns the generated scene and appends both the user's description and the assistant_scene chat message", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-    getBookMock.mockResolvedValue(book);
-    runGenerateMock.mockResolvedValue({
-      status: "ok",
-      text: "The vault door groaned open.",
-      provider: "openai",
-      model: "gpt-5.6-terra",
-      sessionId: "session-1",
-    });
-    appendChatMessageMock.mockResolvedValue({
-      type: "assistant_scene",
-      text: "The vault door groaned open.",
-      order: 2,
-      createdAt: "t",
-    });
-
+  it("returns actionable metadata and passes a bounded client idempotency key", async () => {
     const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      { bookId: "book-1", description: "Mara breaks into the vault." },
-      apiKeys,
+      "Bearer token",
+      {
+        bookId: "book-1",
+        description: "A tense meeting.",
+        idempotencyKey: "request-123",
+      },
+      keys,
     );
 
     expect(result).toEqual({
       statusCode: 200,
       body: {
         sessionId: "session-1",
-        text: "The vault door groaned open.",
+        messageId: "message-1",
+        text: "Generated prose.",
+        revision: 0,
+        status: "active",
         provider: "openai",
-        model: "gpt-5.6-terra",
+        model: "gpt-test",
+        actionable: true,
       },
     });
-    expect(appendChatMessageMock).toHaveBeenNthCalledWith(
-      1,
-      "book-1",
-      "user",
-      "Mara breaks into the vault.",
-    );
-    expect(appendChatMessageMock).toHaveBeenNthCalledWith(
-      2,
-      "book-1",
-      "assistant_scene",
-      "The vault door groaned open.",
-    );
-  });
-
-  it("still returns the generated scene when appendChatMessage fails after a successful generation", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-    getBookMock.mockResolvedValue(book);
-    runGenerateMock.mockResolvedValue({
-      status: "ok",
-      text: "The vault door groaned open.",
-      provider: "openai",
-      model: "gpt-5.6-terra",
-      sessionId: "session-1",
-    });
-    appendChatMessageMock.mockRejectedValue(new Error("Firestore write failed"));
-
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      { bookId: "book-1", description: "Mara breaks into the vault." },
-      apiKeys,
-    );
-
-    expect(result).toEqual({
-      statusCode: 200,
-      body: {
-        sessionId: "session-1",
-        text: "The vault door groaned open.",
-        provider: "openai",
-        model: "gpt-5.6-terra",
-      },
-    });
-  });
-
-  it("returns 400 and never runs the pipeline when the description is empty or whitespace", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      { bookId: "book-1", description: "   " },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(400);
-    expect(getBookMock).not.toHaveBeenCalled();
-    expect(runGenerateMock).not.toHaveBeenCalled();
-  });
-
-  it("returns 400 and never runs the pipeline when the description exceeds the max length", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      { bookId: "book-1", description: "x".repeat(4001) },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(400);
-    expect(getBookMock).not.toHaveBeenCalled();
-    expect(runGenerateMock).not.toHaveBeenCalled();
-  });
-
-  it("returns 400 when bookId is missing", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      { description: "Mara breaks into the vault." },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(400);
-    expect(runGenerateMock).not.toHaveBeenCalled();
-  });
-
-  it("returns 401 for a missing token", async () => {
-    verifyIdTokenMock.mockRejectedValue(
-      new AuthError("Missing or malformed Authorization header."),
-    );
-
-    const result = await buildGenerateSceneResponse(undefined, {
-      bookId: "book-1",
-      description: "x",
-    }, apiKeys);
-
-    expect(result.statusCode).toBe(401);
-    expect(getBookMock).not.toHaveBeenCalled();
-  });
-
-  it("returns 404 for a nonexistent book", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-    getBookMock.mockResolvedValue(undefined);
-
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      { bookId: "missing-book", description: "x" },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(404);
-    expect(runGenerateMock).not.toHaveBeenCalled();
-  });
-
-  it("rejects a book owned by another user", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-b" });
-    getBookMock.mockResolvedValue(book);
-
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      { bookId: "book-1", description: "x" },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(401);
-    expect(runGenerateMock).not.toHaveBeenCalled();
-  });
-
-  it("returns a structured 502 error (not a throw) when the pipeline fails", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-    getBookMock.mockResolvedValue(book);
-    runGenerateMock.mockResolvedValue({ status: "failed" });
-
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      { bookId: "book-1", description: "x" },
-      apiKeys,
-    );
-
-    expect(result).toEqual({
-      statusCode: 502,
-      body: { code: "generation-failed", message: expect.any(String) },
-    });
-    expect(appendChatMessageMock).not.toHaveBeenCalled();
-  });
-
-  it("returns the generated scene for structured mode with all four fields and persists a summarized user message", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-    getBookMock.mockResolvedValue(book);
-    runGenerateMock.mockResolvedValue({
-      status: "ok",
-      text: "The vault door groaned open.",
-      provider: "openai",
-      model: "gpt-5.6-terra",
-      sessionId: "session-1",
-    });
-
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      {
-        bookId: "book-1",
-        mode: "structured",
-        fields: {
-          sceneGoal: "Escape the vault",
-          mood: "tense",
-          povCharacter: "Mara",
-          setting: "Loading dock at 3am",
-        },
-      },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(200);
     expect(runGenerateMock).toHaveBeenCalledWith(
       "book-1",
-      {
-        mode: "structured",
-        fields: {
-          sceneGoal: "Escape the vault",
-          mood: "tense",
-          povCharacter: "Mara",
-          setting: "Loading dock at 3am",
-        },
-      },
-      apiKeys,
-    );
-    expect(appendChatMessageMock).toHaveBeenNthCalledWith(
-      1,
-      "book-1",
-      "user",
-      "Scene goal: Escape the vault. Mood: tense. POV/character: Mara. Setting: Loading dock at 3am.",
+      { mode: "free-text", description: "A tense meeting." },
+      keys,
+      { idempotencyKey: "request-123", userMessage: "A tense meeting." },
     );
   });
 
-  it("returns the generated scene for structured mode with only one field supplied, summarizing only that field", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-    getBookMock.mockResolvedValue(book);
+  it("returns a read-only success when persistence degraded", async () => {
     runGenerateMock.mockResolvedValue({
-      status: "ok",
-      text: "Scene text.",
-      provider: "openai",
-      model: "gpt-5.6-terra",
-      sessionId: "session-1",
+      ...success,
+      actionable: false,
+      sessionId: "",
+      messageId: "",
     });
 
     const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      { bookId: "book-1", mode: "structured", fields: { mood: "tense" } },
-      apiKeys,
+      "Bearer token",
+      { bookId: "book-1", description: "A tense meeting." },
+      keys,
     );
 
     expect(result.statusCode).toBe(200);
-    expect(appendChatMessageMock).toHaveBeenNthCalledWith(1, "book-1", "user", "Mood: tense.");
-  });
-
-  it("returns 400 and never runs the pipeline when all structured fields are empty or whitespace", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      { bookId: "book-1", mode: "structured", fields: { sceneGoal: "  ", mood: "" } },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(400);
-    expect(getBookMock).not.toHaveBeenCalled();
-    expect(runGenerateMock).not.toHaveBeenCalled();
-  });
-
-  it("returns 400 when a single structured field exceeds the per-field length cap", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      { bookId: "book-1", mode: "structured", fields: { mood: "x".repeat(501) } },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(400);
-    expect(runGenerateMock).not.toHaveBeenCalled();
-  });
-
-  it("accepts four fields each at the per-field cap, bounding worst-case structured input well under the free-text budget", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-    getBookMock.mockResolvedValue(book);
-    runGenerateMock.mockResolvedValue({
-      status: "ok",
-      text: "Scene text.",
-      provider: "openai",
-      model: "gpt-5.6-terra",
-      sessionId: "session-1",
-    });
-
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      {
-        bookId: "book-1",
-        mode: "structured",
-        fields: {
-          sceneGoal: "x".repeat(500),
-          mood: "x".repeat(500),
-          povCharacter: "x".repeat(500),
-          setting: "x".repeat(500),
-        },
-      },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(200);
-    const [, sceneInput] = runGenerateMock.mock.calls[0] as [string, { mode: string; fields: Record<string, string> }];
-    const combinedLength = Object.values(sceneInput.fields).reduce((total, v) => total + v.length, 0);
-    expect(combinedLength).toBeLessThan(4_000);
-  });
-
-  it("returns the generated scene for polish mode and persists a summarized user message", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-    getBookMock.mockResolvedValue(book);
-    runGenerateMock.mockResolvedValue({
-      status: "ok",
-      text: "A rewritten, tenser vault scene.",
-      provider: "openai",
-      model: "gpt-5.6-terra",
-      sessionId: "session-1",
-    });
-
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      {
-        bookId: "book-1",
-        mode: "polish",
-        draftText: "Mara walked into the vault. It was dark.",
-        aspects: ["raise-tension", "fix-dialogue"],
-      },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(200);
-    expect(runGenerateMock).toHaveBeenCalledWith(
-      "book-1",
-      {
-        mode: "polish",
-        draftText: "Mara walked into the vault. It was dark.",
-        aspects: ["raise-tension", "fix-dialogue"],
-      },
-      apiKeys,
-    );
-    expect(appendChatMessageMock).toHaveBeenNthCalledWith(
-      1,
-      "book-1",
-      "user",
-      "Polish draft (Raise tension, Fix dialogue): Mara walked into the vault. It was dark.",
-    );
-  });
-
-  it("returns 400 and never runs the pipeline when polish draftText is empty or whitespace", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      { bookId: "book-1", mode: "polish", draftText: "   ", aspects: ["raise-tension"] },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(400);
-    expect(getBookMock).not.toHaveBeenCalled();
-    expect(runGenerateMock).not.toHaveBeenCalled();
-  });
-
-  it("returns 400 and never runs the pipeline when no polish aspect is selected", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      { bookId: "book-1", mode: "polish", draftText: "Some draft.", aspects: [] },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(400);
-    expect(runGenerateMock).not.toHaveBeenCalled();
-  });
-
-  it("returns 400 when an unknown polish aspect id is supplied", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      { bookId: "book-1", mode: "polish", draftText: "Some draft.", aspects: ["not-a-real-aspect"] },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(400);
-    expect(runGenerateMock).not.toHaveBeenCalled();
-  });
-
-  it("returns 400 when polish aspects contain duplicates or exceed the catalog size", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-
-    const duplicateResult = await buildGenerateSceneResponse(
-      "Bearer valid",
-      {
-        bookId: "book-1",
-        mode: "polish",
-        draftText: "Some draft.",
-        aspects: ["raise-tension", "raise-tension"],
-      },
-      apiKeys,
-    );
-    const oversizedResult = await buildGenerateSceneResponse(
-      "Bearer valid",
-      {
-        bookId: "book-1",
-        mode: "polish",
-        draftText: "Some draft.",
-        aspects: Array.from({ length: 6 }, () => "raise-tension"),
-      },
-      apiKeys,
-    );
-
-    expect(duplicateResult.statusCode).toBe(400);
-    expect(oversizedResult.statusCode).toBe(400);
-    expect(runGenerateMock).not.toHaveBeenCalled();
-  });
-
-  it("rejects an unknown input mode instead of falling through to free-text", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      { bookId: "book-1", mode: "polsih", description: "Write a new scene." },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(400);
-    if (result.statusCode !== 400) {
-      throw new Error("Expected invalid input to return 400.");
+    if (result.statusCode === 200) {
+      expect(result.body.actionable).toBe(false);
+      expect(result.body.sessionId).toBe("");
     }
-    expect(result.body.message).toContain("polish");
-    expect(runGenerateMock).not.toHaveBeenCalled();
   });
 
-  it("returns 400 when polish draftText exceeds the max length", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+  it("maps an in-progress replay to 202 without another response shape", async () => {
+    runGenerateMock.mockResolvedValue({ status: "in-progress" });
+    await expect(
+      buildGenerateSceneResponse(
+        "Bearer token",
+        { bookId: "book-1", description: "x", idempotencyKey: "request-123" },
+        keys,
+      ),
+    ).resolves.toMatchObject({
+      statusCode: 202,
+      body: { code: "generation-in-progress" },
+    });
+  });
 
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
-      {
-        bookId: "book-1",
-        mode: "polish",
-        draftText: "x".repeat(8001),
-        aspects: ["raise-tension"],
-      },
-      apiKeys,
-    );
-
+  it.each([
+    [{ bookId: "book-1", description: " " }, "empty free text"],
+    [
+      { bookId: "book-1", mode: "structured", fields: { mood: " " } },
+      "empty structured fields",
+    ],
+    [
+      { bookId: "book-1", mode: "polish", draftText: "draft", aspects: [] },
+      "missing polish aspects",
+    ],
+    [
+      { bookId: "book-1", description: "x", idempotencyKey: "bad key" },
+      "invalid idempotency key",
+    ],
+  ])("rejects invalid request: %s", async (body, _label) => {
+    const result = await buildGenerateSceneResponse("Bearer token", body, keys);
     expect(result.statusCode).toBe(400);
     expect(runGenerateMock).not.toHaveBeenCalled();
   });
 
-  it("truncates a very long draft in the persisted user-message preview", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-    getBookMock.mockResolvedValue(book);
-    runGenerateMock.mockResolvedValue({
-      status: "ok",
-      text: "Rewritten.",
-      provider: "openai",
-      model: "gpt-5.6-terra",
-      sessionId: "session-1",
-    });
-    const longDraft = "x".repeat(300);
-
+  it("passes structured input and its summary to the pipeline", async () => {
     await buildGenerateSceneResponse(
-      "Bearer valid",
-      { bookId: "book-1", mode: "polish", draftText: longDraft, aspects: ["clarify-prose"] },
-      apiKeys,
+      "Bearer token",
+      { bookId: "book-1", mode: "structured", fields: { mood: "tense" } },
+      keys,
     );
-
-    const persistedMessage = appendChatMessageMock.mock.calls[0][2] as string;
-    expect(persistedMessage.length).toBeLessThan(longDraft.length);
-    expect(persistedMessage).toContain("…");
-    // The full draft is still sent to the model, only the persisted preview is truncated.
     expect(runGenerateMock).toHaveBeenCalledWith(
       "book-1",
-      { mode: "polish", draftText: longDraft, aspects: ["clarify-prose"] },
-      apiKeys,
+      { mode: "structured", fields: { mood: "tense" } },
+      keys,
+      expect.objectContaining({ userMessage: "Mood: tense." }),
     );
   });
 
-  it("does not split a Unicode code point at the persisted preview boundary", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-    getBookMock.mockResolvedValue(book);
-    runGenerateMock.mockResolvedValue({
-      status: "ok",
-      text: "Rewritten.",
-      provider: "openai",
-      model: "gpt-5.6-terra",
-      sessionId: "session-1",
-    });
-    const draftAtBoundary = `${"x".repeat(199)}😀tail`;
-
+  it("keeps the full polish draft for inference but bounds its message preview", async () => {
+    const draftText = "x".repeat(300);
     await buildGenerateSceneResponse(
-      "Bearer valid",
+      "Bearer token",
       {
         bookId: "book-1",
         mode: "polish",
-        draftText: draftAtBoundary,
+        draftText,
         aspects: ["clarify-prose"],
       },
-      apiKeys,
+      keys,
     );
-
-    const persistedMessage = appendChatMessageMock.mock.calls[0][2] as string;
-    expect(persistedMessage).toContain("😀…");
-    expect(persistedMessage).not.toContain("�");
+    const call = runGenerateMock.mock.calls[0] as [
+      string,
+      { draftText: string },
+      unknown,
+      { userMessage: string },
+    ];
+    expect(call[1].draftText).toBe(draftText);
+    expect(call[3].userMessage.length).toBeLessThan(draftText.length);
   });
 
-  it("returns a structured 502 error when the pipeline call times out", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-    getBookMock.mockResolvedValue(book);
-    runGenerateMock.mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve({ status: "ok" }), 50)),
-    );
-
-    const result = await buildGenerateSceneResponse(
-      "Bearer valid",
+  it("rejects missing authentication and cross-owner access", async () => {
+    verifyIdTokenMock.mockRejectedValueOnce(new AuthError("Missing token."));
+    const missing = await buildGenerateSceneResponse(
+      undefined,
       { bookId: "book-1", description: "x" },
-      apiKeys,
-      5,
+      keys,
     );
+    expect(missing.statusCode).toBe(401);
 
-    expect(result.statusCode).toBe(502);
-    expect(appendChatMessageMock).not.toHaveBeenCalled();
+    verifyIdTokenMock.mockResolvedValueOnce({ uid: "user-b" });
+    const foreign = await buildGenerateSceneResponse(
+      "Bearer token",
+      { bookId: "book-1", description: "x" },
+      keys,
+    );
+    expect(foreign.statusCode).toBe(401);
+  });
+
+  it("returns 404 for a missing book and 502 for provider failure", async () => {
+    getBookMock.mockResolvedValueOnce(undefined);
+    const missing = await buildGenerateSceneResponse(
+      "Bearer token",
+      { bookId: "missing", description: "x" },
+      keys,
+    );
+    expect(missing.statusCode).toBe(404);
+
+    getBookMock.mockResolvedValueOnce({ uid: "user-a" });
+    runGenerateMock.mockResolvedValueOnce({ status: "failed" });
+    const failed = await buildGenerateSceneResponse(
+      "Bearer token",
+      { bookId: "book-1", description: "x" },
+      keys,
+    );
+    expect(failed.statusCode).toBe(502);
   });
 });

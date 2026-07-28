@@ -7,3 +7,7 @@ export { getVision } from "./handlers/getVision.js";
 export { updateVision } from "./handlers/updateVision.js";
 export { getMessages } from "./handlers/getMessages.js";
 export { generateScene } from "./handlers/generateScene.js";
+export { saveGeneratedScene } from "./handlers/saveGeneratedScene.js";
+export { regenerateScene } from "./handlers/regenerateScene.js";
+export { revertGeneratedScene } from "./handlers/revertGeneratedScene.js";
+export { acceptScene } from "./handlers/acceptScene.js";

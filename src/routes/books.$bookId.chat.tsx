@@ -2,28 +2,27 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Loader2, Send, Sparkles } from "lucide-react";
 
+import { SceneReviewCard } from "@/components/scene/SceneReviewCard";
 import { Button } from "@/components/ui/button";
 import { authenticatedFetch } from "@/lib/api";
 import { POLISH_ASPECTS } from "@/lib/polish-aspects";
 import type { PolishAspectId } from "@/lib/polish-aspects";
+import { parseChatMessages, parseGeneratedScene, type ChatMessage } from "@/lib/scene-api";
 
 export const Route = createFileRoute("/books/$bookId/chat")({
   head: () => ({
     meta: [
       { title: "Book Chat - Story Platform" },
-      { name: "description", content: "Write your book's next scene through a chat-first surface." },
+      {
+        name: "description",
+        content: "Write your book's next scene through a chat-first surface.",
+      },
     ],
   }),
   component: ChatRoute,
 });
 
-type ChatMessageType = "user" | "assistant_scene" | "structural_note" | "system";
-
-type ChatMessage = {
-  type: ChatMessageType;
-  text: string;
-  order: number;
-};
+type ChatMessageType = ChatMessage["type"];
 
 type LoadState =
   | { status: "loading" }
@@ -109,7 +108,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
   const [selectedAspects, setSelectedAspects] = useState<PolishAspectId[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [generationState, setGenerationState] = useState<GenerationState>({ status: "idle" });
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const generationKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -121,7 +120,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
     setSelectedAspects([]);
     setValidationError(null);
     setGenerationState({ status: "idle" });
-    setSessionId(null);
+    generationKeyRef.current = null;
 
     async function loadMessages() {
       setLoadState({ status: "loading" });
@@ -134,9 +133,12 @@ export function ChatPage({ bookId }: { bookId: string }) {
         if (!response.ok) {
           throw new Error("Could not load messages.");
         }
-        const result = (await response.json()) as { messages: ChatMessage[] };
+        const messages = parseChatMessages(await response.json());
+        if (!messages) {
+          throw new Error("Invalid messages response.");
+        }
         if (!cancelled) {
-          setLoadState({ status: "ready", messages: result.messages });
+          setLoadState({ status: "ready", messages });
         }
       } catch {
         if (!cancelled) {
@@ -157,7 +159,9 @@ export function ChatPage({ bookId }: { bookId: string }) {
     }
 
     const trimmedDescription = description.trim();
-    const hasStructuredValue = STRUCTURED_FIELD_LABELS.some(({ key }) => structuredFields[key].trim());
+    const hasStructuredValue = STRUCTURED_FIELD_LABELS.some(({ key }) =>
+      structuredFields[key].trim(),
+    );
     const hasDraftText = draftText.trim().length > 0;
 
     let payload: Record<string, unknown>;
@@ -197,6 +201,8 @@ export function ChatPage({ bookId }: { bookId: string }) {
     setValidationError(null);
     setGenerationState({ status: "loading" });
     const requestBookId = bookId;
+    generationKeyRef.current ??= `generate-${crypto.randomUUID()}`;
+    payload.idempotencyKey = generationKeyRef.current;
 
     try {
       const response = await authenticatedFetch("/generateScene", {
@@ -207,12 +213,10 @@ export function ChatPage({ bookId }: { bookId: string }) {
       if (!response.ok) {
         throw new Error("Generation failed.");
       }
-      const result = (await response.json()) as {
-        sessionId: string;
-        text: string;
-        provider: "openai" | "gemini";
-        model: string;
-      };
+      const result = parseGeneratedScene(await response.json());
+      if (!result) {
+        throw new Error("Invalid generation response.");
+      }
       if (activeBookIdRef.current !== requestBookId) {
         return;
       }
@@ -225,11 +229,24 @@ export function ChatPage({ bookId }: { bookId: string }) {
           messages: [
             ...priorMessages,
             { type: "user", text: userMessageText, order: nextOrder },
-            { type: "assistant_scene", text: result.text, order: nextOrder + 1 },
+            result.actionable
+              ? {
+                  id: result.messageId,
+                  type: "assistant_scene",
+                  text: result.text,
+                  order: nextOrder + 1,
+                  sessionId: result.sessionId,
+                  revision: result.revision,
+                  status: result.status,
+                  provider: result.provider,
+                  model: result.model,
+                  ...(result.previousAttempt ? { previousAttempt: result.previousAttempt } : {}),
+                }
+              : { type: "assistant_scene", text: result.text, order: nextOrder + 1 },
           ],
         };
       });
-      setSessionId(result.sessionId);
+      generationKeyRef.current = null;
       if (inputMode === "free-text") {
         setDescription("");
       } else if (inputMode === "structured") {
@@ -256,9 +273,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
 
   function toggleAspect(aspectId: PolishAspectId) {
     setSelectedAspects((current) =>
-      current.includes(aspectId)
-        ? current.filter((id) => id !== aspectId)
-        : [...current, aspectId],
+      current.includes(aspectId) ? current.filter((id) => id !== aspectId) : [...current, aspectId],
     );
   }
 
@@ -323,17 +338,21 @@ export function ChatPage({ bookId }: { bookId: string }) {
         )}
         {messages.map((message, index) => (
           <div
-            key={`${message.type}-${message.order}-${index}`}
+            key={message.id ?? `${message.type}-${message.order}-${index}`}
             className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}
           >
-            <div
-              className={`max-w-[82%] rounded-2xl border px-4 py-3 text-sm leading-relaxed ${messageStyles(message.type)}`}
-            >
-              {message.type !== "user" && (
-                <Sparkles className="mb-2 size-4 text-accent" aria-hidden="true" />
-              )}
-              {message.text}
-            </div>
+            {message.type === "assistant_scene" && message.sessionId ? (
+              <SceneReviewCard bookId={bookId} message={message} />
+            ) : (
+              <div
+                className={`max-w-[82%] whitespace-pre-wrap rounded-md border px-4 py-3 text-sm leading-relaxed ${messageStyles(message.type)}`}
+              >
+                {message.type !== "user" && (
+                  <Sparkles className="mb-2 size-4 text-accent" aria-hidden="true" />
+                )}
+                {message.text}
+              </div>
+            )}
           </div>
         ))}
         {isLoading && (
@@ -441,7 +460,11 @@ export function ChatPage({ bookId }: { bookId: string }) {
           </div>
           <div className="mt-2 flex justify-end">
             <Button type="button" onClick={submitScene} disabled={isLoading}>
-              {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              {isLoading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Send className="size-4" />
+              )}
               Send
             </Button>
           </div>
@@ -485,13 +508,16 @@ export function ChatPage({ bookId }: { bookId: string }) {
           </div>
           <div className="mt-2 flex justify-end">
             <Button type="button" onClick={submitScene} disabled={isLoading}>
-              {isLoading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              {isLoading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Send className="size-4" />
+              )}
               Send
             </Button>
           </div>
         </div>
       )}
-      {sessionId && <span className="sr-only">session:{sessionId}</span>}
     </div>
   );
 }

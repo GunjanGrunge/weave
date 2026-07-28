@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { onRequest } from "firebase-functions/v2/https";
 
 import { allowedOrigins } from "../config/cors.js";
@@ -6,7 +8,7 @@ import type { PolishAspectId } from "../config/polishAspects.js";
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "../config/secrets.js";
 import { runGenerate } from "../pipelines/generate.js";
 import { verifyIdToken, assertOwnership, AuthError } from "../services/auth.js";
-import { appendChatMessage, getBook } from "../services/books.js";
+import { getBook } from "../services/books.js";
 import type { AIProviderKeys } from "../services/gemini.js";
 import type { SceneInput, StructuredSceneFields } from "../types/sceneInput.js";
 
@@ -33,14 +35,19 @@ const POLISH_ASPECT_IDS: ReadonlySet<string> = new Set(
 
 export type GenerateSceneSuccess = {
   sessionId: string;
+  messageId: string;
   text: string;
   provider: "openai" | "gemini";
   model: string;
+  revision: number;
+  status?: "active" | "accepted";
+  actionable: boolean;
 };
 export type GenerateSceneError = { code: string; message: string };
 
 export type GenerateSceneResult =
   | { statusCode: 200; body: GenerateSceneSuccess }
+  | { statusCode: 202; body: GenerateSceneError }
   | { statusCode: 400; body: GenerateSceneError }
   | { statusCode: 401; body: GenerateSceneError }
   | { statusCode: 404; body: GenerateSceneError }
@@ -90,7 +97,9 @@ function parsePolishAspects(rawAspects: unknown): PolishAspectId[] | undefined {
   return rawAspects as PolishAspectId[];
 }
 
-function parseInput(body: unknown): { bookId: string; input: SceneInput } | undefined {
+function parseInput(
+  body: unknown,
+): { bookId: string; input: SceneInput; idempotencyKey: string } | undefined {
   if (typeof body !== "object" || body === null) {
     return undefined;
   }
@@ -99,13 +108,24 @@ function parseInput(body: unknown): { bookId: string; input: SceneInput } | unde
   if (typeof bookId !== "string" || bookId.length === 0) {
     return undefined;
   }
+  const suppliedKey = record.idempotencyKey;
+  if (
+    suppliedKey !== undefined &&
+    (typeof suppliedKey !== "string" ||
+      suppliedKey.length < 8 ||
+      suppliedKey.length > 128 ||
+      !/^[A-Za-z0-9_-]+$/.test(suppliedKey))
+  ) {
+    return undefined;
+  }
+  const idempotencyKey = typeof suppliedKey === "string" ? suppliedKey : randomUUID();
 
   if (record.mode === "structured") {
     const fields = parseStructuredFields(record.fields);
     if (!fields) {
       return undefined;
     }
-    return { bookId, input: { mode: "structured", fields } };
+    return { bookId, input: { mode: "structured", fields }, idempotencyKey };
   }
 
   if (record.mode === "polish") {
@@ -121,7 +141,7 @@ function parseInput(body: unknown): { bookId: string; input: SceneInput } | unde
     if (!aspects) {
       return undefined;
     }
-    return { bookId, input: { mode: "polish", draftText, aspects } };
+    return { bookId, input: { mode: "polish", draftText, aspects }, idempotencyKey };
   }
 
   if (record.mode !== undefined && record.mode !== "free-text") {
@@ -136,7 +156,7 @@ function parseInput(body: unknown): { bookId: string; input: SceneInput } | unde
   ) {
     return undefined;
   }
-  return { bookId, input: { mode: "free-text", description } };
+  return { bookId, input: { mode: "free-text", description }, idempotencyKey };
 }
 
 function summarizeSceneInput(input: SceneInput): string {
@@ -172,12 +192,13 @@ function runGenerateWithTimeout(
   bookId: string,
   input: SceneInput,
   apiKeys: AIProviderKeys,
+  operation: { idempotencyKey: string; userMessage: string },
   timeoutMs: number,
 ): Promise<Awaited<ReturnType<typeof runGenerate>>> {
   return new Promise((resolve) => {
     const timeout = setTimeout(() => resolve({ status: "failed" }), timeoutMs);
 
-    runGenerate(bookId, input, apiKeys)
+    runGenerate(bookId, input, apiKeys, operation)
       .then((result) => {
         clearTimeout(timeout);
         resolve(result);
@@ -216,7 +237,25 @@ export async function buildGenerateSceneResponse(
     }
     assertOwnership(decoded.uid, book.uid);
 
-    const result = await runGenerateWithTimeout(parsed.bookId, parsed.input, apiKeys, timeoutMs);
+    const result = await runGenerateWithTimeout(
+      parsed.bookId,
+      parsed.input,
+      apiKeys,
+      {
+        idempotencyKey: parsed.idempotencyKey,
+        userMessage: summarizeSceneInput(parsed.input),
+      },
+      timeoutMs,
+    );
+    if (result.status === "in-progress") {
+      return {
+        statusCode: 202,
+        body: {
+          code: "generation-in-progress",
+          message: "This generation is still in progress. Retry shortly.",
+        },
+      };
+    }
     if (result.status !== "ok") {
       return {
         statusCode: 502,
@@ -227,23 +266,17 @@ export async function buildGenerateSceneResponse(
     // The generation already succeeded and was billed at this point — a
     // Firestore write failure here must not discard it from the response,
     // only fail to persist it to chat history.
-    try {
-      await appendChatMessage(parsed.bookId, "user", summarizeSceneInput(parsed.input));
-      await appendChatMessage(parsed.bookId, "assistant_scene", result.text);
-    } catch (error) {
-      console.error("generateScene: appendChatMessage failed after a successful generation", {
-        bookId: parsed.bookId,
-        error,
-      });
-    }
-
     return {
       statusCode: 200,
       body: {
         sessionId: result.sessionId,
+        messageId: result.messageId,
         text: result.text,
         provider: result.provider,
         model: result.model,
+        revision: result.revision,
+        status: result.actionable ? result.candidateStatus : undefined,
+        actionable: result.actionable,
       },
     };
   } catch (error) {

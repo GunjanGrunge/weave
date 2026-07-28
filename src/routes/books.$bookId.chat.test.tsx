@@ -104,11 +104,9 @@ describe("ChatPage", () => {
     expect(authenticatedFetchMock).toHaveBeenCalledWith(
       "/generateScene",
       expect.objectContaining({
-        body: JSON.stringify({
-          bookId: "book-1",
-          mode: "free-text",
-          description: "Mara breaks into the vault.",
-        }),
+        body: expect.stringContaining(
+          '{"bookId":"book-1","mode":"free-text","description":"Mara breaks into the vault."',
+        ),
       }),
     );
   });
@@ -195,11 +193,9 @@ describe("ChatPage", () => {
     expect(authenticatedFetchMock).toHaveBeenCalledWith(
       "/generateScene",
       expect.objectContaining({
-        body: JSON.stringify({
-          bookId: "book-1",
-          mode: "structured",
-          fields: { sceneGoal: "", mood: "tense", povCharacter: "", setting: "" },
-        }),
+        body: expect.stringContaining(
+          '{"bookId":"book-1","mode":"structured","fields":{"sceneGoal":"","mood":"tense","povCharacter":"","setting":""}',
+        ),
       }),
     );
   });
@@ -213,15 +209,17 @@ describe("ChatPage", () => {
     await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /quick details/i }));
-    fireEvent.change(screen.getByLabelText("Scene goal"), { target: { value: "Escape the vault" } });
+    fireEvent.change(screen.getByLabelText("Scene goal"), {
+      target: { value: "Escape the vault" },
+    });
     fireEvent.change(screen.getByLabelText("Mood"), { target: { value: "tense" } });
     fireEvent.change(screen.getByLabelText("POV/character"), { target: { value: "Mara" } });
-    fireEvent.change(screen.getByLabelText("Setting"), { target: { value: "Loading dock at 3am" } });
+    fireEvent.change(screen.getByLabelText("Setting"), {
+      target: { value: "Loading dock at 3am" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
 
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument());
     expect(screen.getByLabelText("Scene goal")).toHaveValue("Escape the vault");
     expect(screen.getByLabelText("Mood")).toHaveValue("tense");
     expect(screen.getByLabelText("POV/character")).toHaveValue("Mara");
@@ -337,19 +335,19 @@ describe("ChatPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
 
     await waitFor(() =>
-      expect(
-        screen.getByText("Mara slipped into the vault, pulse hammering."),
-      ).toBeInTheDocument(),
+      expect(screen.getByText("Mara slipped into the vault, pulse hammering.")).toBeInTheDocument(),
     );
     expect(authenticatedFetchMock).toHaveBeenCalledWith(
       "/generateScene",
       expect.objectContaining({
-        body: JSON.stringify({
-          bookId: "book-1",
-          mode: "polish",
-          draftText: draftWithOuterWhitespace,
-          aspects: ["raise-tension"],
-        }),
+        body: expect.stringContaining(
+          JSON.stringify({
+            bookId: "book-1",
+            mode: "polish",
+            draftText: draftWithOuterWhitespace,
+            aspects: ["raise-tension"],
+          }).slice(0, -1),
+        ),
       }),
     );
   });
@@ -369,9 +367,7 @@ describe("ChatPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /raise tension/i }));
     fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
 
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument());
     expect(screen.getByLabelText(/draft text/i)).toHaveValue("Mara walked into the vault.");
     expect(screen.getByRole("button", { name: /raise tension/i })).toHaveAttribute(
       "aria-pressed",
@@ -484,9 +480,7 @@ describe("ChatPage", () => {
     });
     fireEvent.click(screen.getByLabelText("Send"));
 
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument());
     expect(screen.getByLabelText(/scene description/i)).toHaveValue("Mara breaks into the vault.");
   });
 });

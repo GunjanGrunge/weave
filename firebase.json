@@ -70,6 +70,34 @@
         }
       },
       {
+        "source": "/saveGeneratedScene",
+        "function": {
+          "functionId": "saveGeneratedScene",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/regenerateScene",
+        "function": {
+          "functionId": "regenerateScene",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/revertGeneratedScene",
+        "function": {
+          "functionId": "revertGeneratedScene",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/acceptScene",
+        "function": {
+          "functionId": "acceptScene",
+          "region": "us-central1"
+        }
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

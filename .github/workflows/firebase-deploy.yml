@@ -77,5 +77,5 @@ jobs:
         run: >
           npx firebase-tools deploy
           --project "$FIREBASE_PROJECT_ID"
-          --only hosting,firestore,functions:health,functions:whoami,functions:listBooks,functions:createBook,functions:retryOpeningSuggestion,functions:getVision,functions:updateVision,functions:getMessages,functions:generateScene
+          --only hosting,firestore,functions:health,functions:whoami,functions:listBooks,functions:createBook,functions:retryOpeningSuggestion,functions:getVision,functions:updateVision,functions:getMessages,functions:generateScene,functions:saveGeneratedScene,functions:regenerateScene,functions:revertGeneratedScene,functions:acceptScene
           --non-interactive

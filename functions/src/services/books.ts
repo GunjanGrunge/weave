@@ -148,9 +148,10 @@ export async function createBookWithIntake(
     uid,
     title: answers.whatToWrite || "Untitled Book",
     style,
+    manuscriptRevision: 0,
     createdAt,
   };
-  const chapter: Chapter = { order: 0, createdAt };
+  const chapter: Chapter = { order: 0, nextSceneOrder: 0, createdAt };
   const vision: VisionDocument = {
     theme: answers.whatToWrite,
     premise: answers.roughPremise,
@@ -371,7 +372,7 @@ export async function getMessages(bookId: string): Promise<ChatMessage[]> {
     .orderBy("order", "asc")
     .get();
 
-  return snapshot.docs.map((doc) => doc.data() as ChatMessage);
+  return snapshot.docs.map((doc) => ({ ...(doc.data() as ChatMessage), id: doc.id }));
 }
 
 /**

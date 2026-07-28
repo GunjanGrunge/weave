@@ -1,19 +1,36 @@
+import { randomUUID } from "node:crypto";
+
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
-import { getApps, initializeApp } from "firebase-admin/app";
-import { FieldValue, getFirestore } from "firebase-admin/firestore";
 
 import { assembleContext, type AssembledContext } from "./assembleContext.js";
 import { composePrompt } from "./composePrompt.js";
+import { getBook } from "../services/books.js";
 import type { AIProviderKeys } from "../services/gemini.js";
 import { generateScene as generateSceneCall } from "../services/gemini.js";
+import {
+  claimInitialGeneration,
+  claimRegeneration,
+  commitRegeneration,
+  persistGeneratedCandidate,
+  type CandidateResult,
+} from "../services/scenes.js";
+import type { GenerationSession, SceneAttempt } from "../types/generationSession.js";
 import type { SceneInput } from "../types/sceneInput.js";
 
-function firestore() {
-  if (getApps().length === 0) {
-    initializeApp();
-  }
-  return getFirestore();
-}
+export type RunGenerateResult =
+  | ({ status: "ok"; actionable: boolean } & CandidateResult)
+  | {
+      status: "ok";
+      actionable: false;
+      sessionId: "";
+      messageId: "";
+      text: string;
+      revision: 0;
+      provider: "openai" | "gemini";
+      model: string;
+    }
+  | { status: "in-progress" }
+  | { status: "failed" };
 
 const GenerateState = Annotation.Root({
   bookId: Annotation<string>,
@@ -22,27 +39,29 @@ const GenerateState = Annotation.Root({
   status: Annotation<"ok" | "failed">,
   assembledContext: Annotation<AssembledContext | undefined>,
   prompt: Annotation<string | undefined>,
-  text: Annotation<string | undefined>,
-  provider: Annotation<"openai" | "gemini" | undefined>,
-  model: Annotation<string | undefined>,
-  sessionId: Annotation<string | undefined>,
+  candidate: Annotation<SceneAttempt | undefined>,
 });
 
 type GenerateStateValue = typeof GenerateState.State;
 
-async function assembleContextNode(state: GenerateStateValue): Promise<Partial<GenerateStateValue>> {
-  const assembledContext = await assembleContext(state.bookId);
-  return { assembledContext };
+async function assembleNode(
+  state: GenerateStateValue,
+): Promise<Partial<GenerateStateValue>> {
+  if (state.assembledContext) {
+    return {};
+  }
+  return { assembledContext: await assembleContext(state.bookId) };
 }
 
-async function composePromptNode(state: GenerateStateValue): Promise<Partial<GenerateStateValue>> {
+async function composeNode(
+  state: GenerateStateValue,
+): Promise<Partial<GenerateStateValue>> {
   if (!state.assembledContext) {
-    console.error("generate/composePrompt: no assembled context", { bookId: state.bookId });
     return { status: "failed" };
   }
   const composed = await composePrompt(state.bookId, state.assembledContext, state.input);
   if (!composed) {
-    console.error("generate/composePrompt: composePrompt returned undefined (missing book or vision)", {
+    console.error("generate/composePrompt: missing book or vision", {
       bookId: state.bookId,
     });
     return { status: "failed" };
@@ -50,99 +69,178 @@ async function composePromptNode(state: GenerateStateValue): Promise<Partial<Gen
   return { prompt: composed.prompt };
 }
 
-async function generateSceneNode(state: GenerateStateValue): Promise<Partial<GenerateStateValue>> {
+async function generateNode(
+  state: GenerateStateValue,
+): Promise<Partial<GenerateStateValue>> {
   if (!state.prompt) {
     return { status: "failed" };
   }
   try {
-    const result = await generateSceneCall(state.bookId, state.prompt, state.apiKeys);
-    return { text: result.text, provider: result.provider, model: result.model, status: "ok" };
+    const generated = await generateSceneCall(state.bookId, state.prompt, state.apiKeys);
+    return {
+      candidate: {
+        text: generated.text,
+        provider: generated.provider,
+        model: generated.model,
+      },
+      status: "ok",
+    };
   } catch (error) {
-    console.error("generate/generateScene: model call failed", { bookId: state.bookId, error });
+    console.error("generate/model: provider call failed", { bookId: state.bookId, error });
     return { status: "failed" };
   }
 }
 
-/**
- * A session-persistence failure must not discard an already-generated,
- * already-billed scene: the node logs the error and omits `sessionId`
- * rather than flipping `status` to `failed` (see `runGenerate`'s success
- * check, which treats a missing `sessionId` as a degraded-but-real success).
- */
-async function persistSessionNode(state: GenerateStateValue): Promise<Partial<GenerateStateValue>> {
-  if (state.status !== "ok" || !state.assembledContext || !state.prompt) {
-    return {};
-  }
-
-  try {
-    const sessionRef = firestore()
-      .collection("books")
-      .doc(state.bookId)
-      .collection("sessions")
-      .doc();
-
-    await sessionRef.set({
-      bookId: state.bookId,
-      chapterId: state.assembledContext.chapterId ?? null,
-      assembledContext: { priorScenesText: state.assembledContext.priorScenesText },
-      composedPrompt: state.prompt,
-      createdAt: FieldValue.serverTimestamp(),
-    });
-
-    return { sessionId: sessionRef.id };
-  } catch (error) {
-    console.error("generate/persistSession: session write failed", { bookId: state.bookId, error });
-    return {};
-  }
-}
-
 const graph = new StateGraph(GenerateState)
-  .addNode("assembleContext", assembleContextNode)
-  .addNode("composePrompt", composePromptNode)
-  .addNode("generateScene", generateSceneNode)
-  .addNode("persistSession", persistSessionNode)
+  .addNode("assembleContext", assembleNode)
+  .addNode("composePrompt", composeNode)
+  .addNode("generateScene", generateNode)
   .addEdge(START, "assembleContext")
   .addEdge("assembleContext", "composePrompt")
   .addEdge("composePrompt", "generateScene")
-  .addEdge("generateScene", "persistSession")
-  .addEdge("persistSession", END)
+  .addEdge("generateScene", END)
   .compile();
 
-export type RunGenerateResult =
-  | { status: "ok"; text: string; provider: "openai" | "gemini"; model: string; sessionId: string }
-  | { status: "failed" };
-
-export async function runGenerate(
+async function executeGeneration(
   bookId: string,
   input: SceneInput,
   apiKeys: AIProviderKeys,
-): Promise<RunGenerateResult> {
+  assembledContext?: AssembledContext,
+): Promise<{
+  candidate: SceneAttempt;
+  assembledContext: AssembledContext;
+} | undefined> {
   const result = await graph.invoke({
     bookId,
     input,
     apiKeys,
     status: "failed",
-    assembledContext: undefined,
+    assembledContext,
     prompt: undefined,
-    text: undefined,
-    provider: undefined,
-    model: undefined,
-    sessionId: undefined,
+    candidate: undefined,
   });
+  return result.status === "ok" && result.candidate && result.assembledContext
+    ? { candidate: result.candidate, assembledContext: result.assembledContext }
+    : undefined;
+}
 
-  // A missing sessionId (persistSession failed) does not discard an
-  // already-generated, already-billed scene — the generation itself is
-  // what matters to the caller; regenerate simply won't have a session
-  // to reuse for this one request.
-  if (result.status === "ok" && result.text && result.provider && result.model) {
-    return {
-      status: "ok",
-      text: result.text,
-      provider: result.provider,
-      model: result.model,
-      sessionId: result.sessionId ?? "",
-    };
+export async function runGenerate(
+  bookId: string,
+  input: SceneInput,
+  apiKeys: AIProviderKeys,
+  operation: { idempotencyKey: string; userMessage: string } = {
+    idempotencyKey: randomUUID(),
+    userMessage: "",
+  },
+): Promise<RunGenerateResult> {
+  const claim = await claimInitialGeneration(bookId, operation.idempotencyKey);
+  if (claim.status === "in-progress") {
+    return { status: "in-progress" };
+  }
+  if (claim.status === "completed") {
+    return { status: "ok", actionable: true, ...claim.result };
   }
 
-  return { status: "failed" };
+  const generated = await executeGeneration(bookId, input, apiKeys);
+  if (!generated) {
+    return { status: "failed" };
+  }
+
+  try {
+    const persisted = await persistGeneratedCandidate({
+      bookId,
+      idempotencyKey: operation.idempotencyKey,
+      attemptToken: claim.attemptToken,
+      sceneInput: input,
+      userMessage: operation.userMessage,
+      assembledContext: generated.assembledContext,
+      candidate: generated.candidate,
+    });
+    return { status: "ok", actionable: true, ...persisted };
+  } catch (error) {
+    // The model call has succeeded and may be billed. Preserve its prose even
+    // if the durable review session cannot be committed.
+    console.error("generate/persist: generated candidate could not be persisted", {
+      bookId,
+      error,
+    });
+    return {
+      status: "ok",
+      actionable: false,
+      sessionId: "",
+      messageId: "",
+      text: generated.candidate.text,
+      revision: 0,
+      provider: generated.candidate.provider,
+      model: generated.candidate.model,
+    };
+  }
+}
+
+function cachedContext(session: GenerationSession): AssembledContext {
+  return {
+    chapterId: session.chapterId ?? undefined,
+    priorScenesText: session.assembledContext.priorScenesText,
+    manuscriptRevision: session.manuscriptRevision,
+  };
+}
+
+export async function runRegenerate(
+  bookId: string,
+  sessionId: string,
+  expectedRevision: number,
+  idempotencyKey: string,
+  apiKeys: AIProviderKeys,
+): Promise<RunGenerateResult> {
+  const claim = await claimRegeneration(
+    bookId,
+    sessionId,
+    idempotencyKey,
+    expectedRevision,
+  );
+  if (claim.status === "in-progress") {
+    return { status: "in-progress" };
+  }
+  if (claim.status === "completed") {
+    return { status: "ok", actionable: true, ...claim.result };
+  }
+
+  const book = await getBook(bookId);
+  if (!book) {
+    return { status: "failed" };
+  }
+  const currentManuscriptRevision =
+    typeof book.manuscriptRevision === "number" ? book.manuscriptRevision : 0;
+  const reusableContext =
+    currentManuscriptRevision === claim.session.manuscriptRevision
+      ? cachedContext(claim.session)
+      : undefined;
+  const generated = await executeGeneration(
+    bookId,
+    claim.session.input,
+    apiKeys,
+    reusableContext,
+  );
+  if (!generated) {
+    return { status: "failed" };
+  }
+
+  try {
+    const committed = await commitRegeneration({
+      bookId,
+      sessionId,
+      attemptToken: claim.attemptToken,
+      expectedRevision,
+      assembledContext: generated.assembledContext,
+      candidate: generated.candidate,
+    });
+    return { status: "ok", actionable: true, ...committed };
+  } catch (error) {
+    console.error("regenerate/commit: candidate was not committed", {
+      bookId,
+      sessionId,
+      error,
+    });
+    return { status: "failed" };
+  }
 }

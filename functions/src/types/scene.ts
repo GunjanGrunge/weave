@@ -3,5 +3,6 @@ export type Scene = {
   order: number;
   modelUsed: string;
   provider: "openai" | "gemini";
+  sourceSessionId: string;
   createdAt: unknown;
 };

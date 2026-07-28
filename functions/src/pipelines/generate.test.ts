@@ -1,198 +1,197 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { SceneInput } from "../types/sceneInput.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   assembleContextMock,
   composePromptMock,
   generateSceneMock,
-  sessionSetMock,
-  serverTimestampMock,
+  claimInitialGenerationMock,
+  persistGeneratedCandidateMock,
+  claimRegenerationMock,
+  commitRegenerationMock,
+  getBookMock,
 } = vi.hoisted(() => ({
   assembleContextMock: vi.fn(),
   composePromptMock: vi.fn(),
   generateSceneMock: vi.fn(),
-  sessionSetMock: vi.fn(),
-  serverTimestampMock: vi.fn(() => "server-time"),
+  claimInitialGenerationMock: vi.fn(),
+  persistGeneratedCandidateMock: vi.fn(),
+  claimRegenerationMock: vi.fn(),
+  commitRegenerationMock: vi.fn(),
+  getBookMock: vi.fn(),
 }));
 
 vi.mock("./assembleContext.js", () => ({ assembleContext: assembleContextMock }));
 vi.mock("./composePrompt.js", () => ({ composePrompt: composePromptMock }));
 vi.mock("../services/gemini.js", () => ({ generateScene: generateSceneMock }));
-
-vi.mock("firebase-admin/app", () => ({
-  getApps: vi.fn(() => ["app"]),
-  initializeApp: vi.fn(),
+vi.mock("../services/books.js", () => ({ getBook: getBookMock }));
+vi.mock("../services/scenes.js", () => ({
+  claimInitialGeneration: claimInitialGenerationMock,
+  persistGeneratedCandidate: persistGeneratedCandidateMock,
+  claimRegeneration: claimRegenerationMock,
+  commitRegeneration: commitRegenerationMock,
 }));
 
-vi.mock("firebase-admin/firestore", () => ({
-  FieldValue: { serverTimestamp: serverTimestampMock },
-  getFirestore: vi.fn(() => ({
-    collection: () => ({
-      doc: () => ({
-        collection: () => ({
-          doc: () => ({
-            id: "session-auto-id",
-            set: sessionSetMock,
-          }),
-        }),
-      }),
-    }),
-  })),
-}));
+import { runGenerate, runRegenerate } from "./generate.js";
 
-import { runGenerate } from "./generate.js";
+const keys = { openai: "openai", gemini: "gemini" };
+const context = {
+  chapterId: "chapter-1",
+  priorScenesText: ["Earlier scene."],
+  manuscriptRevision: 2,
+};
+const persisted = {
+  sessionId: "session-1",
+  messageId: "message-1",
+  text: "Generated prose.",
+  revision: 0,
+  candidateStatus: "active" as const,
+  provider: "openai" as const,
+  model: "gpt-test",
+};
 
-const apiKeys = { openai: "fake-openai-key", gemini: "fake-gemini-key" };
-const assembledContext = { chapterId: "chapter-1", priorScenesText: ["Scene one."] };
-
-describe("runGenerate", () => {
+describe("generation pipelines", () => {
   beforeEach(() => {
-    assembleContextMock.mockReset();
-    composePromptMock.mockReset();
-    generateSceneMock.mockReset();
-    sessionSetMock.mockReset();
-    sessionSetMock.mockResolvedValue(undefined);
+    vi.clearAllMocks();
+    claimInitialGenerationMock.mockResolvedValue({
+      status: "claimed",
+      attemptToken: "token-1",
+    });
+    assembleContextMock.mockResolvedValue(context);
+    composePromptMock.mockResolvedValue({ prompt: "live prompt" });
+    generateSceneMock.mockResolvedValue({
+      text: "Generated prose.",
+      provider: "openai",
+      model: "gpt-test",
+    });
+    persistGeneratedCandidateMock.mockResolvedValue(persisted);
+    getBookMock.mockResolvedValue({ manuscriptRevision: 2 });
   });
 
-  it("runs assembleContext -> composePrompt -> generateScene -> persistSession and returns the session id", async () => {
-    assembleContextMock.mockResolvedValue(assembledContext);
-    composePromptMock.mockResolvedValue({
-      prompt: "Composed prompt text.",
-      style: { presetIds: [] },
-    });
-    generateSceneMock.mockResolvedValue({
-      text: "The vault door groaned open.",
-      provider: "openai",
-      model: "gpt-5.6-terra",
-    });
+  it("claims before inference and persists an actionable candidate without caching the prompt", async () => {
+    const input = { mode: "free-text" as const, description: "A tense meeting." };
 
-    const result = await runGenerate("book-1", { mode: "free-text", description: "A heist scene." }, apiKeys);
+    await expect(
+      runGenerate("book-1", input, keys, {
+        idempotencyKey: "request-123",
+        userMessage: "A tense meeting.",
+      }),
+    ).resolves.toEqual({ status: "ok", actionable: true, ...persisted });
 
-    expect(result).toEqual({
+    expect(claimInitialGenerationMock).toHaveBeenCalledBefore(assembleContextMock);
+    expect(composePromptMock).toHaveBeenCalledWith("book-1", context, input);
+    expect(persistGeneratedCandidateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attemptToken: "token-1",
+        assembledContext: context,
+        candidate: expect.objectContaining({ text: "Generated prose." }),
+      }),
+    );
+    expect(JSON.stringify(persistGeneratedCandidateMock.mock.calls[0]?.[0])).not.toContain(
+      "live prompt",
+    );
+  });
+
+  it("does not run a second model call for in-progress or completed replays", async () => {
+    claimInitialGenerationMock.mockResolvedValueOnce({ status: "in-progress" });
+    await expect(
+      runGenerate("book-1", { mode: "free-text", description: "x" }, keys),
+    ).resolves.toEqual({ status: "in-progress" });
+
+    claimInitialGenerationMock.mockResolvedValueOnce({
+      status: "completed",
+      result: persisted,
+    });
+    await expect(
+      runGenerate("book-1", { mode: "free-text", description: "x" }, keys),
+    ).resolves.toEqual({ status: "ok", actionable: true, ...persisted });
+    expect(generateSceneMock).not.toHaveBeenCalled();
+  });
+
+  it("returns generated prose as read-only when durable persistence fails", async () => {
+    persistGeneratedCandidateMock.mockRejectedValue(new Error("write failed"));
+
+    const result = await runGenerate(
+      "book-1",
+      { mode: "free-text", description: "x" },
+      keys,
+    );
+
+    expect(result).toMatchObject({
       status: "ok",
-      text: "The vault door groaned open.",
-      provider: "openai",
-      model: "gpt-5.6-terra",
-      sessionId: "session-auto-id",
+      actionable: false,
+      sessionId: "",
+      text: "Generated prose.",
     });
-    expect(assembleContextMock).toHaveBeenCalledWith("book-1");
+  });
+
+  it("reuses cached retrieval at the same manuscript revision while composing live", async () => {
+    claimRegenerationMock.mockResolvedValue({
+      status: "claimed",
+      attemptToken: "regen-token",
+      session: {
+        ...persisted,
+        bookId: "book-1",
+        chapterId: "chapter-1",
+        input: { mode: "free-text", description: "Original input" },
+        assembledContext: { priorScenesText: ["Cached scene."] },
+        manuscriptRevision: 2,
+        candidate: { text: "Old", provider: "openai", model: "old-model" },
+        status: "active",
+      },
+    });
+    commitRegenerationMock.mockResolvedValue({ ...persisted, revision: 1 });
+
+    await runRegenerate("book-1", "session-1", 0, "regen-123", keys);
+
+    expect(assembleContextMock).not.toHaveBeenCalled();
     expect(composePromptMock).toHaveBeenCalledWith(
       "book-1",
-      assembledContext,
-      { mode: "free-text", description: "A heist scene." },
+      expect.objectContaining({ priorScenesText: ["Cached scene."], manuscriptRevision: 2 }),
+      { mode: "free-text", description: "Original input" },
     );
-    expect(generateSceneMock).toHaveBeenCalledWith("book-1", "Composed prompt text.", apiKeys);
-    expect(sessionSetMock).toHaveBeenCalledWith(
-      expect.objectContaining({
+  });
+
+  it("reassembles retrieval when the manuscript revision changed", async () => {
+    claimRegenerationMock.mockResolvedValue({
+      status: "claimed",
+      attemptToken: "regen-token",
+      session: {
         chapterId: "chapter-1",
-        assembledContext: { priorScenesText: ["Scene one."] },
-        composedPrompt: "Composed prompt text.",
-      }),
-    );
+        input: { mode: "free-text", description: "Original input" },
+        assembledContext: { priorScenesText: ["Old cache."] },
+        manuscriptRevision: 1,
+        candidate: { text: "Old", provider: "openai", model: "old-model" },
+        revision: 0,
+        status: "active",
+      },
+    });
+    getBookMock.mockResolvedValue({ manuscriptRevision: 2 });
+    commitRegenerationMock.mockResolvedValue({ ...persisted, revision: 1 });
+
+    await runRegenerate("book-1", "session-1", 0, "regen-123", keys);
+
+    expect(assembleContextMock).toHaveBeenCalledWith("book-1");
   });
 
-  it("never leaks the assembled context or composed prompt to the returned result", async () => {
-    assembleContextMock.mockResolvedValue(assembledContext);
-    composePromptMock.mockResolvedValue({ prompt: "Composed prompt text.", style: { presetIds: [] } });
-    generateSceneMock.mockResolvedValue({ text: "Scene text.", provider: "openai", model: "gpt-5.6-terra" });
-
-    const result = await runGenerate("book-1", { mode: "free-text", description: "A heist scene." }, apiKeys);
-
-    expect(result).not.toHaveProperty("prompt");
-    expect(result).not.toHaveProperty("assembledContext");
-    expect(JSON.stringify(result)).not.toContain("Composed prompt text.");
-  });
-
-  it("returns {status: 'failed'} when the book or vision document is missing (composePrompt returns undefined)", async () => {
-    assembleContextMock.mockResolvedValue(assembledContext);
-    composePromptMock.mockResolvedValue(undefined);
-
-    const result = await runGenerate("missing-book", { mode: "free-text", description: "A heist scene." }, apiKeys);
-
-    expect(result).toEqual({ status: "failed" });
-    expect(generateSceneMock).not.toHaveBeenCalled();
-    expect(sessionSetMock).not.toHaveBeenCalled();
-  });
-
-  it("returns {status: 'failed'} without throwing when the model call fails", async () => {
-    assembleContextMock.mockResolvedValue(assembledContext);
-    composePromptMock.mockResolvedValue({ prompt: "Composed prompt text.", style: { presetIds: [] } });
-    generateSceneMock.mockRejectedValue(new Error("Both providers failed"));
-
-    const result = await runGenerate("book-1", { mode: "free-text", description: "A heist scene." }, apiKeys);
-
-    expect(result).toEqual({ status: "failed" });
-    expect(sessionSetMock).not.toHaveBeenCalled();
-  });
-
-  it("still returns the generated scene text as a success when session persistence fails", async () => {
-    assembleContextMock.mockResolvedValue(assembledContext);
-    composePromptMock.mockResolvedValue({ prompt: "Composed prompt text.", style: { presetIds: [] } });
-    generateSceneMock.mockResolvedValue({
-      text: "The vault door groaned open.",
-      provider: "openai",
-      model: "gpt-5.6-terra",
+  it("preserves the current candidate when regeneration fails", async () => {
+    claimRegenerationMock.mockResolvedValue({
+      status: "claimed",
+      attemptToken: "regen-token",
+      session: {
+        chapterId: "chapter-1",
+        input: { mode: "free-text", description: "Original input" },
+        assembledContext: { priorScenesText: [] },
+        manuscriptRevision: 2,
+        candidate: { text: "Keep me", provider: "openai", model: "old-model" },
+        revision: 0,
+        status: "active",
+      },
     });
-    sessionSetMock.mockRejectedValue(new Error("Firestore write failed"));
+    generateSceneMock.mockRejectedValue(new Error("provider down"));
 
-    const result = await runGenerate("book-1", { mode: "free-text", description: "A heist scene." }, apiKeys);
-
-    expect(result).toEqual({
-      status: "ok",
-      text: "The vault door groaned open.",
-      provider: "openai",
-      model: "gpt-5.6-terra",
-      sessionId: "",
-    });
-  });
-
-  it("passes a structured SceneInput through to composePrompt unchanged", async () => {
-    assembleContextMock.mockResolvedValue(assembledContext);
-    composePromptMock.mockResolvedValue({ prompt: "Composed prompt text.", style: { presetIds: [] } });
-    generateSceneMock.mockResolvedValue({
-      text: "Scene text.",
-      provider: "openai",
-      model: "gpt-5.6-terra",
-    });
-
-    const structuredInput = { mode: "structured" as const, fields: { mood: "tense" } };
-    const result = await runGenerate("book-1", structuredInput, apiKeys);
-
-    expect(composePromptMock).toHaveBeenCalledWith("book-1", assembledContext, structuredInput);
-    expect(generateSceneMock).toHaveBeenCalledWith("book-1", "Composed prompt text.", apiKeys);
-    expect(result).toEqual({
-      status: "ok",
-      text: "Scene text.",
-      provider: "openai",
-      model: "gpt-5.6-terra",
-      sessionId: "session-auto-id",
-    });
-  });
-
-  it("passes a polish SceneInput through to composePrompt unchanged", async () => {
-    assembleContextMock.mockResolvedValue(assembledContext);
-    composePromptMock.mockResolvedValue({ prompt: "Composed prompt text.", style: { presetIds: [] } });
-    generateSceneMock.mockResolvedValue({
-      text: "Rewritten scene text.",
-      provider: "openai",
-      model: "gpt-5.6-terra",
-    });
-
-    const polishInput: SceneInput = {
-      mode: "polish",
-      draftText: "Mara walked into the vault.",
-      aspects: ["raise-tension"],
-    };
-    const result = await runGenerate("book-1", polishInput, apiKeys);
-
-    expect(composePromptMock).toHaveBeenCalledWith("book-1", assembledContext, polishInput);
-    expect(generateSceneMock).toHaveBeenCalledWith("book-1", "Composed prompt text.", apiKeys);
-    expect(result).toEqual({
-      status: "ok",
-      text: "Rewritten scene text.",
-      provider: "openai",
-      model: "gpt-5.6-terra",
-      sessionId: "session-auto-id",
-    });
+    await expect(
+      runRegenerate("book-1", "session-1", 0, "regen-123", keys),
+    ).resolves.toEqual({ status: "failed" });
+    expect(commitRegenerationMock).not.toHaveBeenCalled();
   });
 });

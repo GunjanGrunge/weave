@@ -1,5 +1,6 @@
 import { onRequest } from "firebase-functions/v2/https";
 
+import { allowedOrigins } from "../config/cors.js";
 import { verifyIdToken, assertOwnership, AuthError } from "../services/auth.js";
 import { getBook, getMessages as getMessagesForBook } from "../services/books.js";
 import type { ChatMessage } from "../types/chatMessage.js";
@@ -53,7 +54,7 @@ export async function buildGetMessagesResponse(
 
 export const getMessages = onRequest(
   {
-    cors: ["https://backupapp-bbf71.web.app"],
+    cors: allowedOrigins(),
     region: "us-central1",
   },
   async (request, response) => {
