@@ -227,6 +227,7 @@ GPT-5 Codex
 - Deployment: GitHub Actions run `30354302468` for `f051a37` succeeded, including Hosting, Firestore, registry seeding, and all sequential Functions batches.
 - Live unauthenticated smoke: `/login` returned 200; `/getStyleConfig` and `/updateBookStyle` returned 401 without a token.
 - Code-review verification: frontend 20 files / 113 tests and production build; Functions 22 files / 177 tests with lint, seam lint, and TypeScript build.
+- Review deployment: GitHub Actions run `30389635376` completed successfully with Hosting deployed only after all required Function batches.
 
 ### Completion Notes List
 

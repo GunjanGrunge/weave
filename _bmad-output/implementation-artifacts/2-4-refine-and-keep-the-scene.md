@@ -204,6 +204,7 @@ GPT-5 Codex
 - 2026-07-28: Firebase Hosting, Functions, and Firestore rules deployed successfully to `https://backupapp-bbf71.web.app`.
 - 2026-07-28: Live smoke passed for `/login`, `/health`, and the unauthenticated boundary on all five generation/scene mutation endpoints.
 - 2026-07-29: Code-review patches passed Functions verification (22 files / 177 tests) and frontend regression/build verification (20 files / 113 tests).
+- 2026-07-29: GitHub Actions run `30389635376` deployed Firestore, all Function batches, then Hosting successfully; live `/login`, `/health`, and unauthenticated `/getMessages` smoke passed.
 
 ### Completion Notes List
 
