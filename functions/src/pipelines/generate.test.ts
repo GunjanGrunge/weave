@@ -89,6 +89,7 @@ describe("generation pipelines", () => {
     expect(JSON.stringify(persistGeneratedCandidateMock.mock.calls[0]?.[0])).not.toContain(
       "live prompt",
     );
+    expect(generateSceneMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not run a second model call for in-progress or completed replays", async () => {
@@ -110,11 +111,7 @@ describe("generation pipelines", () => {
   it("returns generated prose as read-only when durable persistence fails", async () => {
     persistGeneratedCandidateMock.mockRejectedValue(new Error("write failed"));
 
-    const result = await runGenerate(
-      "book-1",
-      { mode: "free-text", description: "x" },
-      keys,
-    );
+    const result = await runGenerate("book-1", { mode: "free-text", description: "x" }, keys);
 
     expect(result).toMatchObject({
       status: "ok",
@@ -149,6 +146,7 @@ describe("generation pipelines", () => {
       expect.objectContaining({ priorScenesText: ["Cached scene."], manuscriptRevision: 2 }),
       { mode: "free-text", description: "Original input" },
     );
+    expect(generateSceneMock).toHaveBeenCalledTimes(1);
   });
 
   it("reassembles retrieval when the manuscript revision changed", async () => {
@@ -189,9 +187,9 @@ describe("generation pipelines", () => {
     });
     generateSceneMock.mockRejectedValue(new Error("provider down"));
 
-    await expect(
-      runRegenerate("book-1", "session-1", 0, "regen-123", keys),
-    ).resolves.toEqual({ status: "failed" });
+    await expect(runRegenerate("book-1", "session-1", 0, "regen-123", keys)).resolves.toEqual({
+      status: "failed",
+    });
     expect(commitRegenerationMock).not.toHaveBeenCalled();
   });
 });

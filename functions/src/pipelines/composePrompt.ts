@@ -1,6 +1,6 @@
 import { POLISH_ASPECTS } from "../config/polishAspects.js";
-import { STYLE_PRESETS } from "../config/stylePresets.js";
 import { getBook, getVisionDocument } from "../services/books.js";
+import { composeStyleInstruction } from "../services/styles.js";
 import type { Style } from "../types/book.js";
 import type { SceneInput } from "../types/sceneInput.js";
 import type { NarrativeThread, ThreadSubtlety } from "../types/vision.js";
@@ -18,20 +18,18 @@ const SUBTLETY_INSTRUCTIONS: Record<ThreadSubtlety, string> = {
     "author-only, may be stated: the hidden meaning may be openly stated in prose if it serves the scene",
 };
 
-function resolveStyleInstruction(style: Style): string {
-  const presetText = style.presetIds
-    .map((id) => STYLE_PRESETS.find((preset) => preset.id === id)?.description ?? id)
-    .join(" ");
-  return style.customInstruction ? `${presetText} ${style.customInstruction}`.trim() : presetText;
-}
-
 function buildSharedLines(
   book: { style: Style },
-  vision: { theme: string; premise: string; characterIntents: string[]; threads: NarrativeThread[] },
+  vision: {
+    theme: string;
+    premise: string;
+    characterIntents: string[];
+    threads: NarrativeThread[];
+  },
   context: AssembledContext,
   inputMode: SceneInput["mode"],
 ): string[] {
-  const styleInstruction = resolveStyleInstruction(book.style);
+  const styleInstruction = composeStyleInstruction(book.style);
   const openThreads = vision.threads.filter((thread) => thread.status === "open");
 
   const lines = [

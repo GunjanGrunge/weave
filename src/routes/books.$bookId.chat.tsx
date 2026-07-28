@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Loader2, Send, Sparkles } from "lucide-react";
 
 import { SceneReviewCard } from "@/components/scene/SceneReviewCard";
+import { StyleControl } from "@/components/book/StyleControl";
 import { Button } from "@/components/ui/button";
 import { authenticatedFetch } from "@/lib/api";
 import { POLISH_ASPECTS } from "@/lib/polish-aspects";
@@ -328,7 +329,10 @@ export function ChatPage({ bookId }: { bookId: string }) {
         <ArrowLeft className="size-3" /> Back to shelf
       </Link>
 
-      <h1 className="mt-2 font-display text-4xl italic">Book Chat</h1>
+      <div className="mt-2 flex items-center justify-between gap-4">
+        <h1 className="font-display text-4xl italic">Book Chat</h1>
+        <StyleControl bookId={bookId} />
+      </div>
 
       <div className="mt-6 flex-1 space-y-4 overflow-y-auto pr-2" data-testid="message-list">
         {messages.length === 0 && (

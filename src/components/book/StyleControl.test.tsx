@@ -1,0 +1,201 @@
+import "@testing-library/jest-dom/vitest";
+
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const { fetchMock, updateMock } = vi.hoisted(() => ({
+  fetchMock: vi.fn(),
+  updateMock: vi.fn(),
+}));
+
+vi.mock("@/lib/styles", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/styles")>("@/lib/styles");
+  return { ...actual, fetchStyleConfig: fetchMock, updateBookStyle: updateMock };
+});
+
+import { StyleConflictError } from "@/lib/styles";
+import { StyleControl } from "./StyleControl";
+
+const loaded = {
+  presets: [
+    {
+      id: "warm-character-driven",
+      label: "Warm & Character-Driven",
+      description: "Human, intimate scenes.",
+      active: true,
+    },
+    {
+      id: "sparse-cinematic",
+      label: "Sparse & Cinematic",
+      description: "Lean scenes and crisp images.",
+      active: true,
+    },
+    {
+      id: "mythic-expansive",
+      label: "Mythic & Expansive",
+      description: "A broad register and spacious pacing.",
+      active: true,
+    },
+    {
+      id: "retired",
+      label: "Retired",
+      description: "No longer selectable.",
+      active: false,
+    },
+  ],
+  defaultPresetId: "warm-character-driven",
+  style: { presetIds: ["warm-character-driven"] },
+  styleRevision: 2,
+};
+
+describe("StyleControl", () => {
+  beforeEach(() => {
+    fetchMock.mockReset().mockResolvedValue(loaded);
+    updateMock.mockReset();
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it("loads the current style without blocking its trigger and hides inactive presets", async () => {
+    render(<StyleControl bookId="book-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /book style/i }));
+
+    expect(screen.getByText(/loading style/i)).toBeInTheDocument();
+    expect(await screen.findByText("Warm & Character-Driven")).toBeInTheDocument();
+    expect(screen.queryByText("Retired")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith("book-1");
+  });
+
+  it("debounces a style update and shows the saved state", async () => {
+    updateMock.mockResolvedValue({
+      style: { presetIds: ["warm-character-driven", "sparse-cinematic"] },
+      styleRevision: 3,
+    });
+    render(<StyleControl bookId="book-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /book style/i }));
+    const sparseButton = await screen.findByRole("button", { name: /sparse & cinematic/i });
+    vi.useFakeTimers();
+    fireEvent.click(sparseButton);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Saving");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(650);
+    });
+
+    expect(updateMock).toHaveBeenCalledWith(
+      "book-1",
+      { presetIds: ["warm-character-driven", "sparse-cinematic"] },
+      2,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Saved");
+  });
+
+  it("offers reload and keep-mine actions after a revision conflict", async () => {
+    updateMock.mockRejectedValueOnce(
+      new StyleConflictError("Changed elsewhere.", {
+        style: { presetIds: ["sparse-cinematic"] },
+        styleRevision: 5,
+      }),
+    );
+    render(<StyleControl bookId="book-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /book style/i }));
+    const instruction = await screen.findByLabelText(/custom style instruction/i);
+    vi.useFakeTimers();
+    fireEvent.change(instruction, {
+      target: { value: "Keep my local instruction." },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(650);
+    });
+
+    expect(screen.getByText("Changed elsewhere.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /reload/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /keep mine/i })).toBeInTheDocument();
+  });
+
+  it("blocks a third preset without replacing either selected preset", async () => {
+    render(<StyleControl bookId="book-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /book style/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /sparse & cinematic/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mythic & expansive/i }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/up to two/i);
+    expect(screen.getByRole("button", { name: /warm & character-driven/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /sparse & cinematic/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /mythic & expansive/i })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("retries a failed save without discarding the local selection", async () => {
+    updateMock.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({
+      style: { presetIds: ["warm-character-driven", "sparse-cinematic"] },
+      styleRevision: 3,
+    });
+    render(<StyleControl bookId="book-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /book style/i }));
+    const sparseButton = await screen.findByRole("button", { name: /sparse & cinematic/i });
+    vi.useFakeTimers();
+    fireEvent.click(sparseButton);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(650);
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent("Error");
+    expect(sparseButton).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: /retry save/i }));
+    await act(async () => Promise.resolve());
+
+    expect(updateMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("status")).toHaveTextContent("Saved");
+  });
+
+  it("adopts the configured default returned after every choice is cleared", async () => {
+    updateMock.mockResolvedValue({
+      style: { presetIds: ["warm-character-driven"] },
+      styleRevision: 3,
+    });
+    render(<StyleControl bookId="book-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /book style/i }));
+    const warmButton = await screen.findByRole("button", { name: /warm & character-driven/i });
+    vi.useFakeTimers();
+    fireEvent.click(warmButton);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(650);
+    });
+
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(updateMock).toHaveBeenCalledWith("book-1", { presetIds: [] }, 2);
+    expect(warmButton).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("status")).toHaveTextContent("Saved");
+  });
+
+  it("ignores a style load that completes after the book changes", async () => {
+    let resolveFirst!: (value: typeof loaded) => void;
+    fetchMock
+      .mockReturnValueOnce(new Promise((resolve) => (resolveFirst = resolve)))
+      .mockResolvedValueOnce({
+        ...loaded,
+        style: { presetIds: ["sparse-cinematic"] },
+        styleRevision: 8,
+      });
+    const { rerender } = render(<StyleControl bookId="book-1" />);
+    rerender(<StyleControl bookId="book-2" />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("book-2"));
+    await act(async () => resolveFirst(loaded));
+    fireEvent.click(screen.getByRole("button", { name: /book style/i }));
+
+    expect(await screen.findByRole("button", { name: /sparse & cinematic/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+});

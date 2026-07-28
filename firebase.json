@@ -98,6 +98,20 @@
         }
       },
       {
+        "source": "/getStyleConfig",
+        "function": {
+          "functionId": "getStyleConfig",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/updateBookStyle",
+        "function": {
+          "functionId": "updateBookStyle",
+          "region": "us-central1"
+        }
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

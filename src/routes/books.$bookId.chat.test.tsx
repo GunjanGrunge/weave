@@ -21,6 +21,10 @@ vi.mock("@/lib/api", () => ({
   authenticatedFetch: authenticatedFetchMock,
 }));
 
+vi.mock("@/components/book/StyleControl", () => ({
+  StyleControl: ({ bookId }: { bookId: string }) => <button>Style for {bookId}</button>,
+}));
+
 import { ChatPage } from "./books.$bookId.chat";
 
 function jsonResponse(body: unknown, status = 200) {

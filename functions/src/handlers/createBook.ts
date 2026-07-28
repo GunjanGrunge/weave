@@ -6,6 +6,7 @@ import { runIntakeOpeningSuggestion } from "../pipelines/intake.js";
 import { verifyIdToken, AuthError } from "../services/auth.js";
 import { createBookWithIntake, type CreateBookInput } from "../services/books.js";
 import type { AIProviderKeys, OpeningSuggestion } from "../services/gemini.js";
+import { parseStyleInput, StyleValidationError } from "../services/styles.js";
 
 const OPENING_SUGGESTION_TIMEOUT_MS = 12_000;
 
@@ -29,11 +30,6 @@ function parseCreateBookInput(body: unknown): CreateBookInput | undefined {
   if (!isRecord(body) || !isRecord(body.premiseAnswers) || !isRecord(body.style)) {
     return undefined;
   }
-  const rawPresetIds = body.style.presetIds;
-  if (!Array.isArray(rawPresetIds) || !rawPresetIds.every((id) => typeof id === "string")) {
-    return undefined;
-  }
-
   return {
     premiseAnswers: {
       whatToWrite:
@@ -49,11 +45,7 @@ function parseCreateBookInput(body: unknown): CreateBookInput | undefined {
           ? body.premiseAnswers.roughPremise
           : undefined,
     },
-    style: {
-      presetIds: rawPresetIds,
-      customInstruction:
-        typeof body.style.customInstruction === "string" ? body.style.customInstruction : undefined,
-    },
+    style: parseStyleInput(body.style),
     idempotencyKey: typeof body.idempotencyKey === "string" ? body.idempotencyKey : undefined,
   };
 }
@@ -106,11 +98,21 @@ export async function buildCreateBookResponse(
 
     return {
       statusCode: 200,
-      body: { bookId, openingSuggestion: openingSuggestion.status, openings: openingSuggestion.openings },
+      body: {
+        bookId,
+        openingSuggestion: openingSuggestion.status,
+        openings: openingSuggestion.openings,
+      },
     };
   } catch (error) {
     if (error instanceof AuthError) {
       return { statusCode: 401, body: { code: error.code, message: error.message } };
+    }
+    if (error instanceof StyleValidationError) {
+      return {
+        statusCode: 400,
+        body: { code: "invalid-argument", message: error.message },
+      };
     }
     throw error;
   }
@@ -124,11 +126,10 @@ export const createBook = onRequest(
   },
   async (request, response) => {
     try {
-      const result = await buildCreateBookResponse(
-        request.headers.authorization,
-        request.body,
-        { gemini: GOOGLE_API_KEY.value(), openai: OPENAI_API_KEY.value() },
-      );
+      const result = await buildCreateBookResponse(request.headers.authorization, request.body, {
+        gemini: GOOGLE_API_KEY.value(),
+        openai: OPENAI_API_KEY.value(),
+      });
       response.status(result.statusCode).json(result.body);
     } catch (error) {
       console.error(error);

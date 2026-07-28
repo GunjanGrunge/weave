@@ -2,29 +2,25 @@ import { useQuery } from "@tanstack/react-query";
 
 import { authenticatedFetch } from "./api";
 import { useAuth } from "./auth-context";
+import { parseStyle, type Style } from "./styles";
 
 export type BookSummary = {
   bookId: string;
   title: string;
-  style: {
-    presetIds: string[];
-    customInstruction?: string;
-  };
+  style: Style;
   createdAt: string | null;
 };
 
 function isBookSummary(value: unknown): value is BookSummary {
   if (typeof value !== "object" || value === null) return false;
   const book = value as Partial<BookSummary>;
+  const style = parseStyle(book.style);
   return (
     typeof book.bookId === "string" &&
     book.bookId.trim().length > 0 &&
     typeof book.title === "string" &&
     (book.createdAt === null || typeof book.createdAt === "string") &&
-    typeof book.style === "object" &&
-    book.style !== null &&
-    Array.isArray(book.style.presetIds) &&
-    book.style.presetIds.every((id) => typeof id === "string")
+    Boolean(style)
   );
 }
 

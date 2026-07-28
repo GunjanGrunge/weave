@@ -7,6 +7,7 @@ export type Book = {
   uid: string;
   title: string;
   style: Style;
+  styleRevision?: number;
   manuscriptRevision?: number;
   createdAt: unknown;
 };

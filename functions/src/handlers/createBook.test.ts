@@ -160,8 +160,12 @@ describe("buildCreateBookResponse", () => {
     );
 
     expect(createBookWithIntakeMock).toHaveBeenCalledWith("user-a", {
-      premiseAnswers: {},
-      style: { presetIds: [] },
+      premiseAnswers: {
+        whatToWrite: undefined,
+        mainCharacter: undefined,
+        roughPremise: undefined,
+      },
+      style: { presetIds: ["warm-character-driven"] },
       idempotencyKey: "client-generated-uuid",
     });
   });
@@ -169,15 +173,32 @@ describe("buildCreateBookResponse", () => {
   it("returns 400 when the request body is not the intake payload shape", async () => {
     verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
 
+    const result = await buildCreateBookResponse("Bearer valid", { premiseAnswers: null }, apiKeys);
+
+    expect(result.statusCode).toBe(400);
+    expect(result.body).toMatchObject({ code: "invalid-argument" });
+    expect(createBookWithIntakeMock).not.toHaveBeenCalled();
+    expect(runIntakeOpeningSuggestionMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { presetIds: ["unknown"] },
+    { presetIds: ["sparse-cinematic", "sparse-cinematic"] },
+    {
+      presetIds: ["sparse-cinematic", "lyrical-introspective", "fast-paced-thriller"],
+    },
+    { presetIds: [], customInstruction: "x".repeat(1_001) },
+  ])("returns 400 for a non-canonical intake Style", async (style) => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+
     const result = await buildCreateBookResponse(
       "Bearer valid",
-      { premiseAnswers: null },
+      { premiseAnswers: {}, style },
       apiKeys,
     );
 
     expect(result.statusCode).toBe(400);
     expect(result.body).toMatchObject({ code: "invalid-argument" });
     expect(createBookWithIntakeMock).not.toHaveBeenCalled();
-    expect(runIntakeOpeningSuggestionMock).not.toHaveBeenCalled();
   });
 });

@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const { authenticatedFetchMock, navigateMock, invalidateQueriesMock } = vi.hoisted(() => ({
-  authenticatedFetchMock: vi.fn(),
-  navigateMock: vi.fn(),
-  invalidateQueriesMock: vi.fn(),
-}));
+const { authenticatedFetchMock, fetchStyleConfigMock, navigateMock, invalidateQueriesMock } =
+  vi.hoisted(() => ({
+    authenticatedFetchMock: vi.fn(),
+    fetchStyleConfigMock: vi.fn(),
+    navigateMock: vi.fn(),
+    invalidateQueriesMock: vi.fn(),
+  }));
 
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (options: unknown) => options,
@@ -25,24 +27,53 @@ vi.mock("@/lib/auth-context", () => ({
   useAuth: () => ({ user: { uid: "user-a" }, loading: false }),
 }));
 
+vi.mock("@/lib/styles", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/styles")>("@/lib/styles");
+  return { ...actual, fetchStyleConfig: fetchStyleConfigMock };
+});
+
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: invalidateQueriesMock }),
 }));
 
 import NewBook from "./books.new";
-import { STYLE_PRESETS } from "@/lib/style-presets";
 
-function skipAllQuestionsAndCreate() {
+const STYLE_PRESETS = [
+  {
+    id: "sparse-cinematic",
+    label: "Sparse & Cinematic",
+    description: "Lean scenes, crisp images, and visible action.",
+    active: true,
+  },
+  {
+    id: "warm-character-driven",
+    label: "Warm & Character-Driven",
+    description: "Human, intimate scenes led by relationships.",
+    active: true,
+  },
+  {
+    id: "mythic-expansive",
+    label: "Mythic & Expansive",
+    description: "A broad register with spacious pacing.",
+    active: true,
+  },
+];
+
+async function skipAllQuestionsAndCreate() {
   fireEvent.click(screen.getByRole("button", { name: /skip/i }));
   fireEvent.click(screen.getByRole("button", { name: /skip/i }));
   fireEvent.click(screen.getByRole("button", { name: /skip/i }));
-  fireEvent.click(screen.getByRole("button", { name: /create book/i }));
+  fireEvent.click(await screen.findByRole("button", { name: /create book/i }));
 }
 
 describe("NewBook intake chat", () => {
   beforeEach(() => {
     localStorage.clear();
     authenticatedFetchMock.mockReset();
+    fetchStyleConfigMock.mockReset().mockResolvedValue({
+      presets: STYLE_PRESETS,
+      defaultPresetId: "warm-character-driven",
+    });
     navigateMock.mockReset();
     invalidateQueriesMock.mockReset();
     authenticatedFetchMock.mockResolvedValue(
@@ -67,7 +98,7 @@ describe("NewBook intake chat", () => {
       target: { value: "The ship's oxygen debt forces a moral compromise." },
     });
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
-    fireEvent.click(screen.getByRole("button", { name: /Sparse & Cinematic/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Sparse & Cinematic/i }));
     fireEvent.click(screen.getByRole("button", { name: /Warm & Character-Driven/i }));
     fireEvent.click(screen.getByRole("button", { name: /create book/i }));
 
@@ -96,7 +127,7 @@ describe("NewBook intake chat", () => {
   it("lets every premise question be skipped without blocking completion", async () => {
     render(<NewBook />);
 
-    skipAllQuestionsAndCreate();
+    await skipAllQuestionsAndCreate();
 
     await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledTimes(1));
     expect(JSON.parse(authenticatedFetchMock.mock.calls[0][1].body)).toEqual({
@@ -117,7 +148,7 @@ describe("NewBook intake chat", () => {
     fireEvent.change(screen.getByLabelText(/custom style instruction/i), {
       target: { value: "Terse, second-person, present tense." },
     });
-    fireEvent.click(screen.getByRole("button", { name: /create book/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /create book/i }));
 
     await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledTimes(1));
     expect(JSON.parse(authenticatedFetchMock.mock.calls[0][1].body)).toEqual({
@@ -140,6 +171,44 @@ describe("NewBook intake chat", () => {
     }
   });
 
+  it("keeps the draft and retries when catalog loading fails", async () => {
+    fetchStyleConfigMock.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({
+      presets: STYLE_PRESETS,
+      defaultPresetId: "warm-character-driven",
+    });
+    render(<NewBook />);
+    fireEvent.change(screen.getByLabelText(/reply/i), {
+      target: { value: "A city that forgets its residents" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+
+    expect(await screen.findByText(/could not load style options/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+
+    expect(await screen.findByRole("button", { name: /sparse & cinematic/i })).toBeInTheDocument();
+    expect(screen.getByText("A city that forgets its residents")).toBeInTheDocument();
+  });
+
+  it("blocks a third intake preset and bounds custom guidance", async () => {
+    render(<NewBook />);
+    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+
+    fireEvent.click(await screen.findByRole("button", { name: /sparse & cinematic/i }));
+    fireEvent.click(screen.getByRole("button", { name: /warm & character-driven/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mythic & expansive/i }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/up to two/i);
+    expect(screen.getByRole("button", { name: /sparse & cinematic/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByLabelText(/custom style instruction/i)).toHaveAttribute("maxlength", "1000");
+  });
+
   it("renders the Muse's opening suggestions after book creation, before any navigation", async () => {
     authenticatedFetchMock.mockResolvedValue(
       new Response(
@@ -156,7 +225,7 @@ describe("NewBook intake chat", () => {
     );
 
     render(<NewBook />);
-    skipAllQuestionsAndCreate();
+    await skipAllQuestionsAndCreate();
 
     await waitFor(() => expect(screen.getByText("Open mid-heist.")).toBeInTheDocument());
     expect(screen.getByText("Immediate stakes.")).toBeInTheDocument();
@@ -179,7 +248,7 @@ describe("NewBook intake chat", () => {
     );
 
     render(<NewBook />);
-    skipAllQuestionsAndCreate();
+    await skipAllQuestionsAndCreate();
 
     await waitFor(() =>
       expect(screen.getByText(/couldn't get opening suggestions/i)).toBeInTheDocument(),
@@ -212,7 +281,7 @@ describe("NewBook intake chat", () => {
     );
 
     render(<NewBook />);
-    skipAllQuestionsAndCreate();
+    await skipAllQuestionsAndCreate();
 
     await waitFor(() =>
       expect(screen.getByText(/couldn't get opening suggestions/i)).toBeInTheDocument(),
@@ -295,7 +364,7 @@ describe("NewBook intake chat", () => {
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
     fireEvent.click(screen.getByRole("button", { name: /skip/i }));
     fireEvent.click(screen.getByRole("button", { name: /skip/i }));
-    fireEvent.click(screen.getByRole("button", { name: /create book/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /create book/i }));
 
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/could not create/i));
     expect(screen.queryByRole("button", { name: /continue to my book/i })).not.toBeInTheDocument();
@@ -311,7 +380,7 @@ describe("NewBook intake chat", () => {
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
     fireEvent.click(screen.getByRole("button", { name: /skip/i }));
     fireEvent.click(screen.getByRole("button", { name: /skip/i }));
-    fireEvent.click(screen.getByRole("button", { name: /create book/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /create book/i }));
 
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /continue to my book/i })).toBeInTheDocument(),

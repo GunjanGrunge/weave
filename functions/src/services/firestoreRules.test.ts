@@ -13,5 +13,7 @@ describe("Firestore server-authoritative scene rules", () => {
     expect(rules).toContain("allow write: if false;");
     expect(rules).toContain("match /scenes/{sceneId}");
     expect(rules).toContain("match /messages/{messageId}");
+    expect(rules).toMatch(/match \/books\/\{bookId\}[\s\S]*?allow write: if false;/);
+    expect(rules).not.toMatch(/match \/(styles|styleConfig|config)/);
   });
 });

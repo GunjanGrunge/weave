@@ -93,6 +93,7 @@ jobs:
             "functions:updateVision,functions:getMessages,functions:generateScene"
             "functions:saveGeneratedScene,functions:regenerateScene"
             "functions:revertGeneratedScene,functions:acceptScene"
+            "functions:getStyleConfig,functions:updateBookStyle"
           )
 
           for batch in "${batches[@]}"; do

@@ -1,12 +1,16 @@
 import { getApps, initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 
-import { DEFAULT_STYLE_PRESET_ID, STYLE_PRESETS } from "../config/stylePresets.js";
 import type { Book, Style } from "../types/book.js";
 import type { Chapter } from "../types/chapter.js";
 import type { ChatMessage, ChatMessageType } from "../types/chatMessage.js";
 import type { Scene } from "../types/scene.js";
 import type { VisionDocument } from "../types/vision.js";
+import { getStyleCatalog, parseStyleInput } from "./styles.js";
+
+const STYLE_CATALOG = getStyleCatalog();
+const DEFAULT_STYLE_PRESET_ID = STYLE_CATALOG.defaultPresetId;
+const STYLE_PRESETS = STYLE_CATALOG.presets;
 
 export type PremiseAnswers = {
   whatToWrite?: string;
@@ -38,6 +42,10 @@ function clean(value: string | undefined): string {
 }
 
 function normalizeStyle(style: Style): Style {
+  return parseStyleInput(style);
+}
+
+function legacyNormalizeStyle(style: Style): Style {
   const knownIds = new Set(STYLE_PRESETS.map((preset) => preset.id));
   const presetIds = [...new Set(style.presetIds.filter((id) => knownIds.has(id)))].slice(0, 2);
   const customInstruction = clean(style.customInstruction);
@@ -62,11 +70,9 @@ function normalizeStoredStyle(value: unknown): Style {
     ? storedStyle.presetIds.filter((id): id is string => typeof id === "string")
     : [];
   const customInstruction =
-    typeof storedStyle.customInstruction === "string"
-      ? storedStyle.customInstruction
-      : undefined;
+    typeof storedStyle.customInstruction === "string" ? storedStyle.customInstruction : undefined;
 
-  return normalizeStyle({ presetIds, customInstruction });
+  return legacyNormalizeStyle({ presetIds, customInstruction });
 }
 
 function styleSummary(style: Style): string {
@@ -148,6 +154,7 @@ export async function createBookWithIntake(
     uid,
     title: answers.whatToWrite || "Untitled Book",
     style,
+    styleRevision: 0,
     manuscriptRevision: 0,
     createdAt,
   };
@@ -201,9 +208,7 @@ export async function listOwnedBooks(uid: string): Promise<OwnedBook[]> {
     .map((doc) => {
       const book = doc.data() as Record<string, unknown>;
       const title =
-        typeof book.title === "string" && book.title.trim()
-          ? book.title.trim()
-          : "Untitled Book";
+        typeof book.title === "string" && book.title.trim() ? book.title.trim() : "Untitled Book";
 
       return {
         bookId: doc.id,
@@ -249,11 +254,7 @@ export async function updateVisionDocument(
   bookId: string,
   patch: VisionUpdatePatch,
 ): Promise<VisionDocument | undefined> {
-  const visionRef = firestore()
-    .collection("books")
-    .doc(bookId)
-    .collection("vision")
-    .doc("main");
+  const visionRef = firestore().collection("books").doc(bookId).collection("vision").doc("main");
 
   const existing = await visionRef.get();
   if (!existing.exists) {
@@ -337,7 +338,10 @@ export async function claimOpeningSuggestionAttempt(
   return firestore().runTransaction(async (transaction) => {
     const snapshot = await transaction.get(ref);
     const data = snapshot.data() as
-      | { state: OpeningSuggestionAttemptState; openings?: OpeningSuggestionAttemptResult["openings"] }
+      | {
+          state: OpeningSuggestionAttemptState;
+          openings?: OpeningSuggestionAttemptResult["openings"];
+        }
       | undefined;
 
     if (data?.state === "ok") {

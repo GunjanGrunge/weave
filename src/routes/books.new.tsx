@@ -6,7 +6,12 @@ import { ArrowLeft, Loader2, RotateCcw, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { authenticatedFetch } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { DEFAULT_STYLE_PRESET_ID, STYLE_PRESETS } from "@/lib/style-presets";
+import {
+  fetchStyleConfig,
+  MAX_CUSTOM_INSTRUCTION_LENGTH,
+  type StyleConfig,
+  type StylePreset,
+} from "@/lib/styles";
 
 export const Route = createFileRoute("/books/new")({
   head: () => ({
@@ -96,7 +101,6 @@ function loadIntakeDraft(uid: string): IntakeDraft | null {
       localStorage.removeItem(intakeDraftKey(uid));
       return null;
     }
-    const knownPresetIds = new Set(STYLE_PRESETS.map((preset) => preset.id));
     return {
       version: 1,
       answers,
@@ -105,11 +109,16 @@ function loadIntakeDraft(uid: string): IntakeDraft | null {
       reply: typeof parsed.reply === "string" ? parsed.reply : "",
       selectedPresets: Array.isArray(parsed.selectedPresets)
         ? parsed.selectedPresets
-            .filter((id): id is string => typeof id === "string" && knownPresetIds.has(id))
+            .filter(
+              (id, index, values): id is string =>
+                typeof id === "string" && id.length > 0 && values.indexOf(id) === index,
+            )
             .slice(0, 2)
         : [],
       customInstruction:
-        typeof parsed.customInstruction === "string" ? parsed.customInstruction : "",
+        typeof parsed.customInstruction === "string"
+          ? parsed.customInstruction.slice(0, MAX_CUSTOM_INSTRUCTION_LENGTH)
+          : "",
       idempotencyKey: parsed.idempotencyKey.trim(),
     };
   } catch {
@@ -130,9 +139,13 @@ function isOpeningSuggestionArray(value: unknown): value is OpeningSuggestion[] 
   );
 }
 
-function formatStyleChoice(presetIds: string[], customInstruction: string): string {
+function formatStyleChoice(
+  presetIds: string[],
+  customInstruction: string,
+  presets: StylePreset[],
+): string {
   const presetLabels = presetIds.map(
-    (id) => STYLE_PRESETS.find((preset) => preset.id === id)?.label ?? id,
+    (id) => presets.find((preset) => preset.id === id)?.label ?? id,
   );
   const base = presetLabels.length > 0 ? presetLabels.join(" + ") : "Default style";
   return customInstruction.trim() ? `${base}. ${customInstruction.trim()}` : base;
@@ -159,6 +172,8 @@ export default function NewBook() {
   const [openingSuggestion, setOpeningSuggestion] = useState<OpeningSuggestionState>({
     status: "idle",
   });
+  const [styleConfig, setStyleConfig] = useState<StyleConfig | null>(null);
+  const [styleConfigError, setStyleConfigError] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -170,6 +185,24 @@ export default function NewBook() {
   );
 
   const isStyleTurn = questionIndex >= questions.length;
+
+  async function loadStyleConfig() {
+    setStyleConfigError(false);
+    try {
+      const config = await fetchStyleConfig();
+      setStyleConfig({ presets: config.presets, defaultPresetId: config.defaultPresetId });
+      const activeIds = new Set(
+        config.presets.filter((preset) => preset.active).map((preset) => preset.id),
+      );
+      setSelectedPresets((current) => current.filter((id) => activeIds.has(id)).slice(0, 2));
+    } catch {
+      setStyleConfigError(true);
+    }
+  }
+
+  useEffect(() => {
+    void loadStyleConfig();
+  }, []);
 
   useEffect(() => {
     if (bookId) return;
@@ -241,11 +274,20 @@ export default function NewBook() {
       if (current.includes(id)) {
         return current.filter((presetId) => presetId !== id);
       }
-      return [...current, id].slice(-2);
+      if (current.length >= 2) {
+        setError("Choose up to two style presets.");
+        return current;
+      }
+      setError(null);
+      return [...current, id];
     });
   }
 
   async function createBook() {
+    if (!styleConfig) {
+      setError("Style options are still unavailable. Retry loading them first.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     // Only fall back to the default preset when style choice was skipped
@@ -253,7 +295,7 @@ export default function NewBook() {
     // valid, distinct AC-1 choice, not a skip.
     const presetIds =
       selectedPresets.length === 0 && !customInstruction.trim()
-        ? [DEFAULT_STYLE_PRESET_ID]
+        ? [styleConfig.defaultPresetId]
         : selectedPresets;
     const payload = {
       premiseAnswers,
@@ -288,7 +330,10 @@ export default function NewBook() {
       }
       setMessages((current) => [
         ...current,
-        { type: "user", text: formatStyleChoice(presetIds, customInstruction) },
+        {
+          type: "user",
+          text: formatStyleChoice(presetIds, customInstruction, styleConfig.presets),
+        },
       ]);
       try {
         localStorage.removeItem(intakeDraftKey(uid));
@@ -475,44 +520,64 @@ export default function NewBook() {
           </div>
         ) : (
           <div className="border-t border-border py-4">
+            {!styleConfig && !styleConfigError && (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" /> Loading style options
+              </p>
+            )}
+            {styleConfigError && (
+              <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/40 p-3">
+                <p className="text-sm text-muted-foreground">Could not load style options.</p>
+                <Button type="button" variant="outline" onClick={() => void loadStyleConfig()}>
+                  Retry
+                </Button>
+              </div>
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
-              {STYLE_PRESETS.map((preset) => {
-                const selected = selectedPresets.includes(preset.id);
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => togglePreset(preset.id)}
-                    aria-pressed={selected}
-                    className={`rounded-md border p-3 text-left transition-colors ${
-                      selected
-                        ? "border-accent bg-accent/10"
-                        : "border-border bg-card hover:border-accent/50"
-                    }`}
-                  >
-                    <span className="block text-sm font-medium">{preset.label}</span>
-                    <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
-                      {preset.description}
-                    </span>
-                  </button>
-                );
-              })}
+              {styleConfig?.presets
+                .filter((preset) => preset.active)
+                .map((preset) => {
+                  const selected = selectedPresets.includes(preset.id);
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => togglePreset(preset.id)}
+                      aria-pressed={selected}
+                      className={`rounded-md border p-3 text-left transition-colors ${
+                        selected
+                          ? "border-accent bg-accent/10"
+                          : "border-border bg-card hover:border-accent/50"
+                      }`}
+                    >
+                      <span className="block text-sm font-medium">{preset.label}</span>
+                      <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                        {preset.description}
+                      </span>
+                    </button>
+                  );
+                })}
             </div>
             <textarea
               value={customInstruction}
               onChange={(event) => setCustomInstruction(event.target.value)}
               aria-label="Custom style instruction"
               placeholder="Optional custom style instruction"
+              maxLength={MAX_CUSTOM_INSTRUCTION_LENGTH}
               rows={3}
               className="mt-3 min-h-20 w-full resize-none rounded-md border border-border bg-card px-3 py-2 text-sm outline-none focus:border-accent"
             />
+            <p className="mt-1 text-right font-mono text-[10px] text-muted-foreground">
+              {customInstruction.length.toLocaleString()} /{" "}
+              {MAX_CUSTOM_INSTRUCTION_LENGTH.toLocaleString()}
+            </p>
             {error && (
               <p role="alert" className="mt-3 text-sm text-destructive">
                 {error}
               </p>
             )}
             <div className="mt-3 flex justify-end">
-              <Button type="button" onClick={createBook} disabled={submitting}>
+              <Button type="button" onClick={createBook} disabled={submitting || !styleConfig}>
                 {submitting ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (

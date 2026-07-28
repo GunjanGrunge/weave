@@ -58,6 +58,26 @@ describe("fetchBooks", () => {
     await expect(fetchBooks()).rejects.toThrow(/invalid/i);
   });
 
+  it("rejects malformed embedded Style consistently", async () => {
+    authenticatedFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          books: [
+            {
+              bookId: "book-1",
+              title: "Broken Style",
+              style: { presetIds: ["one", "two", "three"], customInstruction: 42 },
+              createdAt: null,
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(fetchBooks()).rejects.toThrow(/invalid/i);
+  });
+
   it("rejects a non-success response", async () => {
     authenticatedFetchMock.mockResolvedValue(new Response(null, { status: 500 }));
 

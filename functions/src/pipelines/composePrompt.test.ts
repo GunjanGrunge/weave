@@ -38,7 +38,10 @@ describe("composePrompt", () => {
     getBookMock.mockResolvedValue({
       uid: "user-a",
       title: "A Heist",
-      style: { presetIds: ["sparse-cinematic"], customInstruction: "Keep it terse." },
+      style: {
+        presetIds: ["fast-paced-thriller", "sparse-cinematic"],
+        customInstruction: "Keep it terse.",
+      },
       createdAt: "t",
     });
     getVisionDocumentMock.mockResolvedValue(baseVision);
@@ -49,8 +52,11 @@ describe("composePrompt", () => {
       { mode: "free-text", description: "Mara breaks into the vault." },
     );
 
+    expect(result?.prompt.indexOf("Fast-Paced Thriller")).toBeLessThan(
+      result?.prompt.indexOf("Sparse & Cinematic") ?? -1,
+    );
     expect(result?.prompt).toContain("Lean scenes, crisp images");
-    expect(result?.prompt).toContain("Keep it terse.");
+    expect(result?.prompt.match(/Keep it terse\./g)).toHaveLength(1);
     expect(result?.prompt).toContain("Mara breaks into the vault.");
   });
 
@@ -162,7 +168,9 @@ describe("composePrompt", () => {
       { mode: "structured", fields: { mood: "tense" } },
     );
 
-    expect(result?.prompt).toContain("Write this scene with a tense emotional register throughout.");
+    expect(result?.prompt).toContain(
+      "Write this scene with a tense emotional register throughout.",
+    );
   });
 
   it("includes all four structured fields when supplied, plus the shared style/vision sections", async () => {

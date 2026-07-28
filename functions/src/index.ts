@@ -11,3 +11,5 @@ export { saveGeneratedScene } from "./handlers/saveGeneratedScene.js";
 export { regenerateScene } from "./handlers/regenerateScene.js";
 export { revertGeneratedScene } from "./handlers/revertGeneratedScene.js";
 export { acceptScene } from "./handlers/acceptScene.js";
+export { getStyleConfig } from "./handlers/getStyleConfig.js";
+export { updateBookStyle } from "./handlers/updateBookStyle.js";

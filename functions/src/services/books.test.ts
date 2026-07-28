@@ -38,7 +38,10 @@ function makeDoc(path: string) {
     },
     update: async (data: unknown) => {
       updateCalls.push({ path, data });
-      docStore[path] = { ...(docStore[path] as Record<string, unknown> | undefined), ...(data as object) };
+      docStore[path] = {
+        ...(docStore[path] as Record<string, unknown> | undefined),
+        ...(data as object),
+      };
     },
   };
 }
@@ -114,7 +117,7 @@ vi.mock("firebase-admin/firestore", () => ({
         },
       };
     },
-    runTransaction: async <T,>(
+    runTransaction: async <T>(
       updateFn: (transaction: {
         get: (query: { get: () => Promise<unknown> }) => Promise<unknown>;
         set: (ref: { path: string }, data: unknown) => void;
@@ -127,10 +130,7 @@ vi.mock("firebase-admin/firestore", () => ({
           docStore[ref.path] = data;
           const parentPath = ref.path.split("/").slice(0, -1).join("/");
           if (parentPath.endsWith("/messages")) {
-            messagesStore[parentPath] = [
-              ...(messagesStore[parentPath] ?? []),
-              data as StoredDoc,
-            ];
+            messagesStore[parentPath] = [...(messagesStore[parentPath] ?? []), data as StoredDoc];
           }
         },
       };
@@ -152,7 +152,7 @@ import {
   updateVisionDocument,
   upsertOpeningSuggestionMessage,
 } from "./books.js";
-import { DEFAULT_STYLE_PRESET_ID } from "../config/stylePresets.js";
+import { DEFAULT_STYLE_PRESET_ID } from "./styles.js";
 
 describe("createBookWithIntake", () => {
   beforeEach(() => {
@@ -193,6 +193,7 @@ describe("createBookWithIntake", () => {
     expect(bookWrites[0]?.data).toMatchObject({
       uid: "user-a",
       style: { presetIds: ["sparse-cinematic", "fast-paced-thriller"] },
+      styleRevision: 0,
     });
     expect(chapterWrites[0]?.data).toMatchObject({ order: 0 });
     expect(visionWrites[0]?.data).toMatchObject({
@@ -673,7 +674,11 @@ describe("appendChatMessage", () => {
 
     const message = await appendChatMessage("book-1", "assistant_scene", "A generated scene.");
 
-    expect(message).toMatchObject({ type: "assistant_scene", text: "A generated scene.", order: 2 });
+    expect(message).toMatchObject({
+      type: "assistant_scene",
+      text: "A generated scene.",
+      order: 2,
+    });
     const write = setCalls.find((call) => call.path === "books/book-1/messages/book-auto-id");
     expect(write?.data).toMatchObject({ type: "assistant_scene", order: 2 });
   });
