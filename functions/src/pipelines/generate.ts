@@ -18,6 +18,7 @@ import {
 } from "../services/scenes.js";
 import type { GenerationSession, SceneAttempt } from "../types/generationSession.js";
 import type { SceneInput } from "../types/sceneInput.js";
+import type { SceneUsageTask } from "../types/usage.js";
 
 export type RunGenerateResult =
   | ({ status: "ok"; actionable: boolean } & CandidateResult)
@@ -38,6 +39,7 @@ const GenerateState = Annotation.Root({
   bookId: Annotation<string>,
   input: Annotation<SceneInput>,
   apiKeys: Annotation<AIProviderKeys>,
+  usageTask: Annotation<SceneUsageTask>,
   status: Annotation<"ok" | "failed">,
   assembledContext: Annotation<AssembledContext | undefined>,
   prompt: Annotation<string | undefined>,
@@ -78,7 +80,12 @@ async function generateNode(
     return { status: "failed" };
   }
   try {
-    const generated = await generateSceneCall(state.bookId, state.prompt, state.apiKeys);
+    const generated = await generateSceneCall(
+      state.bookId,
+      state.prompt,
+      state.apiKeys,
+      state.usageTask,
+    );
     return {
       candidate: {
         text: generated.text,
@@ -107,6 +114,7 @@ async function executeGeneration(
   bookId: string,
   input: SceneInput,
   apiKeys: AIProviderKeys,
+  usageTask: SceneUsageTask,
   assembledContext?: AssembledContext,
 ): Promise<{
   candidate: SceneAttempt;
@@ -116,6 +124,7 @@ async function executeGeneration(
     bookId,
     input,
     apiKeys,
+    usageTask,
     status: "failed",
     assembledContext,
     prompt: undefined,
@@ -143,7 +152,7 @@ export async function runGenerate(
     return { status: "ok", actionable: true, ...claim.result };
   }
 
-  const generated = await executeGeneration(bookId, input, apiKeys);
+  const generated = await executeGeneration(bookId, input, apiKeys, "generate");
   if (!generated) {
     await failInitialGeneration(bookId, operation.idempotencyKey, claim.attemptToken);
     return { status: "failed" };
@@ -223,6 +232,7 @@ export async function runRegenerate(
     bookId,
     claim.session.input,
     apiKeys,
+    "regenerate",
     reusableContext,
   );
   if (!generated) {

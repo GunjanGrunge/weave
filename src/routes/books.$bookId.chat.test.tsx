@@ -25,6 +25,10 @@ vi.mock("@/components/book/StyleControl", () => ({
   StyleControl: ({ bookId }: { bookId: string }) => <button>Style for {bookId}</button>,
 }));
 
+vi.mock("@/components/book/UsageIndicator", () => ({
+  UsageIndicator: ({ bookId }: { bookId: string }) => <span role="status">Usage for {bookId}</span>,
+}));
+
 import { ChatPage } from "./books.$bookId.chat";
 
 function jsonResponse(body: unknown, status = 200) {
@@ -50,6 +54,9 @@ describe("ChatPage", () => {
 
     await waitFor(() => expect(screen.getByText("A heist novel")).toBeInTheDocument());
     expect(screen.getByText("What do you want to write?")).toBeInTheDocument();
+    const usage = screen.getByRole("status");
+    expect(usage).toHaveTextContent("Usage for book-1");
+    expect(usage.parentElement).toHaveClass("flex-wrap");
     expect(authenticatedFetchMock).toHaveBeenCalledWith(
       "/getMessages",
       expect.objectContaining({ body: JSON.stringify({ bookId: "book-1" }) }),

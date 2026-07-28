@@ -96,6 +96,12 @@ describe("generation pipelines", () => {
       "live prompt",
     );
     expect(generateSceneMock).toHaveBeenCalledTimes(1);
+    expect(generateSceneMock).toHaveBeenCalledWith(
+      "book-1",
+      "live prompt",
+      keys,
+      "generate",
+    );
   });
 
   it("does not run a second model call for in-progress or completed replays", async () => {
@@ -170,6 +176,12 @@ describe("generation pipelines", () => {
       { mode: "free-text", description: "Original input" },
     );
     expect(generateSceneMock).toHaveBeenCalledTimes(1);
+    expect(generateSceneMock).toHaveBeenCalledWith(
+      "book-1",
+      "live prompt",
+      keys,
+      "regenerate",
+    );
   });
 
   it("reassembles retrieval when the manuscript revision changed", async () => {

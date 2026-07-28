@@ -2,13 +2,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import type { VisionDocument } from "../types/vision.js";
 
-const { fetchMock, generateContentMock, usageWrites, usageDocIds, serverTimestampMock } = vi.hoisted(
+const {
+  fetchMock,
+  generateContentMock,
+  usageWrites,
+  usageDocIds,
+  serverTimestampMock,
+  usageWriteFailure,
+} = vi.hoisted(
   () => ({
     fetchMock: vi.fn(),
     generateContentMock: vi.fn(),
     usageWrites: [] as unknown[],
     usageDocIds: [] as Array<string | undefined>,
     serverTimestampMock: vi.fn(() => "server-time"),
+    usageWriteFailure: { current: undefined as Error | undefined },
   }),
 );
 
@@ -45,6 +53,9 @@ vi.mock("firebase-admin/firestore", () => ({
             collection: () => ({
               doc: (id?: string) => ({
                 set: async (data: unknown) => {
+                  if (usageWriteFailure.current) {
+                    throw usageWriteFailure.current;
+                  }
                   usageDocIds.push(id);
                   usageWrites.push(data);
                 },
@@ -111,6 +122,7 @@ describe("generateOpeningSuggestions", () => {
     usageWrites.length = 0;
     usageDocIds.length = 0;
     registryData = validRegistry;
+    usageWriteFailure.current = undefined;
   });
 
   afterEach(() => {
@@ -200,7 +212,7 @@ describe("generateOpeningSuggestions", () => {
         gemini: "fake-gemini-key",
       }),
     ).rejects.toBeInstanceOf(GeminiError);
-    expect(usageWrites).toHaveLength(0);
+    expect(usageWrites).toHaveLength(1);
   });
 
   it("throws GeminiError when the model registry doc does not exist", async () => {
@@ -257,6 +269,7 @@ describe("generateScene", () => {
     usageWrites.length = 0;
     usageDocIds.length = 0;
     registryData = validRegistry;
+    usageWriteFailure.current = undefined;
   });
 
   afterEach(() => {
@@ -329,5 +342,52 @@ describe("generateScene", () => {
       expect.objectContaining({ task: "generate", provider: "openai", model: "gpt-5.6-terra" }),
       expect.objectContaining({ task: "generate", provider: "openai", model: "gpt-5.6-terra" }),
     ]);
+  });
+
+  it("normalizes invalid provider token counts before writing usage", async () => {
+    const { generateScene } = await import("./gemini.js");
+    fetchMock.mockResolvedValue(openAITextResponseFor("Usable prose.", -5, Number.NaN));
+
+    await generateScene("book-1", "Write.", {
+      openai: "fake-openai-key",
+      gemini: "fake-gemini-key",
+    });
+
+    expect(usageWrites).toEqual([
+      expect.objectContaining({ inputTokens: 0, outputTokens: 0 }),
+    ]);
+  });
+
+  it("records regeneration with its distinct task identity", async () => {
+    const { generateScene } = await import("./gemini.js");
+    fetchMock.mockResolvedValue(openAITextResponseFor("A second attempt."));
+
+    await generateScene(
+      "book-1",
+      "Try the scene again.",
+      { openai: "fake-openai-key", gemini: "fake-gemini-key" },
+      "regenerate",
+    );
+
+    expect(usageWrites).toEqual([
+      expect.objectContaining({ task: "regenerate", provider: "openai" }),
+    ]);
+  });
+
+  it("returns usable prose when the usage-log write fails", async () => {
+    const { generateScene } = await import("./gemini.js");
+    fetchMock.mockResolvedValue(openAITextResponseFor("Usable prose."));
+    usageWriteFailure.current = new Error("firestore unavailable");
+
+    await expect(
+      generateScene("book-1", "Write.", {
+        openai: "fake-openai-key",
+        gemini: "fake-gemini-key",
+      }),
+    ).resolves.toEqual({
+      text: "Usable prose.",
+      provider: "openai",
+      model: "gpt-5.6-terra",
+    });
   });
 });

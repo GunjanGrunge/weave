@@ -4,6 +4,7 @@ import { ArrowLeft, Loader2, Send, Sparkles } from "lucide-react";
 
 import { SceneReviewCard } from "@/components/scene/SceneReviewCard";
 import { StyleControl } from "@/components/book/StyleControl";
+import { UsageIndicator } from "@/components/book/UsageIndicator";
 import { Button } from "@/components/ui/button";
 import { authenticatedFetch } from "@/lib/api";
 import { POLISH_ASPECTS } from "@/lib/polish-aspects";
@@ -396,46 +397,49 @@ export function ChatPage({ bookId }: { bookId: string }) {
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => switchInputMode("free-text")}
-          aria-pressed={inputMode === "free-text"}
-          disabled={isLoading}
-          className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
-            inputMode === "free-text"
-              ? "border-accent bg-accent text-accent-foreground"
-              : "border-border bg-card hover:border-accent/50"
-          }`}
-        >
-          Describe it
-        </button>
-        <button
-          type="button"
-          onClick={() => switchInputMode("structured")}
-          aria-pressed={inputMode === "structured"}
-          disabled={isLoading}
-          className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
-            inputMode === "structured"
-              ? "border-accent bg-accent text-accent-foreground"
-              : "border-border bg-card hover:border-accent/50"
-          }`}
-        >
-          Quick details
-        </button>
-        <button
-          type="button"
-          onClick={() => switchInputMode("polish")}
-          aria-pressed={inputMode === "polish"}
-          disabled={isLoading}
-          className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
-            inputMode === "polish"
-              ? "border-accent bg-accent text-accent-foreground"
-              : "border-border bg-card hover:border-accent/50"
-          }`}
-        >
-          Polish a draft
-        </button>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => switchInputMode("free-text")}
+            aria-pressed={inputMode === "free-text"}
+            disabled={isLoading}
+            className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+              inputMode === "free-text"
+                ? "border-accent bg-accent text-accent-foreground"
+                : "border-border bg-card hover:border-accent/50"
+            }`}
+          >
+            Describe it
+          </button>
+          <button
+            type="button"
+            onClick={() => switchInputMode("structured")}
+            aria-pressed={inputMode === "structured"}
+            disabled={isLoading}
+            className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+              inputMode === "structured"
+                ? "border-accent bg-accent text-accent-foreground"
+                : "border-border bg-card hover:border-accent/50"
+            }`}
+          >
+            Quick details
+          </button>
+          <button
+            type="button"
+            onClick={() => switchInputMode("polish")}
+            aria-pressed={inputMode === "polish"}
+            disabled={isLoading}
+            className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+              inputMode === "polish"
+                ? "border-accent bg-accent text-accent-foreground"
+                : "border-border bg-card hover:border-accent/50"
+            }`}
+          >
+            Polish a draft
+          </button>
+        </div>
+        <UsageIndicator bookId={bookId} />
       </div>
 
       {inputMode === "free-text" ? (

@@ -3,6 +3,7 @@ import { getApps, initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 
 import type { ModelRegistry, TextModelConfig } from "../types/modelRegistry.js";
+import type { SceneUsageTask, UsageTask } from "../types/usage.js";
 import type { VisionDocument } from "../types/vision.js";
 
 export class GeminiError extends Error {
@@ -215,32 +216,48 @@ async function callGeminiRaw(
   };
 }
 
-/**
- * Per-task usage doc id: `openingSuggestion` uses a fixed id so a bounded
- * retry (Story 1.4) can overwrite the same doc instead of double-logging a
- * retried call. `generate` fires once per scene request, so it must use an
- * auto-generated id — reusing the fixed-id scheme here would silently
- * overwrite every prior scene's usage entry with the latest one.
- */
 async function recordUsage(
   bookId: string,
-  task: string,
+  task: UsageTask,
   provider: string,
   model: string,
   inputTokens: number,
   outputTokens: number,
-  docId?: string,
 ): Promise<void> {
+  const safeInputTokens = Number.isFinite(inputTokens) && inputTokens >= 0 ? inputTokens : 0;
+  const safeOutputTokens = Number.isFinite(outputTokens) && outputTokens >= 0 ? outputTokens : 0;
   const usage = firestore().collection("books").doc(bookId).collection("usage");
-  const ref = docId ? usage.doc(docId) : usage.doc();
-  await ref.set({
+  await usage.doc().set({
     task,
     provider,
     model,
-    inputTokens,
-    outputTokens,
+    inputTokens: safeInputTokens,
+    outputTokens: safeOutputTokens,
     createdAt: FieldValue.serverTimestamp(),
   });
+}
+
+async function recordUsageBestEffort(
+  bookId: string,
+  task: UsageTask,
+  result: RawModelCallResult,
+): Promise<void> {
+  try {
+    await recordUsage(
+      bookId,
+      task,
+      result.provider,
+      result.model,
+      result.inputTokens,
+      result.outputTokens,
+    );
+  } catch (error) {
+    console.error("usage/record: provider response could not be logged", {
+      bookId,
+      task,
+      error,
+    });
+  }
 }
 
 async function callConfiguredModelRaw(
@@ -294,16 +311,8 @@ export async function generateOpeningSuggestions(
     schema: OPENING_SUGGESTION_SCHEMA,
   });
 
+  await recordUsageBestEffort(bookId, "openingSuggestion", result);
   const openings = parseOpenings(result.text, result.provider === "openai" ? "OpenAI" : "Gemini");
-
-  await recordUsage(
-    bookId,
-    "openingSuggestion",
-    result.provider,
-    result.model,
-    result.inputTokens,
-    result.outputTokens,
-  );
 
   return { openings };
 }
@@ -312,17 +321,17 @@ export async function generateScene(
   bookId: string,
   prompt: string,
   apiKeys: AIProviderKeys,
+  task: SceneUsageTask = "generate",
 ): Promise<{ text: string; provider: "openai" | "gemini"; model: string }> {
   const registry = await readModelRegistry();
   const result = await callWithFallback(registry.generate, apiKeys, prompt);
+  await recordUsageBestEffort(bookId, task, result);
 
   if (!result.text) {
     throw new GeminiError(
       `${result.provider === "openai" ? "OpenAI" : "Gemini"} response had no text content.`,
     );
   }
-
-  await recordUsage(bookId, "generate", result.provider, result.model, result.inputTokens, result.outputTokens);
 
   return { text: result.text, provider: result.provider, model: result.model };
 }
