@@ -57,7 +57,7 @@ so that I am never surprised by my usage volume.
 - [ ] Task 5: Verify security, build, deployment, and live behavior (AC: 1-7)
   - [x] Run focused red/green tests, the complete frontend suite/build, Functions `npm run verify`, seam lint, and `git diff --check`.
   - [x] Confirm no new dependency, endpoint, Hosting rewrite, Function export, provider secret, Firestore index, or direct client write was introduced.
-  - [ ] Deploy through the non-cancelling GitHub Firebase workflow, with Functions/Firestore completing before Hosting.
+  - [x] Deploy through the non-cancelling GitHub Firebase workflow, with Functions/Firestore completing before Hosting.
   - [ ] When writer credentials are available, open an owned Book, record the indicator, complete one successful generation, confirm exactly one new usage document with real provider/model/token values, and confirm the indicator increments without reload. Remove only generated test manuscript data; retain the legitimate usage audit entry.
   - [ ] Update the File List, completion notes, Change Log, story status, and sprint status only after verification succeeds.
 
@@ -172,6 +172,7 @@ GPT-5 Codex
 - Added an owner-scoped Firestore listener that derives a provider-neutral per-Book call/token summary and safely ignores malformed token fields.
 - Added a compact accessible Usage indicator to the wrapping Chat input-mode toolbar with loading, unavailable, realtime, route-reset, and stale A -> B -> A protection.
 - Verification: frontend 22 files / 121 tests passed; production build passed; changed-file ESLint and `git diff --check` passed; Functions verify passed lint, seam lint, build, and 22 files / 180 tests.
+- GitHub Actions run 30392825420 deployed Firestore, Functions, and Hosting successfully. Production `/login` and `/health` return 200, and the served bundle contains the new Usage indicator. Authenticated generation-to-indicator verification remains pending because no writer credentials are stored in this workspace.
 
 ### File List
 
@@ -195,3 +196,4 @@ GPT-5 Codex
 
 - 2026-07-29: Created comprehensive Story 2.6 context and marked ready-for-dev.
 - 2026-07-29: Implemented authoritative best-effort usage logging and a realtime per-Book writing-cost indicator; local verification complete, deployment pending.
+- 2026-07-29: Deployed commit `78b2292` successfully and verified production HTTP health/current Usage bundle; authenticated writer smoke test remains pending.
