@@ -22,3 +22,4 @@ export { listSnapshots } from "./handlers/listSnapshots.js";
 export { compareSnapshot } from "./handlers/compareSnapshot.js";
 export { restoreSnapshot } from "./handlers/restoreSnapshot.js";
 export { exportBook } from "./handlers/exportBook.js";
+export { deleteBookEndpoint as deleteBook } from "./handlers/deleteBook.js";

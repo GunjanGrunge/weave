@@ -572,3 +572,62 @@ export async function retrieveRelevantFacts(
     })
     .filter((desc: string | undefined): desc is string => typeof desc === "string" && desc.trim().length > 0);
 }
+
+export async function deleteBook(bookId: string, uid: string): Promise<void> {
+  const db = firestore();
+  const bookRef = db.collection("books").doc(bookId);
+  const bookSnap = await bookRef.get();
+  if (!bookSnap.exists) {
+    throw new Error("Book not found.");
+  }
+  const book = bookSnap.data() as Book;
+  if (book.uid !== uid) {
+    throw new Error("Permission denied.");
+  }
+
+  const purgeCollection = async (colRef: {
+    get: () => Promise<{ docs: Array<{ ref: { delete: () => Promise<unknown> } }> }>;
+  }) => {
+    const snap = await colRef.get();
+    for (const doc of snap.docs) {
+      await doc.ref.delete();
+    }
+  };
+
+  // 1. Delete chapters and nested scenes
+  const chaptersSnap = await bookRef.collection("chapters").get();
+  for (const chapDoc of chaptersSnap.docs) {
+    await purgeCollection(chapDoc.ref.collection("scenes"));
+    await chapDoc.ref.delete();
+  }
+
+  // 2. Delete messages
+  await purgeCollection(bookRef.collection("messages"));
+
+  // 3. Delete vision doc
+  await purgeCollection(bookRef.collection("vision"));
+
+  // 4. Delete facts (embeddings)
+  await purgeCollection(bookRef.collection("facts"));
+
+  // 5. Delete snapshots (and nested chapters, scenes, vision)
+  const snapshotsSnap = await bookRef.collection("snapshots").get();
+  for (const snapDoc of snapshotsSnap.docs) {
+    await purgeCollection(snapDoc.ref.collection("vision"));
+    const snapChaptersSnap = await snapDoc.ref.collection("chapters").get();
+    for (const snapChapDoc of snapChaptersSnap.docs) {
+      await purgeCollection(snapChapDoc.ref.collection("scenes"));
+      await snapChapDoc.ref.delete();
+    }
+    await snapDoc.ref.delete();
+  }
+
+  // 6. Delete openingSuggestionAttempts
+  await purgeCollection(bookRef.collection("openingSuggestionAttempts"));
+
+  // 7. Delete generationSessions
+  await purgeCollection(bookRef.collection("generationSessions"));
+
+  // 8. Delete the book document itself
+  await bookRef.delete();
+}

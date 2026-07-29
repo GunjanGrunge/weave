@@ -43,6 +43,21 @@ function makeDoc(path: string) {
         ...(data as object),
       };
     },
+    delete: async () => {
+      delete docStore[path];
+      const parts = path.split("/");
+      const colPath = parts.slice(0, -1).join("/");
+      const docId = parts.at(-1);
+      if (colPath.endsWith("/messages") && messagesStore[colPath]) {
+        messagesStore[colPath] = messagesStore[colPath].filter((d) => d.id !== docId);
+      }
+      if (colPath.endsWith("/chapters") && chaptersStore[colPath]) {
+        chaptersStore[colPath] = chaptersStore[colPath].filter((d) => d.id !== docId);
+      }
+      if (colPath.endsWith("/scenes") && scenesStore[colPath]) {
+        scenesStore[colPath] = scenesStore[colPath].filter((d) => d.id !== docId);
+      }
+    },
   };
 }
 
@@ -52,8 +67,37 @@ function makeCollection(path: string) {
     return [...list].sort((a, b) => (direction === "desc" ? b.order - a.order : a.order - b.order));
   };
 
+  const getCollectionDocs = async () => {
+    const prefix = `${path}/`;
+    const docsFromStore = Object.entries(docStore)
+      .filter(([docPath]) => {
+        const remainder = docPath.slice(prefix.length);
+        return docPath.startsWith(prefix) && !remainder.includes("/");
+      })
+      .map(([docPath, data]) => ({
+        id: docPath.slice(prefix.length),
+        ref: makeDoc(docPath),
+        data: () => data,
+      }));
+
+    const legacyDocs = collectionData(path).map((item) => ({
+      id: item.id || "legacy-id",
+      ref: makeDoc(`${path}/${item.id}`),
+      data: () => item,
+    }));
+
+    const mergedMap = new Map();
+    for (const d of [...legacyDocs, ...docsFromStore]) {
+      mergedMap.set(d.id, d);
+    }
+    const docs = Array.from(mergedMap.values());
+
+    return { empty: docs.length === 0, docs };
+  };
+
   return {
     doc: (id?: string) => makeDoc(`${path}/${id ?? "book-auto-id"}`),
+    get: getCollectionDocs,
     where: (field: string, operator: string, value: unknown) => {
       const getFilteredDocs = () => {
         const prefix = `${path}/`;
@@ -96,7 +140,12 @@ function makeCollection(path: string) {
           return chain(docsList.slice(0, n));
         },
         get: async () => {
-          return { empty: docsList.length === 0, docs: docsList };
+          const docs = docsList.map((item) => ({
+            id: item.id,
+            ref: makeDoc(`${path}/${item.id}`),
+            data: () => item.data(),
+          }));
+          return { empty: docs.length === 0, docs };
         },
       });
 
@@ -104,14 +153,22 @@ function makeCollection(path: string) {
     },
     orderBy: (_field: string, direction: "asc" | "desc" = "asc") => ({
       get: async () => {
-        const docs = sortedDocs(direction).map((item) => ({ id: item.id, data: () => item }));
+        const docs = sortedDocs(direction).map((item) => ({
+          id: item.id,
+          ref: makeDoc(`${path}/${item.id}`),
+          data: () => item,
+        }));
         return { empty: docs.length === 0, docs };
       },
       limit: (n: number) => ({
         get: async () => {
           const docs = sortedDocs(direction)
             .slice(0, n)
-            .map((item) => ({ id: item.id, data: () => item }));
+            .map((item) => ({
+              id: item.id,
+              ref: makeDoc(`${path}/${item.id}`),
+              data: () => item,
+            }));
           return { empty: docs.length === 0, docs };
         },
       }),
@@ -132,6 +189,7 @@ function makeCollection(path: string) {
           .slice(0, opts.limit)
           .map(([docPath, data]) => ({
             id: docPath.slice(prefix.length),
+            ref: makeDoc(docPath),
             data: () => data,
           }));
         return { empty: docs.length === 0, docs };
@@ -205,6 +263,7 @@ import {
   getPriorChapterSummaries,
   retrieveRelevantFacts,
   getActiveChapter,
+  deleteBook,
 } from "./books.js";
 import { DEFAULT_STYLE_PRESET_ID } from "./styles.js";
 
@@ -911,5 +970,45 @@ describe("retrieveRelevantFacts", () => {
 
     expect(result).toContain("Elena is a rogue.");
     expect(result).toContain("A cozy tavern.");
+  });
+});
+
+describe("deleteBook", () => {
+  beforeEach(() => {
+    docStore = {};
+  });
+
+  it("successfully purges all book records and subcollections", async () => {
+    docStore["books/book-1"] = { uid: "user-123", title: "My Novel" };
+    docStore["books/book-1/chapters/chapter-1"] = { order: 0 };
+    docStore["books/book-1/chapters/chapter-1/scenes/scene-1"] = { text: "Scene text", order: 0 };
+    docStore["books/book-1/messages/message-1"] = { text: "Hello" };
+    docStore["books/book-1/vision/main"] = { theme: "Adventure" };
+    docStore["books/book-1/facts/fact-1"] = { name: "Elena" };
+    docStore["books/book-1/snapshots/snap-1"] = { name: "Backup" };
+    docStore["books/book-1/snapshots/snap-1/chapters/chapter-1"] = { order: 0 };
+    docStore["books/book-1/snapshots/snap-1/chapters/chapter-1/scenes/scene-1"] = { text: "Old scene" };
+
+    await deleteBook("book-1", "user-123");
+
+    // Assert everything was deleted
+    expect(docStore["books/book-1"]).toBeUndefined();
+    expect(docStore["books/book-1/chapters/chapter-1"]).toBeUndefined();
+    expect(docStore["books/book-1/chapters/chapter-1/scenes/scene-1"]).toBeUndefined();
+    expect(docStore["books/book-1/messages/message-1"]).toBeUndefined();
+    expect(docStore["books/book-1/vision/main"]).toBeUndefined();
+    expect(docStore["books/book-1/facts/fact-1"]).toBeUndefined();
+    expect(docStore["books/book-1/snapshots/snap-1"]).toBeUndefined();
+    expect(docStore["books/book-1/snapshots/snap-1/chapters/chapter-1"]).toBeUndefined();
+    expect(docStore["books/book-1/snapshots/snap-1/chapters/chapter-1/scenes/scene-1"]).toBeUndefined();
+  });
+
+  it("throws error if book does not exist", async () => {
+    await expect(deleteBook("non-existent-book", "user-123")).rejects.toThrow("Book not found.");
+  });
+
+  it("throws error if user is not the owner", async () => {
+    docStore["books/book-1"] = { uid: "user-abc", title: "My Novel" };
+    await expect(deleteBook("book-1", "wrong-user")).rejects.toThrow("Permission denied.");
   });
 });
