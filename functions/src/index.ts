@@ -16,3 +16,4 @@ export { getStyleConfig } from "./handlers/getStyleConfig.js";
 export { updateBookStyle } from "./handlers/updateBookStyle.js";
 export { extractEntitiesOnSceneAccept } from "./triggers/extractEntities.js";
 export { summarizePreviousChapter } from "./triggers/summarizeChapter.js";
+export { generateMuseNoteOnSceneAccept } from "./triggers/generateMuseNote.js";

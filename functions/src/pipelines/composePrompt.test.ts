@@ -79,6 +79,22 @@ describe("composePrompt", () => {
           appearances: [],
         },
         {
+          surface: "A scar on his cheek",
+          meaning: "Fought in a duel",
+          subtlety: "subtle",
+          payoffIntent: "Mention in conversation",
+          status: "open",
+          appearances: [],
+        },
+        {
+          surface: "A ticking pocketwatch",
+          meaning: "A bomb is inside",
+          subtlety: "explicit",
+          payoffIntent: "Detonate soon",
+          status: "open",
+          appearances: [],
+        },
+        {
           surface: "An old grudge",
           meaning: "Already resolved",
           subtlety: "explicit",
@@ -97,6 +113,13 @@ describe("composePrompt", () => {
 
     expect(result?.prompt).toContain("A leaking ceiling");
     expect(result?.prompt).toContain("never state or hint at its hidden meaning");
+
+    expect(result?.prompt).toContain("A scar on his cheek");
+    expect(result?.prompt).toContain("a character may notice the surface detail, but must not interpret or explain");
+
+    expect(result?.prompt).toContain("A ticking pocketwatch");
+    expect(result?.prompt).toContain("the hidden meaning may be openly stated in prose");
+
     expect(result?.prompt).not.toContain("An old grudge");
   });
 
