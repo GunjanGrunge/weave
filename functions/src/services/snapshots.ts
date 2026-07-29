@@ -30,6 +30,27 @@ export type ChapterDiff = {
   scenes: SceneDiff[];
 };
 
+export type ManuscriptScene = {
+  sceneId: string;
+  order: number;
+  text: string;
+};
+
+export type ManuscriptChapter = {
+  chapterId: string;
+  order: number;
+  title: string;
+  scenes: ManuscriptScene[];
+};
+
+export type BookManuscript = {
+  bookId: string;
+  title: string;
+  chapters: ManuscriptChapter[];
+  sceneCount: number;
+  wordCount: number;
+};
+
 export class SnapshotError extends Error {
   code: string;
 
@@ -50,6 +71,72 @@ async function verifyBookOwnership(bookId: string, uid: string): Promise<void> {
   }
 }
 
+export async function readBookManuscript(bookId: string, uid: string): Promise<BookManuscript> {
+  await verifyBookOwnership(bookId, uid);
+
+  const book = await getBook(bookId);
+  if (!book) {
+    throw new SnapshotError("not-found", "Book not found.");
+  }
+
+  const chaptersSnap = await firestore()
+    .collection("books")
+    .doc(bookId)
+    .collection("chapters")
+    .orderBy("order", "asc")
+    .get();
+
+  if (chaptersSnap.docs.length > MAX_EXPORT_CHAPTERS) {
+    throw new SnapshotError("resource-exhausted", "This book has too many chapters to preview.");
+  }
+
+  const chapters: ManuscriptChapter[] = [];
+  let sceneCount = 0;
+  let characterCount = 0;
+  let wordCount = 0;
+
+  for (const chapterDoc of chaptersSnap.docs) {
+    const chapter = chapterDoc.data() as Chapter;
+    const scenesSnap = await chapterDoc.ref.collection("scenes").orderBy("order", "asc").get();
+    sceneCount += scenesSnap.docs.length;
+    if (sceneCount > MAX_EXPORT_SCENES) {
+      throw new SnapshotError("resource-exhausted", "This book has too many scenes to preview.");
+    }
+
+    const scenes = scenesSnap.docs.map((sceneDoc) => {
+      const scene = sceneDoc.data() as Scene;
+      const text = typeof scene.text === "string" ? scene.text : "";
+      characterCount += text.length;
+      wordCount += text.trim() ? text.trim().split(/\s+/u).length : 0;
+      return {
+        sceneId: sceneDoc.id,
+        order: typeof scene.order === "number" ? scene.order : 0,
+        text,
+      };
+    });
+
+    if (characterCount > MAX_EXPORT_CHARACTERS) {
+      throw new SnapshotError("resource-exhausted", "This book is too large to preview.");
+    }
+
+    const order = typeof chapter.order === "number" ? chapter.order : chapters.length;
+    chapters.push({
+      chapterId: chapterDoc.id,
+      order,
+      title: `Chapter ${order + 1}`,
+      scenes,
+    });
+  }
+
+  return {
+    bookId,
+    title: book.title || "Untitled Book",
+    chapters,
+    sceneCount,
+    wordCount,
+  };
+}
+
 export async function createBookSnapshot(
   bookId: string,
   name: string,
@@ -63,7 +150,10 @@ export async function createBookSnapshot(
   const sourceBook = await getBook(bookId);
   const sourceRevision =
     typeof sourceBook?.manuscriptRevision === "number" ? sourceBook.manuscriptRevision : 0;
-  const writes: Array<{ ref: FirebaseFirestore.DocumentReference; data: FirebaseFirestore.DocumentData }> = [];
+  const writes: Array<{
+    ref: FirebaseFirestore.DocumentReference;
+    data: FirebaseFirestore.DocumentData;
+  }> = [];
 
   const visionRef = db.collection("books").doc(bookId).collection("vision").doc("main");
   const visionSnap = await visionRef.get();
@@ -74,11 +164,7 @@ export async function createBookSnapshot(
     });
   }
 
-  const chaptersSnap = await db
-    .collection("books")
-    .doc(bookId)
-    .collection("chapters")
-    .get();
+  const chaptersSnap = await db.collection("books").doc(bookId).collection("chapters").get();
 
   for (const chapterDoc of chaptersSnap.docs) {
     const chapterId = chapterDoc.id;
@@ -223,9 +309,7 @@ export async function compareBookSnapshot(
     snapScenesMap.set(chapterId, sceneMap);
   }
 
-  const allChapterIds = Array.from(
-    new Set([...liveChaptersMap.keys(), ...snapChaptersMap.keys()]),
-  );
+  const allChapterIds = Array.from(new Set([...liveChaptersMap.keys(), ...snapChaptersMap.keys()]));
   const diffs: ChapterDiff[] = [];
 
   for (const chapterId of allChapterIds) {
@@ -275,8 +359,7 @@ export async function compareBookSnapshot(
       });
     } else if (liveChap && snapChap) {
       const metadataChanged =
-        liveChap.order !== snapChap.order ||
-        liveChap.summary !== snapChap.summary;
+        liveChap.order !== snapChap.order || liveChap.summary !== snapChap.summary;
 
       const hasChangedScenes = sceneDiffs.some((s) => s.status !== "unchanged");
 
@@ -293,8 +376,10 @@ export async function compareBookSnapshot(
 
   // Sort chapter diffs by order asc
   diffs.sort((a, b) => {
-    const orderA = liveChaptersMap.get(a.chapterId)?.order ?? snapChaptersMap.get(a.chapterId)?.order ?? 0;
-    const orderB = liveChaptersMap.get(b.chapterId)?.order ?? snapChaptersMap.get(b.chapterId)?.order ?? 0;
+    const orderA =
+      liveChaptersMap.get(a.chapterId)?.order ?? snapChaptersMap.get(a.chapterId)?.order ?? 0;
+    const orderB =
+      liveChaptersMap.get(b.chapterId)?.order ?? snapChaptersMap.get(b.chapterId)?.order ?? 0;
     return orderA - orderB;
   });
 

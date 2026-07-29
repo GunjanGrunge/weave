@@ -2,7 +2,8 @@
 
 Story is a private AI-assisted novel writing workspace. The current app is a Firebase-hosted React/TanStack Start frontend backed by Firebase Auth, Firestore, Cloud Functions, and a model-registry-driven AI layer.
 
-Epic 1 is implemented: secure app access, private writer sign-in, guided conversational book creation, and the Muse opening-suggestion flow.
+The implemented writing flow covers private book intake, scene generation and refinement,
+long-book context, Muse guidance, manuscript preview, snapshots, export, and book deletion.
 
 ![Story Solution Architecture Diagram](public/architecture_infographic.png)
 
@@ -14,6 +15,14 @@ Epic 1 is implemented: secure app access, private writer sign-in, guided convers
 - Atomic book creation with one Book, one opening Chapter, one Vision Document, and ordered intake messages.
 - Muse opening suggestions after intake, with 2-3 candidate openings and one-line rationales.
 - Non-blocking retry path for opening suggestions through `/retryOpeningSuggestion`.
+- Book Chat with free-text, quick-detail, and draft-polish generation modes.
+- Inline scene review with regenerate, edit, accept, and chapter creation workflows.
+- Ordered manuscript preview at `/books/{bookId}/manuscript`, showing accepted prose only.
+- Chapter contents navigation, word/page estimates, print layout, Markdown export, and plain-text export.
+- Vision editing, narrative threads, style changes, Muse notes, and usage visibility.
+- Named snapshots with compare and coherent restore.
+- Ownership-scoped recursive book deletion.
+- Background entity extraction, embeddings, chapter summaries, and long-book context retrieval.
 - Usage logging under `books/{bookId}/usage`.
 - Firestore ownership rules scoped under each `books/{bookId}` root.
 - CI deploy workflow that runs frontend tests, frontend build, functions verification, model-registry seeding, and Firebase deploy.

@@ -126,6 +126,7 @@ jobs:
             compareSnapshot
             restoreSnapshot
             exportBook
+            getManuscript
             deleteBook
             extractEntitiesOnSceneAccept
             summarizePreviousChapter

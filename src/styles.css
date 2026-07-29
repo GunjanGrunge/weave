@@ -144,8 +144,14 @@
 }
 
 @keyframes reveal {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @utility animate-reveal {
@@ -162,5 +168,35 @@
     padding-right: 0.75rem;
     margin-top: 0.3rem;
     color: var(--color-accent);
+  }
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  [data-manuscript-preview],
+  [data-manuscript-preview] * {
+    visibility: visible;
+  }
+
+  [data-manuscript-preview] {
+    position: absolute;
+    inset: 0;
+    background: white;
+  }
+
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  .manuscript-sheet {
+    border: 0;
+    box-shadow: none;
+  }
+
+  .manuscript-sheet article {
+    break-before: page;
   }
 }

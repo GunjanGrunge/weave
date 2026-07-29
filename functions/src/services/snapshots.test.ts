@@ -88,8 +88,9 @@ function makeDocRef(path: string): MockDocRef {
 
 function makeCollectionRef(path: string): MockCollectionRef {
   const getDocsMock = async () => {
-    const matching = Object.entries(docStore).filter(([docPath]) =>
-      docPath.startsWith(path) && docPath.split("/").length === path.split("/").length + 1
+    const matching = Object.entries(docStore).filter(
+      ([docPath]) =>
+        docPath.startsWith(path) && docPath.split("/").length === path.split("/").length + 1,
     );
     return {
       docs: matching.map(([docPath, data]) => ({
@@ -198,6 +199,7 @@ import {
   compareBookSnapshot,
   restoreBookSnapshot,
   exportBookManuscript,
+  readBookManuscript,
 } from "./snapshots.js";
 
 describe("Snapshots Service", () => {
@@ -224,7 +226,10 @@ describe("Snapshots Service", () => {
     it("successfully copies Vision, Chapters, and Scenes", async () => {
       docStore["books/book-1/vision/main"] = { theme: "Adventure" };
       docStore["books/book-1/chapters/chapter-1"] = { order: 0 };
-      docStore["books/book-1/chapters/chapter-1/scenes/scene-1"] = { text: "Scene text.", order: 0 };
+      docStore["books/book-1/chapters/chapter-1/scenes/scene-1"] = {
+        text: "Scene text.",
+        order: 0,
+      };
 
       const snapshotId = await createBookSnapshot("book-1", "My Backup", "user-123");
 
@@ -240,9 +245,9 @@ describe("Snapshots Service", () => {
     });
 
     it("throws permission-denied when user does not own the book", async () => {
-      await expect(
-        createBookSnapshot("book-1", "Backup", "wrong-user"),
-      ).rejects.toThrow("Permission denied.");
+      await expect(createBookSnapshot("book-1", "Backup", "wrong-user")).rejects.toThrow(
+        "Permission denied.",
+      );
     });
 
     it("does not publish a snapshot when the manuscript revision changes during capture", async () => {
@@ -251,16 +256,63 @@ describe("Snapshots Service", () => {
         .mockResolvedValueOnce({ uid: "user-123", manuscriptRevision: 1 });
       docStore["books/book-1"] = { uid: "user-123", manuscriptRevision: 2 };
 
-      await expect(
-        createBookSnapshot("book-1", "Raced Backup", "user-123"),
-      ).rejects.toThrow("The manuscript changed while the snapshot was being prepared.");
+      await expect(createBookSnapshot("book-1", "Raced Backup", "user-123")).rejects.toThrow(
+        "The manuscript changed while the snapshot was being prepared.",
+      );
       expect(docStore["books/book-1/snapshots/mock-generated-id"]).toBeUndefined();
+    });
+  });
+
+  describe("readBookManuscript", () => {
+    it("returns accepted scenes grouped into ordered chapters with manuscript totals", async () => {
+      docStore["books/book-1/chapters/chapter-1"] = { order: 0 };
+      docStore["books/book-1/chapters/chapter-1/scenes/scene-1"] = {
+        text: "The road began.",
+        order: 0,
+      };
+      docStore["books/book-1/chapters/chapter-2"] = { order: 1 };
+      docStore["books/book-1/chapters/chapter-2/scenes/scene-2"] = {
+        text: "It ended at dawn.",
+        order: 0,
+      };
+
+      const result = await readBookManuscript("book-1", "user-123");
+
+      expect(result).toEqual({
+        bookId: "book-1",
+        title: "Elena's Legacy",
+        chapters: [
+          {
+            chapterId: "chapter-1",
+            order: 0,
+            title: "Chapter 1",
+            scenes: [{ sceneId: "scene-1", order: 0, text: "The road began." }],
+          },
+          {
+            chapterId: "chapter-2",
+            order: 1,
+            title: "Chapter 2",
+            scenes: [{ sceneId: "scene-2", order: 0, text: "It ended at dawn." }],
+          },
+        ],
+        sceneCount: 2,
+        wordCount: 7,
+      });
+    });
+
+    it("rejects access to another writer's manuscript before reading chapters", async () => {
+      await expect(readBookManuscript("book-1", "user-999")).rejects.toMatchObject({
+        code: "permission-denied",
+      });
     });
   });
 
   describe("listBookSnapshots", () => {
     it("lists metadata of saved snapshots", async () => {
-      docStore["books/book-1/snapshots/snap-1"] = { name: "First", createdAt: "2026-07-29T12:00:00Z" };
+      docStore["books/book-1/snapshots/snap-1"] = {
+        name: "First",
+        createdAt: "2026-07-29T12:00:00Z",
+      };
       docStore["books/book-1/snapshots/snap-building"] = {
         name: "Incomplete",
         state: "creating",
@@ -281,16 +333,28 @@ describe("Snapshots Service", () => {
     it("identifies added, removed, changed, and unchanged chapters/scenes", async () => {
       // Live state
       docStore["books/book-1/chapters/chapter-1"] = { order: 0 };
-      docStore["books/book-1/chapters/chapter-1/scenes/scene-1"] = { text: "Old scene text.", order: 0 };
-      docStore["books/book-1/chapters/chapter-1/scenes/scene-2"] = { text: "Newly added scene.", order: 1 };
+      docStore["books/book-1/chapters/chapter-1/scenes/scene-1"] = {
+        text: "Old scene text.",
+        order: 0,
+      };
+      docStore["books/book-1/chapters/chapter-1/scenes/scene-2"] = {
+        text: "Newly added scene.",
+        order: 1,
+      };
       docStore["books/book-1/chapters/chapter-2"] = { order: 1 }; // Added chapter
 
       // Snapshot state
       const snapBase = "books/book-1/snapshots/snap-123";
       docStore[`${snapBase}`] = { name: "Backup" };
       docStore[`${snapBase}/chapters/chapter-1`] = { order: 0 };
-      docStore[`${snapBase}/chapters/chapter-1/scenes/scene-1`] = { text: "Old scene text.", order: 0 };
-      docStore[`${snapBase}/chapters/chapter-1/scenes/scene-3`] = { text: "Removed scene.", order: 1 };
+      docStore[`${snapBase}/chapters/chapter-1/scenes/scene-1`] = {
+        text: "Old scene text.",
+        order: 0,
+      };
+      docStore[`${snapBase}/chapters/chapter-1/scenes/scene-3`] = {
+        text: "Removed scene.",
+        order: 1,
+      };
 
       const diffs = await compareBookSnapshot("book-1", "snap-123", "user-123");
 
@@ -319,7 +383,7 @@ describe("Snapshots Service", () => {
       // Snapshot state
       const snapBase = "books/book-1/snapshots/snap-restore";
       docStore[`${snapBase}`] = { name: "Backup" };
-      docStore[`${snapBase}/vision/main` ] = { theme: "Restored adventure" };
+      docStore[`${snapBase}/vision/main`] = { theme: "Restored adventure" };
       docStore[`${snapBase}/chapters/chapter-restored`] = { order: 0 };
       docStore[`${snapBase}/chapters/chapter-restored/scenes/scene-restored`] = {
         text: "Restored text",
@@ -363,7 +427,10 @@ describe("Snapshots Service", () => {
   describe("exportBookManuscript", () => {
     it("compiles content and generates a signed Storage URL", async () => {
       docStore["books/book-1/chapters/chapter-1"] = { order: 0 };
-      docStore["books/book-1/chapters/chapter-1/scenes/scene-1"] = { text: "Opening scene.", order: 0 };
+      docStore["books/book-1/chapters/chapter-1/scenes/scene-1"] = {
+        text: "Opening scene.",
+        order: 0,
+      };
 
       getSignedUrlMock.mockResolvedValue(["http://google-storage/mock-signed-url"]);
 
@@ -382,9 +449,9 @@ describe("Snapshots Service", () => {
     it("fails securely when a signed URL cannot be generated", async () => {
       getSignedUrlMock.mockRejectedValue(new Error("signing unavailable"));
 
-      await expect(
-        exportBookManuscript("book-1", "plain-text", "user-123"),
-      ).rejects.toThrow("signing unavailable");
+      await expect(exportBookManuscript("book-1", "plain-text", "user-123")).rejects.toThrow(
+        "signing unavailable",
+      );
       expect(publicUrlMock).not.toHaveBeenCalled();
     });
   });

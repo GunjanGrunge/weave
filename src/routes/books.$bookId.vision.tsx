@@ -1,6 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Check, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  BookOpen,
+  Check,
+  Loader2,
+  MessageSquareText,
+  Plus,
+  Save,
+  Trash2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { authenticatedFetch } from "@/lib/api";
@@ -237,6 +246,18 @@ export function VisionPage({ bookId }: { bookId: string }) {
           <h1 className="mt-1 font-display text-4xl italic">{book.title}</h1>
         </div>
         <div className="flex items-center gap-3">
+          <Button type="button" variant="outline" asChild>
+            <Link to="/books/$bookId/manuscript" params={{ bookId }}>
+              <BookOpen className="size-4" />
+              Manuscript
+            </Link>
+          </Button>
+          <Button type="button" variant="outline" asChild>
+            <Link to="/books/$bookId/chat" params={{ bookId }}>
+              <MessageSquareText className="size-4" />
+              Chat
+            </Link>
+          </Button>
           <span className="text-xs text-muted-foreground" aria-live="polite">
             {saveState === "idle" && "Changes save automatically"}
             {saveState === "dirty" && "Unsaved changes"}

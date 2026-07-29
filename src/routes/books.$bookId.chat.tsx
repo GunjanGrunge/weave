@@ -456,6 +456,12 @@ export function ChatPage({ bookId }: { bookId: string }) {
         <h1 className="font-display text-4xl italic">Book Chat</h1>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button type="button" variant="outline" size="sm" asChild>
+            <Link to="/books/$bookId/manuscript" params={{ bookId }}>
+              <BookOpen className="size-4" />
+              Manuscript
+            </Link>
+          </Button>
+          <Button type="button" variant="outline" size="sm" asChild>
             <Link to="/books/$bookId/vision" params={{ bookId }}>
               <Eye className="size-4" />
               Vision
