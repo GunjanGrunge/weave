@@ -91,6 +91,8 @@ describe("ManuscriptPage", () => {
     expect(screen.queryByRole("heading", { name: "Chapter 2" })).not.toBeInTheDocument();
     expect(screen.getByText("The road began under a quiet moon.")).toBeInTheDocument();
     expect(screen.getByText(/11 words/i)).toBeInTheDocument();
+    expect(screen.queryByText(/manuscript preview/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/2 scenes/i)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Chat", exact: true })).toHaveAttribute(
       "href",
       "/books/book-1/chat",

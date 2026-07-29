@@ -171,6 +171,24 @@
   }
 }
 
+.manuscript-scene p {
+  margin: 0;
+  text-indent: 1.5rem;
+}
+
+.manuscript-scene:first-child p:first-of-type,
+.manuscript-scene-break + p {
+  text-indent: 0;
+}
+
+.manuscript-scene-break {
+  padding: 1.4rem 0 1.2rem;
+  text-align: center;
+  font-size: 0.75rem;
+  letter-spacing: 0.35rem;
+  color: color-mix(in oklab, var(--color-ink) 55%, transparent);
+}
+
 @media print {
   body * {
     visibility: hidden;
@@ -192,11 +210,17 @@
   }
 
   .manuscript-sheet {
+    width: 100%;
     border: 0;
     box-shadow: none;
   }
 
   .manuscript-sheet article {
     break-before: page;
+    padding: 0.7in 0.8in;
+  }
+
+  .manuscript-sheet article:first-child {
+    break-before: auto;
   }
 }

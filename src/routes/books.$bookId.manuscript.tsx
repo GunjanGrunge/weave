@@ -2,7 +2,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
-  BookOpen,
   Eye,
   FileText,
   Loader2,
@@ -39,6 +38,14 @@ function pageEstimate(wordCount: number): number {
 
 function chapterAnchor(chapter: ManuscriptChapter): string {
   return `chapter-${chapter.chapterId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
+function proseParagraphs(text: string): string[] {
+  return text
+    .trim()
+    .split(/\n\s*\n+/)
+    .map((paragraph) => paragraph.replace(/\s*\n\s*/g, " ").trim())
+    .filter(Boolean);
 }
 
 export function ManuscriptPage({ bookId }: { bookId: string }) {
@@ -100,7 +107,7 @@ export function ManuscriptPage({ bookId }: { bookId: string }) {
               </Link>
             </Button>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{manuscript.title}</p>
+              <h1 className="truncate text-sm font-semibold">{manuscript.title}</h1>
               <p className="text-xs text-muted-foreground">
                 {manuscript.wordCount.toLocaleString()} words ·{" "}
                 {pageEstimate(manuscript.wordCount).toLocaleString()} estimated pages
@@ -140,7 +147,7 @@ export function ManuscriptPage({ bookId }: { bookId: string }) {
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-7xl gap-8 px-5 py-8 sm:px-8 lg:grid-cols-[15rem_minmax(0,48rem)] lg:justify-center lg:py-12">
+      <div className="mx-auto grid max-w-6xl gap-6 px-5 py-6 sm:px-8 lg:grid-cols-[13rem_minmax(0,44rem)] lg:justify-center lg:py-8">
         <aside data-print-hide className="lg:sticky lg:top-28 lg:h-fit">
           <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Contents
@@ -154,9 +161,6 @@ export function ManuscriptPage({ bookId }: { bookId: string }) {
                   className="block border-l-2 border-transparent px-4 py-2 text-sm text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
                 >
                   <span className="block font-medium text-foreground">{chapter.title}</span>
-                  <span className="mt-0.5 block text-xs">
-                    {chapter.scenes.length} {chapter.scenes.length === 1 ? "scene" : "scenes"}
-                  </span>
                 </a>
               ))
             ) : (
@@ -168,19 +172,6 @@ export function ManuscriptPage({ bookId }: { bookId: string }) {
         </aside>
 
         <main className="manuscript-sheet min-w-0 border border-border bg-paper text-ink shadow-sm">
-          <section className="grid min-h-[28rem] place-items-center border-b border-ink/10 px-8 py-20 text-center sm:px-16">
-            <div>
-              <BookOpen className="mx-auto size-6 text-warm" />
-              <h1 className="mt-8 font-display text-4xl italic leading-tight sm:text-5xl">
-                {manuscript.title}
-              </h1>
-              <div className="mx-auto mt-8 h-px w-16 bg-warm" />
-              <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.18em] text-ink/55">
-                Manuscript preview
-              </p>
-            </div>
-          </section>
-
           {acceptedChapters.length === 0 ? (
             <section className="grid min-h-96 place-items-center px-8 py-16 text-center">
               <div className="max-w-sm">
@@ -202,24 +193,27 @@ export function ManuscriptPage({ bookId }: { bookId: string }) {
               <article
                 key={chapter.chapterId}
                 id={chapterAnchor(chapter)}
-                className="scroll-mt-28 border-b border-ink/10 px-8 py-16 last:border-b-0 sm:px-14 sm:py-20"
+                className="scroll-mt-28 border-b border-ink/10 px-7 py-12 last:border-b-0 sm:px-16 sm:py-14"
               >
-                <header className="mb-12 text-center">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
-                    {chapter.scenes.length} {chapter.scenes.length === 1 ? "scene" : "scenes"}
-                  </p>
-                  <h2 className="mt-3 font-display text-3xl italic">{chapter.title}</h2>
-                  <div className="mx-auto mt-5 h-px w-12 bg-warm" />
+                <header className="mb-10 text-center sm:mb-12">
+                  <h2 className="font-serif text-2xl font-semibold">{chapter.title}</h2>
                 </header>
 
-                <div className="space-y-8">
+                <div className="mx-auto max-w-[34rem]">
                   {chapter.scenes.map((scene, sceneIndex) => (
                     <section
                       key={scene.sceneId}
-                      className="whitespace-pre-wrap font-serif text-[1.05rem] leading-8 text-ink"
+                      className="manuscript-scene font-serif text-[1.05rem] leading-[1.75] text-ink"
                       aria-label={`${chapter.title}, scene ${sceneIndex + 1}`}
                     >
-                      {scene.text}
+                      {sceneIndex > 0 ? (
+                        <div className="manuscript-scene-break" aria-hidden="true">
+                          * * *
+                        </div>
+                      ) : null}
+                      {proseParagraphs(scene.text).map((paragraph, paragraphIndex) => (
+                        <p key={`${scene.sceneId}-${paragraphIndex}`}>{paragraph}</p>
+                      ))}
                     </section>
                   ))}
                 </div>
