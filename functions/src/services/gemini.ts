@@ -237,7 +237,7 @@ async function recordUsage(
   });
 }
 
-async function recordUsageBestEffort(
+export async function recordUsageBestEffort(
   bookId: string,
   task: UsageTask,
   result: RawModelCallResult,
@@ -272,7 +272,7 @@ async function callConfiguredModelRaw(
   return callGeminiRaw(keys.gemini, modelConfig.model, prompt, schema?.schema);
 }
 
-async function callWithFallback(
+export async function callWithFallback(
   modelConfig: TextModelConfig,
   keys: AIProviderKeys,
   prompt: string,

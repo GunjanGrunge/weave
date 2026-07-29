@@ -16,6 +16,9 @@ describe("Firestore server-authoritative scene rules", () => {
     expect(rules).toMatch(
       /match \/usage\/\{usageId\}\s*\{\s*allow read: if ownsBook\(bookId\);\s*allow write: if false;/,
     );
+    expect(rules).toMatch(
+      /match \/facts\/\{factId\}\s*\{\s*allow read: if ownsBook\(bookId\);\s*allow write: if false;/,
+    );
     expect(rules).toMatch(/match \/books\/\{bookId\}[\s\S]*?allow write: if false;/);
     expect(rules).not.toMatch(/match \/(styles|styleConfig|config)/);
   });

@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Loader2, Send, Sparkles } from "lucide-react";
+import { ArrowLeft, BookOpen, Loader2, Send, Sparkles } from "lucide-react";
 
 import { SceneReviewCard } from "@/components/scene/SceneReviewCard";
 import { StyleControl } from "@/components/book/StyleControl";
@@ -111,6 +111,9 @@ export function ChatPage({ bookId }: { bookId: string }) {
   const [selectedAspects, setSelectedAspects] = useState<PolishAspectId[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [generationState, setGenerationState] = useState<GenerationState>({ status: "idle" });
+  const [chapterState, setChapterState] = useState<
+    { status: "idle" } | { status: "loading" } | { status: "error"; message: string }
+  >({ status: "idle" });
   const generationRequestRef = useRef<{ key: string; inputSnapshot: string } | null>(null);
 
   useEffect(() => {
@@ -124,6 +127,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
     setSelectedAspects([]);
     setValidationError(null);
     setGenerationState({ status: "idle" });
+    setChapterState({ status: "idle" });
     generationRequestRef.current = null;
 
     async function loadMessages() {
@@ -284,6 +288,46 @@ export function ChatPage({ bookId }: { bookId: string }) {
     }
   }
 
+  async function startNewChapter() {
+    if (chapterState.status === "loading" || isLoading) {
+      return;
+    }
+    setChapterState({ status: "loading" });
+    try {
+      const response = await authenticatedFetch("/createChapter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookId }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to create new chapter.");
+      }
+      const data = (await response.json()) as { order: number };
+      const chapterNumber = data.order + 1; // order is 0-based, chapter label is 1-based
+      const systemText = `Chapter ${chapterNumber} started. The previous chapter is being archived in the background.`;
+      setLoadState((current) => {
+        const priorMessages = current.status === "ready" ? current.messages : [];
+        return {
+          status: "ready",
+          messages: [
+            ...priorMessages,
+            {
+              type: "system" as const,
+              text: systemText,
+              order: priorMessages.length,
+            },
+          ],
+        };
+      });
+      setChapterState({ status: "idle" });
+    } catch {
+      setChapterState({
+        status: "error",
+        message: "Couldn't start a new chapter. Please try again.",
+      });
+    }
+  }
+
   function retry() {
     void submitScene();
   }
@@ -397,6 +441,15 @@ export function ChatPage({ bookId }: { bookId: string }) {
         </div>
       )}
 
+      {chapterState.status === "error" && (
+        <div className="mt-2 flex items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm">
+          <p className="text-muted-foreground">{chapterState.message}</p>
+          <Button type="button" variant="outline" onClick={() => setChapterState({ status: "idle" })}>
+            Dismiss
+          </Button>
+        </div>
+      )}
+
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-2">
           <button
@@ -439,7 +492,24 @@ export function ChatPage({ bookId }: { bookId: string }) {
             Polish a draft
           </button>
         </div>
-        <UsageIndicator bookId={bookId} />
+        <div className="flex items-center gap-2">
+          <button
+            id="start-new-chapter-btn"
+            type="button"
+            onClick={() => void startNewChapter()}
+            disabled={chapterState.status === "loading" || isLoading}
+            title="Start the next chapter — archives this one in the background"
+            className="flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-accent/50 hover:text-foreground disabled:opacity-50"
+          >
+            {chapterState.status === "loading" ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <BookOpen className="size-3" />
+            )}
+            New chapter
+          </button>
+          <UsageIndicator bookId={bookId} />
+        </div>
       </div>
 
       {inputMode === "free-text" ? (

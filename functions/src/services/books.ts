@@ -171,6 +171,47 @@ export async function getBook(bookId: string): Promise<Book | undefined> {
   return snapshot.exists ? (snapshot.data() as Book) : undefined;
 }
 
+export class NoChaptersError extends Error {
+  constructor() {
+    super("Book has no chapters; cannot create a next chapter.");
+    this.name = "NoChaptersError";
+  }
+}
+
+export async function createNextChapter(
+  bookId: string,
+): Promise<{ chapterId: string; order: number; prevChapterId: string }> {
+  const db = firestore();
+
+  // Get the current last chapter (highest order value)
+  const lastSnap = await db
+    .collection("books")
+    .doc(bookId)
+    .collection("chapters")
+    .orderBy("order", "desc")
+    .limit(1)
+    .get();
+
+  if (lastSnap.empty) {
+    throw new NoChaptersError();
+  }
+
+  const lastDoc = lastSnap.docs[0]!;
+  const prevChapterId = lastDoc.id;
+  const prevOrder = (lastDoc.data() as Chapter).order;
+  const newOrder = prevOrder + 1;
+
+  const newChapterRef = db.collection("books").doc(bookId).collection("chapters").doc();
+  await newChapterRef.set({
+    order: newOrder,
+    nextSceneOrder: 0,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  return { chapterId: newChapterRef.id, order: newOrder, prevChapterId };
+}
+
+
 export type OwnedBook = {
   bookId: string;
   title: string;

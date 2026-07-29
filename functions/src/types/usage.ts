@@ -1,2 +1,2 @@
 export type SceneUsageTask = "generate" | "regenerate";
-export type UsageTask = "openingSuggestion" | SceneUsageTask;
+export type UsageTask = "openingSuggestion" | "entityExtraction" | "embedding" | "chapterSummary" | SceneUsageTask;
