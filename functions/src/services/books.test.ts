@@ -745,16 +745,19 @@ describe("getActiveChapterScenes", () => {
     scenesStore = {};
   });
 
-  it("returns scenes from the lowest-order chapter, ordered ascending", async () => {
-    chaptersStore["books/book-1/chapters"] = [{ id: "chapter-1", order: 0 }];
-    scenesStore["books/book-1/chapters/chapter-1/scenes"] = [
+  it("returns scenes from the highest-order chapter, ordered ascending", async () => {
+    chaptersStore["books/book-1/chapters"] = [
+      { id: "chapter-1", order: 0 },
+      { id: "chapter-2", order: 1 },
+    ];
+    scenesStore["books/book-1/chapters/chapter-2/scenes"] = [
       { order: 1, text: "second scene", modelUsed: "gpt-5.6-sol", provider: "openai" },
       { order: 0, text: "first scene", modelUsed: "gpt-5.6-sol", provider: "openai" },
     ];
 
     const result = await getActiveChapterScenes("book-1");
 
-    expect(result.chapterId).toBe("chapter-1");
+    expect(result.chapterId).toBe("chapter-2");
     expect(result.scenes.map((scene) => scene.text)).toEqual(["first scene", "second scene"]);
   });
 

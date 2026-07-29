@@ -183,32 +183,31 @@ export async function createNextChapter(
 ): Promise<{ chapterId: string; order: number; prevChapterId: string }> {
   const db = firestore();
 
-  // Get the current last chapter (highest order value)
-  const lastSnap = await db
-    .collection("books")
-    .doc(bookId)
-    .collection("chapters")
-    .orderBy("order", "desc")
-    .limit(1)
-    .get();
+  return db.runTransaction(async (transaction) => {
+    // Get the current last chapter (highest order value)
+    const chaptersRef = db.collection("books").doc(bookId).collection("chapters");
+    const lastSnap = await transaction.get(
+      chaptersRef.orderBy("order", "desc").limit(1),
+    );
 
-  if (lastSnap.empty) {
-    throw new NoChaptersError();
-  }
+    if (lastSnap.empty) {
+      throw new NoChaptersError();
+    }
 
-  const lastDoc = lastSnap.docs[0]!;
-  const prevChapterId = lastDoc.id;
-  const prevOrder = (lastDoc.data() as Chapter).order;
-  const newOrder = prevOrder + 1;
+    const lastDoc = lastSnap.docs[0]!;
+    const prevChapterId = lastDoc.id;
+    const prevOrder = (lastDoc.data() as Chapter).order;
+    const newOrder = prevOrder + 1;
 
-  const newChapterRef = db.collection("books").doc(bookId).collection("chapters").doc();
-  await newChapterRef.set({
-    order: newOrder,
-    nextSceneOrder: 0,
-    createdAt: FieldValue.serverTimestamp(),
+    const newChapterRef = chaptersRef.doc();
+    transaction.set(newChapterRef, {
+      order: newOrder,
+      nextSceneOrder: 0,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    return { chapterId: newChapterRef.id, order: newOrder, prevChapterId };
   });
-
-  return { chapterId: newChapterRef.id, order: newOrder, prevChapterId };
 }
 
 
@@ -448,7 +447,7 @@ async function getActiveChapterId(bookId: string): Promise<string | undefined> {
     .collection("books")
     .doc(bookId)
     .collection("chapters")
-    .orderBy("order", "asc")
+    .orderBy("order", "desc")
     .limit(1)
     .get();
 

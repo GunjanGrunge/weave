@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { verifyIdTokenMock, getBookMock, createNextChapterMock } = vi.hoisted(() => ({
+const { verifyIdTokenMock, getBookMock, createNextChapterMock, appendChatMessageMock } = vi.hoisted(() => ({
   verifyIdTokenMock: vi.fn(),
   getBookMock: vi.fn(),
   createNextChapterMock: vi.fn(),
+  appendChatMessageMock: vi.fn(),
 }));
 
 vi.mock("../services/auth.js", async () => {
@@ -19,6 +20,7 @@ vi.mock("../services/books.js", async () => {
     ...actual,
     getBook: getBookMock,
     createNextChapter: createNextChapterMock,
+    appendChatMessage: appendChatMessageMock,
   };
 });
 
@@ -31,6 +33,7 @@ describe("buildCreateChapterResponse", () => {
     verifyIdTokenMock.mockReset();
     getBookMock.mockReset();
     createNextChapterMock.mockReset();
+    appendChatMessageMock.mockReset();
   });
 
   it("returns 200 {chapterId, order} for a valid owned book", async () => {
@@ -49,6 +52,11 @@ describe("buildCreateChapterResponse", () => {
       body: { chapterId: "chapter-2", order: 1 },
     });
     expect(createNextChapterMock).toHaveBeenCalledWith("book-1");
+    expect(appendChatMessageMock).toHaveBeenCalledWith(
+      "book-1",
+      "system",
+      "Chapter 2 started. The previous chapter is being archived in the background.",
+    );
   });
 
   it("returns 401 when auth token is missing or invalid", async () => {

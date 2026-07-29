@@ -2,7 +2,12 @@ import { onRequest } from "firebase-functions/v2/https";
 
 import { allowedOrigins } from "../config/cors.js";
 import { AuthError, verifyIdToken } from "../services/auth.js";
-import { createNextChapter, getBook, NoChaptersError } from "../services/books.js";
+import {
+  appendChatMessage,
+  createNextChapter,
+  getBook,
+  NoChaptersError,
+} from "../services/books.js";
 
 export type CreateChapterSuccess = {
   chapterId: string;
@@ -63,6 +68,9 @@ export async function buildCreateChapterResponse(
 
   try {
     const result = await createNextChapter(parsed.bookId);
+    const chapterNumber = result.order + 1;
+    const systemText = `Chapter ${chapterNumber} started. The previous chapter is being archived in the background.`;
+    await appendChatMessage(parsed.bookId, "system", systemText);
     return { statusCode: 200, body: { chapterId: result.chapterId, order: result.order } };
   } catch (error) {
     if (error instanceof NoChaptersError) {
