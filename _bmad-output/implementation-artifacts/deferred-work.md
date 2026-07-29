@@ -53,3 +53,7 @@
 
 - **Resolved by Story 2.3a (2026-07-28):** Real books and the functional Book Chat were disconnected from the visible shelf and `/write` studio. The new ownership-scoped `listBooks` endpoint now powers the dashboard and shelf, cards open `/books/{bookId}/chat`, and the mock `/write` route/catalog were removed.
 - Assembled prompts can grow without a total context budget as accepted scenes accumulate [functions/src/pipelines/assembleContext.ts:16, functions/src/pipelines/composePrompt.ts:56]. This predates Story 2.3 and is already represented by the Story 2.1 deferred item for unbounded prior-scene context; retained here because the 8,000-character draft mode adds to the same model-latency risk.
+
+## Deferred from: code review of 2-6-see-what-my-writing-costs (2026-07-29)
+
+- The frontend subscribes directly to `books/{bookId}/usage` using `onSnapshot` and reduces all usage records in memory. For books with a very high number of generations, this will retrieve and process a large array of documents, causing network and client-side processing overhead. [src/lib/usage.ts:40-54] — deferred, design choice (pre-optimization avoided in V1).

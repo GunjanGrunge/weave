@@ -4,7 +4,7 @@ baseline_commit: 308bf6eb4a27099a0f74708268f1899b067c2994
 
 # Story 2.6: See What My Writing Costs
 
-Status: review
+Status: done
 
 ## Story
 
@@ -60,6 +60,10 @@ so that I am never surprised by my usage volume.
   - [x] Deploy through the non-cancelling GitHub Firebase workflow, with Functions/Firestore completing before Hosting.
   - [x] When writer credentials are available, open an owned Book, record the indicator, complete one successful generation, confirm exactly one new usage document with real provider/model/token values, and confirm the indicator increments without reload. Remove only generated test manuscript data; retain the legitimate usage audit entry.
   - [x] Update the File List, completion notes, Change Log, story status, and sprint status only after verification succeeds.
+
+### Review Findings
+
+- [x] [Review][Defer] Real-time collection listening performance risk under large usage history [src/lib/usage.ts:40-54] — deferred, design choice (pre-optimization avoided in V1).
 
 ## Dev Notes
 
