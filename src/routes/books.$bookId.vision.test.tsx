@@ -87,7 +87,7 @@ describe("VisionPage", () => {
 
     render(<VisionPage bookId="book-1" />);
 
-    fireEvent.change(await screen.findByLabelText(/theme \/ genre/i), {
+    fireEvent.change(await screen.findByLabelText(/^theme$/i), {
       target: { value: "Mystery" },
     });
     fireEvent.change(screen.getByLabelText(/premise/i), {
@@ -108,6 +108,67 @@ describe("VisionPage", () => {
         premise: "A cleaner heist premise.",
         characterIntents: ["Mara wants out", "Ivo wants revenge"],
       },
+    });
+  });
+
+  it("saves a persistent genre contract and book voice", async () => {
+    authenticatedFetchMock.mockResolvedValueOnce(jsonResponse(loadedVision)).mockResolvedValueOnce(
+      jsonResponse({
+        vision: {
+          ...loadedVision.vision,
+          genreProfile: {
+            primaryGenre: "fantasy",
+            secondaryGenres: ["mystery"],
+            subgenre: "",
+            audience: "adult",
+            intensity: "strong",
+            tones: [],
+            customDirection: "",
+          },
+          voiceProfile: {
+            pointOfView: "third-person-limited",
+            tense: "past",
+            narrativeDistance: "balanced",
+            proseDensity: "balanced",
+            descriptionLevel: "rich",
+            interiorityLevel: "balanced",
+            dialogueLevel: "balanced",
+            pacing: "balanced",
+            emotionalIntensity: "rich",
+            customDirection: "",
+          },
+        },
+      }),
+    );
+
+    render(<VisionPage bookId="book-1" />);
+    fireEvent.change(await screen.findByLabelText("Primary genre"), {
+      target: { value: "fantasy" },
+    });
+    fireEvent.change(screen.getByLabelText("Secondary genre 1"), {
+      target: { value: "mystery" },
+    });
+    fireEvent.change(screen.getByLabelText("Genre intensity"), {
+      target: { value: "strong" },
+    });
+    fireEvent.change(screen.getByLabelText("Point of view"), {
+      target: { value: "third-person-limited" },
+    });
+    fireEvent.change(screen.getByLabelText("Tense"), {
+      target: { value: "past" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save vision/i }));
+
+    await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledTimes(2));
+    const payload = JSON.parse(authenticatedFetchMock.mock.calls[1][1].body);
+    expect(payload.vision.genreProfile).toMatchObject({
+      primaryGenre: "fantasy",
+      secondaryGenres: ["mystery"],
+      intensity: "strong",
+    });
+    expect(payload.vision.voiceProfile).toMatchObject({
+      pointOfView: "third-person-limited",
+      tense: "past",
     });
   });
 

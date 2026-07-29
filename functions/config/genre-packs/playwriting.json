@@ -1,0 +1,18 @@
+{
+  "id": "playwriting",
+  "label": "Playwriting",
+  "description": "Playable action, subtext, dramatic objectives, stageable conflict, and transformation in real time.",
+  "principles": [
+    "Write what can be performed: characters pursue objectives through speech and action.",
+    "Let subtext and shifting power carry what dialogue does not state."
+  ],
+  "techniques": [
+    "Give each beat a tactic and turn.",
+    "Use stage directions sparingly for necessary playable information."
+  ],
+  "avoid": ["Novelistic interior narration", "Dialogue that explains what actors can show"],
+  "qualityChecks": [
+    "Is the action stageable?",
+    "Does each exchange change tactic, power, or understanding?"
+  ]
+}

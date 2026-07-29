@@ -1,0 +1,15 @@
+{
+  "id": "poetry",
+  "label": "Poetry",
+  "description": "Image, sound, rhythm, compression, form, and layered emotional or intellectual resonance.",
+  "principles": [
+    "Make line, image, sound, syntax, and silence carry meaning.",
+    "Prefer precise discovery over ornamental abstraction."
+  ],
+  "techniques": [
+    "Use sonic pattern, image transformation, juxtaposition, and controlled repetition.",
+    "Let form reinforce emotional movement."
+  ],
+  "avoid": ["Automatic elevated diction", "Mixed metaphors and empty abstraction"],
+  "qualityChecks": ["Does every image earn its place?", "Do sound and form deepen meaning?"]
+}

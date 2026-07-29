@@ -7,7 +7,20 @@ export type StructuredSceneFields = {
   setting?: string;
 };
 
+export type SceneLength = "concise" | "standard" | "immersive";
+export type GenerationQuality = "standard" | "deep";
+export type ScenePreferences = {
+  length?: SceneLength;
+  quality?: GenerationQuality;
+  customDirection?: string;
+};
+
 export type SceneInput =
-  | { mode: "free-text"; description: string }
-  | { mode: "structured"; fields: StructuredSceneFields }
-  | { mode: "polish"; draftText: string; aspects: PolishAspectId[] };
+  | { mode: "free-text"; description: string; preferences?: ScenePreferences }
+  | { mode: "structured"; fields: StructuredSceneFields; preferences?: ScenePreferences }
+  | {
+      mode: "polish";
+      draftText: string;
+      aspects: PolishAspectId[];
+      preferences?: ScenePreferences;
+    };

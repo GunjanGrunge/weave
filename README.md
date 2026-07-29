@@ -16,6 +16,11 @@ long-book context, Muse guidance, manuscript preview, snapshots, export, and boo
 - Muse opening suggestions after intake, with 2-3 candidate openings and one-line rationales.
 - Non-blocking retry path for opening suggestions through `/retryOpeningSuggestion`.
 - Book Chat with free-text, quick-detail, and draft-polish generation modes.
+- Persistent genre contracts and book voice profiles, editable during intake and from Vision.
+- Version-controlled Genre Craft Packs for general fiction, fantasy, romance, mystery,
+  thriller, horror, historical fiction, literary fiction, science fiction, adventure,
+  comedy, drama, young adult, children's fiction, poetry, and playwriting.
+- Concise, Standard, and Immersive scene depth controls, plus optional two-pass Deep Write.
 - Inline scene review with regenerate, edit, accept, and chapter creation workflows.
 - Ordered manuscript preview and AI-assisted chapter editing at `/books/{bookId}/manuscript`,
   showing accepted prose only.
@@ -30,15 +35,15 @@ long-book context, Muse guidance, manuscript preview, snapshots, export, and boo
 
 ## Stack
 
-| Layer | Technology |
-| --- | --- |
-| Frontend | React 19, TanStack Start/Router, Vite 8 |
-| UI | Tailwind CSS v4, Radix UI, Lucide icons |
-| Runtime | Bun for frontend tooling, Node.js 22 for functions |
-| Backend | Firebase Hosting, Firebase Auth, Firestore, Cloud Functions v2 |
-| AI orchestration | LangGraph.js pipelines in `functions/src/pipelines` |
-| AI providers | OpenAI/Gemini text-provider registry, Gemini embeddings |
-| Tests | Vitest, Testing Library, functions seam lint |
+| Layer            | Technology                                                     |
+| ---------------- | -------------------------------------------------------------- |
+| Frontend         | React 19, TanStack Start/Router, Vite 8                        |
+| UI               | Tailwind CSS v4, Radix UI, Lucide icons                        |
+| Runtime          | Bun for frontend tooling, Node.js 22 for functions             |
+| Backend          | Firebase Hosting, Firebase Auth, Firestore, Cloud Functions v2 |
+| AI orchestration | LangGraph.js pipelines in `functions/src/pipelines`            |
+| AI providers     | OpenAI/Gemini text-provider registry, Gemini embeddings        |
+| Tests            | Vitest, Testing Library, functions seam lint                   |
 
 ## Repository Layout
 
@@ -47,6 +52,7 @@ src/
   lib/                  Frontend Firebase auth and authenticated fetch helpers
   routes/               TanStack file routes, including guided book intake
 functions/
+  config/genre-packs/  Trusted, version-controlled genre craft guidance
   src/handlers/         HTTP function handlers
   src/pipelines/        LangGraph pipeline entry points
   src/services/         Firestore, auth, and AI service seams
@@ -144,6 +150,27 @@ The current registry shape supports:
 - Text model primary/fallback providers for generation, opening suggestions, Muse notes, summaries, and entity extraction.
 - Gemini-only embedding configuration.
 - Per-call usage entries recording task, provider, model, and token counts.
+
+## Literary Generation
+
+Creative requests are assembled from several independent controls:
+
+1. The permanent Literary Writing Charter establishes the baseline for immersive,
+   publication-quality prose.
+2. The Book Genre Profile selects one primary and up to two secondary Genre Craft Packs.
+   Primary/secondary weighting is `70/30` for two genres and `60/25/15` for three.
+3. The Book Voice Profile controls point of view, tense, narrative distance, prose density,
+   description, interiority, dialogue, pacing, emotional intensity, and custom direction.
+4. Live Vision, continuity, narrative threads, style presets, scene depth, and the current
+   scene brief complete the prompt.
+
+Standard generation performs private scene planning and a silent editorial check in one model
+call. Deep Write performs a second model-driven literary revision; if that revision fails, WEAVE
+keeps the successful first draft instead of discarding it. OpenAI remains the primary text
+provider with Gemini fallback, while embeddings remain on Gemini.
+
+Stored books created before Genre and Voice Profiles were introduced are normalized at API and
+prompt boundaries, so no Firestore migration is required.
 
 ## Cookbook Pattern Notes
 

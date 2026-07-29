@@ -12,6 +12,16 @@ import {
   type StyleConfig,
   type StylePreset,
 } from "@/lib/styles";
+import {
+  DEFAULT_GENRE_PROFILE,
+  DEFAULT_VOICE_PROFILE,
+  DEFAULT_WRITING_CONFIG,
+  parseGenreProfile,
+  parseVoiceProfile,
+  type GenreProfile,
+  type VoiceProfile,
+  type WritingProfileConfig,
+} from "@/lib/writing-profiles";
 
 export const Route = createFileRoute("/books/new")({
   head: () => ({
@@ -53,6 +63,8 @@ type IntakeDraft = {
   reply: string;
   selectedPresets: string[];
   customInstruction: string;
+  genreProfile: GenreProfile;
+  voiceProfile: VoiceProfile;
   idempotencyKey: string;
 };
 
@@ -117,6 +129,8 @@ function loadIntakeDraft(uid: string): IntakeDraft | null {
         : [],
       customInstruction:
         typeof parsed.customInstruction === "string" ? parsed.customInstruction : "",
+      genreProfile: parseGenreProfile(parsed.genreProfile) ?? { ...DEFAULT_GENRE_PROFILE },
+      voiceProfile: parseVoiceProfile(parsed.voiceProfile) ?? { ...DEFAULT_VOICE_PROFILE },
       idempotencyKey: parsed.idempotencyKey.trim(),
     };
   } catch {
@@ -163,6 +177,12 @@ export default function NewBook() {
     initialDraft?.selectedPresets ?? [],
   );
   const [customInstruction, setCustomInstruction] = useState(initialDraft?.customInstruction ?? "");
+  const [genreProfile, setGenreProfile] = useState<GenreProfile>(
+    initialDraft?.genreProfile ?? { ...DEFAULT_GENRE_PROFILE },
+  );
+  const [voiceProfile, setVoiceProfile] = useState<VoiceProfile>(
+    initialDraft?.voiceProfile ?? { ...DEFAULT_VOICE_PROFILE },
+  );
   const [hasSavedDraft, setHasSavedDraft] = useState(initialDraft !== null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -171,6 +191,7 @@ export default function NewBook() {
     status: "idle",
   });
   const [styleConfig, setStyleConfig] = useState<StyleConfig | null>(null);
+  const [writingConfig, setWritingConfig] = useState<WritingProfileConfig>(DEFAULT_WRITING_CONFIG);
   const [styleConfigError, setStyleConfigError] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -189,6 +210,9 @@ export default function NewBook() {
     try {
       const config = await fetchStyleConfig();
       setStyleConfig({ presets: config.presets, defaultPresetId: config.defaultPresetId });
+      if (config.writingConfig) {
+        setWritingConfig(config.writingConfig);
+      }
       const activeIds = new Set(
         config.presets.filter((preset) => preset.active).map((preset) => preset.id),
       );
@@ -223,6 +247,8 @@ export default function NewBook() {
         reply,
         selectedPresets,
         customInstruction,
+        genreProfile,
+        voiceProfile,
         idempotencyKey,
       };
       localStorage.setItem(intakeDraftKey(uid), JSON.stringify(draft));
@@ -234,12 +260,14 @@ export default function NewBook() {
     answers,
     bookId,
     customInstruction,
+    genreProfile,
     idempotencyKey,
     messages,
     questionIndex,
     reply,
     selectedPresets,
     uid,
+    voiceProfile,
   ]);
 
   const premiseAnswers = useMemo(
@@ -307,6 +335,8 @@ export default function NewBook() {
         presetIds,
         ...(customInstruction.trim() ? { customInstruction: customInstruction.trim() } : {}),
       },
+      genreProfile,
+      voiceProfile,
       idempotencyKey,
     };
 
@@ -397,6 +427,8 @@ export default function NewBook() {
     setReply("");
     setSelectedPresets([]);
     setCustomInstruction("");
+    setGenreProfile({ ...DEFAULT_GENRE_PROFILE });
+    setVoiceProfile({ ...DEFAULT_VOICE_PROFILE });
     setIdempotencyKey(crypto.randomUUID());
     setError(null);
     setHasSavedDraft(false);
@@ -524,6 +556,162 @@ export default function NewBook() {
           </div>
         ) : (
           <div className="border-t border-border py-4">
+            <div className="mb-5 border-b border-border pb-5">
+              <p className="text-sm font-medium">Genre and voice</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <label className="text-xs text-muted-foreground">
+                  Primary genre
+                  <select
+                    aria-label="Primary genre"
+                    value={genreProfile.primaryGenre}
+                    onChange={(event) => {
+                      const primaryGenre = event.target.value;
+                      setGenreProfile((current) => ({
+                        ...current,
+                        primaryGenre,
+                        secondaryGenres: current.secondaryGenres.filter(
+                          (genre) => genre !== primaryGenre,
+                        ),
+                      }));
+                    }}
+                    className="mt-1 h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-foreground outline-none focus:border-accent"
+                  >
+                    {writingConfig.genres.map((genre) => (
+                      <option key={genre.id} value={genre.id}>
+                        {genre.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {[0, 1].map((index) => (
+                  <label key={index} className="text-xs text-muted-foreground">
+                    Secondary genre {index + 1}
+                    <select
+                      aria-label={`Secondary genre ${index + 1}`}
+                      value={genreProfile.secondaryGenres[index] ?? ""}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setGenreProfile((current) => {
+                          const next = [...current.secondaryGenres];
+                          if (value) next[index] = value;
+                          else next.splice(index, 1);
+                          return {
+                            ...current,
+                            secondaryGenres: next
+                              .filter(
+                                (genre, genreIndex, genres) =>
+                                  genre !== current.primaryGenre &&
+                                  genres.indexOf(genre) === genreIndex,
+                              )
+                              .slice(0, 2),
+                          };
+                        });
+                      }}
+                      className="mt-1 h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-foreground outline-none focus:border-accent"
+                    >
+                      <option value="">None</option>
+                      {writingConfig.genres
+                        .filter((genre) => genre.id !== genreProfile.primaryGenre)
+                        .map((genre) => (
+                          <option key={genre.id} value={genre.id}>
+                            {genre.label}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                ))}
+                <label className="text-xs text-muted-foreground">
+                  Audience
+                  <select
+                    aria-label="Audience"
+                    value={genreProfile.audience}
+                    onChange={(event) =>
+                      setGenreProfile((current) => ({
+                        ...current,
+                        audience: event.target.value as GenreProfile["audience"],
+                      }))
+                    }
+                    className="mt-1 h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-foreground outline-none focus:border-accent"
+                  >
+                    <option value="adult">Adult</option>
+                    <option value="young-adult">Young adult</option>
+                    <option value="middle-grade">Middle grade</option>
+                    <option value="children">Children</option>
+                    <option value="general">General</option>
+                  </select>
+                </label>
+                <label className="text-xs text-muted-foreground">
+                  Point of view
+                  <select
+                    aria-label="Point of view"
+                    value={voiceProfile.pointOfView}
+                    onChange={(event) =>
+                      setVoiceProfile((current) => ({
+                        ...current,
+                        pointOfView: event.target.value as VoiceProfile["pointOfView"],
+                      }))
+                    }
+                    className="mt-1 h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-foreground outline-none focus:border-accent"
+                  >
+                    <option value="unspecified">Decide from context</option>
+                    <option value="first-person">First person</option>
+                    <option value="third-person-limited">Third person limited</option>
+                    <option value="third-person-omniscient">Third person omniscient</option>
+                    <option value="second-person">Second person</option>
+                  </select>
+                </label>
+                <label className="text-xs text-muted-foreground">
+                  Tense
+                  <select
+                    aria-label="Narrative tense"
+                    value={voiceProfile.tense}
+                    onChange={(event) =>
+                      setVoiceProfile((current) => ({
+                        ...current,
+                        tense: event.target.value as VoiceProfile["tense"],
+                      }))
+                    }
+                    className="mt-1 h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-foreground outline-none focus:border-accent"
+                  >
+                    <option value="unspecified">Decide from context</option>
+                    <option value="past">Past</option>
+                    <option value="present">Present</option>
+                  </select>
+                </label>
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <input
+                  aria-label="Subgenre"
+                  value={genreProfile.subgenre}
+                  onChange={(event) =>
+                    setGenreProfile((current) => ({
+                      ...current,
+                      subgenre: event.target.value,
+                    }))
+                  }
+                  placeholder="Optional subgenre"
+                  maxLength={120}
+                  className="h-10 rounded-md border border-border bg-card px-3 text-sm outline-none focus:border-accent"
+                />
+                <input
+                  aria-label="Tone"
+                  value={genreProfile.tones.join(", ")}
+                  onChange={(event) =>
+                    setGenreProfile((current) => ({
+                      ...current,
+                      tones: event.target.value
+                        .split(",")
+                        .map((tone) => tone.trim())
+                        .filter(Boolean)
+                        .slice(0, 5),
+                    }))
+                  }
+                  placeholder="Tone, comma separated"
+                  className="h-10 rounded-md border border-border bg-card px-3 text-sm outline-none focus:border-accent"
+                />
+              </div>
+            </div>
+            <p className="mb-3 text-sm font-medium">Prose style</p>
             {!styleConfig && !styleConfigError && (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" /> Loading style options

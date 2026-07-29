@@ -1,0 +1,18 @@
+{
+  "id": "comedy",
+  "label": "Comedy",
+  "description": "Character-based incongruity, escalation, timing, reversals, and meaningful comic consequence.",
+  "principles": [
+    "Root humor in character desire, blind spots, social pressure, and consequence.",
+    "Escalate patterns while varying their expression."
+  ],
+  "techniques": [
+    "Use setup, misdirection, callback, contrast, and precise timing.",
+    "Let characters remain serious about what the reader finds funny."
+  ],
+  "avoid": ["Random jokes detached from story", "Humiliation without perspective or purpose"],
+  "qualityChecks": [
+    "Does humor arise from character and situation?",
+    "Does the comic beat also move the story?"
+  ]
+}

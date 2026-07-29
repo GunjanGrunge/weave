@@ -11,6 +11,11 @@ import type {
   ThreadSubtlety,
   VisionDocument,
 } from "../types/vision.js";
+import {
+  parseGenreProfile,
+  parseVoiceProfile,
+  WritingProfileValidationError,
+} from "../services/writingProfiles.js";
 
 const MAX_SHORT_TEXT = 240;
 const MAX_LONG_TEXT = 2_000;
@@ -45,13 +50,15 @@ function parseCharacterIntents(value: unknown): string[] {
   if (!Array.isArray(value)) {
     throw new ValidationError("characterIntents must be an array.");
   }
-  return value
-    .map((item) => cleanString(item, "characterIntent", MAX_SHORT_TEXT))
-    // The frontend round-trips intents as one-per-line text; an embedded
-    // newline would silently split into two entries on the next save.
-    .map((item) => item.replace(/\s*\n\s*/g, " ").trim())
-    .filter(Boolean)
-    .slice(0, MAX_INTENTS);
+  return (
+    value
+      .map((item) => cleanString(item, "characterIntent", MAX_SHORT_TEXT))
+      // The frontend round-trips intents as one-per-line text; an embedded
+      // newline would silently split into two entries on the next save.
+      .map((item) => item.replace(/\s*\n\s*/g, " ").trim())
+      .filter(Boolean)
+      .slice(0, MAX_INTENTS)
+  );
 }
 
 function parseThread(value: unknown): NarrativeThread {
@@ -121,12 +128,19 @@ function parseVisionFields(body: unknown): VisionUpdatePatch {
     seenIds.add(thread.id);
   }
 
-  return {
+  const patch: VisionUpdatePatch = {
     theme: cleanString(body.vision.theme, "theme", MAX_SHORT_TEXT),
     premise: cleanString(body.vision.premise, "premise", MAX_LONG_TEXT),
     characterIntents: parseCharacterIntents(body.vision.characterIntents),
     threads: parsedThreads,
   };
+  if (body.vision.genreProfile !== undefined) {
+    patch.genreProfile = parseGenreProfile(body.vision.genreProfile);
+  }
+  if (body.vision.voiceProfile !== undefined) {
+    patch.voiceProfile = parseVoiceProfile(body.vision.voiceProfile);
+  }
+  return patch;
 }
 
 export async function buildUpdateVisionResponse(
@@ -146,7 +160,10 @@ export async function buildUpdateVisionResponse(
     const patch = parseVisionFields(body);
     const vision = await updateVisionDocument(bookId, patch);
     if (!vision) {
-      return { statusCode: 404, body: { code: "not-found", message: "Vision document not found." } };
+      return {
+        statusCode: 404,
+        body: { code: "not-found", message: "Vision document not found." },
+      };
     }
 
     return { statusCode: 200, body: { vision } };
@@ -154,7 +171,7 @@ export async function buildUpdateVisionResponse(
     if (error instanceof AuthError) {
       return { statusCode: 401, body: { code: error.code, message: error.message } };
     }
-    if (error instanceof ValidationError) {
+    if (error instanceof ValidationError || error instanceof WritingProfileValidationError) {
       return { statusCode: 400, body: { code: "invalid-argument", message: error.message } };
     }
     throw error;

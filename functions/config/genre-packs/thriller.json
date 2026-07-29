@@ -1,0 +1,18 @@
+{
+  "id": "thriller",
+  "label": "Thriller",
+  "description": "Escalating danger, urgent decisions, pressure, reversals, and consequential momentum.",
+  "principles": [
+    "Increase pressure through narrowing options and costly decisions.",
+    "Make danger specific, immediate, and causally connected to prior choices."
+  ],
+  "techniques": [
+    "Use deadlines, pursuit, reversals, and incomplete information.",
+    "End major beats on changed stakes rather than arbitrary interruption."
+  ],
+  "avoid": ["Constant shouting mistaken for tension", "Threats without consequence"],
+  "qualityChecks": [
+    "Are choices becoming harder?",
+    "Did the scene change danger, knowledge, or leverage?"
+  ]
+}

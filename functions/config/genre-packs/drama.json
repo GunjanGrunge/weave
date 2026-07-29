@@ -1,0 +1,18 @@
+{
+  "id": "drama",
+  "label": "Drama",
+  "description": "Human conflict, moral pressure, consequential choices, and emotionally earned change.",
+  "principles": [
+    "Build conflict from incompatible needs rather than avoidable misunderstanding alone.",
+    "Make choices reveal values and carry consequences."
+  ],
+  "techniques": [
+    "Shift power within conversations.",
+    "Use restrained behavior to hold intense emotion."
+  ],
+  "avoid": ["Melodrama without earned stakes", "Characters stating every feeling"],
+  "qualityChecks": [
+    "What does each character need?",
+    "Has the balance of power or understanding changed?"
+  ]
+}

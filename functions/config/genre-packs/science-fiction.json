@@ -1,0 +1,18 @@
+{
+  "id": "science-fiction",
+  "label": "Science Fiction",
+  "description": "Speculative change explored through coherent systems, human consequence, and intellectual wonder.",
+  "principles": [
+    "Make speculative technology or conditions alter society and character choices.",
+    "Maintain causal and conceptual consistency."
+  ],
+  "techniques": [
+    "Reveal systems through use, failure, and unequal access.",
+    "Tie the speculative premise to an intimate human problem."
+  ],
+  "avoid": ["Technology catalogs", "Scientific language used without narrative consequence"],
+  "qualityChecks": [
+    "Does the speculation change what people can or must do?",
+    "Are its consequences coherent?"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "adventure",
+  "label": "Adventure",
+  "description": "Discovery, movement, resourceful action, escalating obstacles, and transformative journeys.",
+  "principles": [
+    "Make obstacles demand ingenuity, courage, sacrifice, or cooperation.",
+    "Let each location create distinct possibilities and dangers."
+  ],
+  "techniques": [
+    "Alternate anticipation, action, discovery, and consequence.",
+    "Use geography clearly during movement."
+  ],
+  "avoid": ["Effortless escapes", "Scenery with no bearing on action"],
+  "qualityChecks": [
+    "Did the challenge test character?",
+    "Is movement through space easy to imagine?"
+  ]
+}

@@ -36,6 +36,7 @@ type LoadState =
 type GenerationState = { status: "idle" | "loading" } | { status: "error"; message: string };
 
 type InputMode = "free-text" | "structured" | "polish";
+type SceneLength = "concise" | "standard" | "immersive";
 
 // Mirrors the server's per-field cap (functions/src/handlers/generateScene.ts)
 // so a paste can't trigger a server-side 400 the user has no way to see coming.
@@ -121,6 +122,9 @@ export function ChatPage({ bookId }: { bookId: string }) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [description, setDescription] = useState("");
   const [inputMode, setInputMode] = useState<InputMode>("free-text");
+  const [sceneLength, setSceneLength] = useState<SceneLength>("standard");
+  const [deepWrite, setDeepWrite] = useState(false);
+  const [sceneDirection, setSceneDirection] = useState("");
   const [structuredFields, setStructuredFields] = useState<StructuredFields>({
     sceneGoal: "",
     mood: "",
@@ -142,6 +146,9 @@ export function ChatPage({ bookId }: { bookId: string }) {
     routeVersionRef.current += 1;
     setDescription("");
     setInputMode("free-text");
+    setSceneLength("standard");
+    setDeepWrite(false);
+    setSceneDirection("");
     setStructuredFields({ sceneGoal: "", mood: "", povCharacter: "", setting: "" });
     setDraftText("");
     setSelectedAspects([]);
@@ -265,6 +272,13 @@ export function ChatPage({ bookId }: { bookId: string }) {
       payload = { bookId, mode: "polish", draftText, aspects: selectedAspects };
       userMessageText = summarizePolishRequest(draftText, selectedAspects);
     }
+    if (inputMode !== "polish") {
+      payload.preferences = {
+        length: sceneLength,
+        quality: deepWrite ? "deep" : "standard",
+        ...(sceneDirection.trim() ? { customDirection: sceneDirection.trim() } : {}),
+      };
+    }
 
     setValidationError(null);
     setGenerationState({ status: "loading" });
@@ -333,6 +347,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
         setDraftText("");
         setSelectedAspects([]);
       }
+      setSceneDirection("");
       setGenerationState({ status: "idle" });
     } catch {
       if (
@@ -610,6 +625,61 @@ export function ChatPage({ bookId }: { bookId: string }) {
           <UsageIndicator bookId={bookId} />
         </div>
       </div>
+
+      {inputMode !== "polish" && (
+        <div className="mt-2 flex flex-wrap items-center gap-3 border-y border-border py-2">
+          <div
+            className="flex overflow-hidden rounded-md border border-border"
+            aria-label="Scene depth"
+          >
+            {(
+              [
+                ["concise", "Concise"],
+                ["standard", "Standard"],
+                ["immersive", "Immersive"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={sceneLength === value}
+                disabled={isLoading}
+                onClick={() => setSceneLength(value)}
+                className={`h-8 border-r border-border px-3 text-xs last:border-r-0 disabled:opacity-50 ${
+                  sceneLength === value
+                    ? "bg-foreground text-background"
+                    : "bg-card text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            aria-pressed={deepWrite}
+            disabled={isLoading}
+            onClick={() => setDeepWrite((current) => !current)}
+            className={`h-8 rounded-md border px-3 text-xs font-medium disabled:opacity-50 ${
+              deepWrite
+                ? "border-accent bg-accent/10 text-foreground"
+                : "border-border bg-card text-muted-foreground"
+            }`}
+          >
+            <Sparkles className="mr-1 inline size-3" />
+            Deep Write
+          </button>
+          <input
+            aria-label="Scene-specific direction"
+            value={sceneDirection}
+            onChange={(event) => setSceneDirection(event.target.value)}
+            maxLength={500}
+            disabled={isLoading}
+            placeholder="Optional direction for this scene"
+            className="h-8 min-w-48 flex-1 rounded-md border border-border bg-card px-3 text-xs outline-none focus:border-accent disabled:opacity-50"
+          />
+        </div>
+      )}
 
       {inputMode === "free-text" ? (
         <div className="mt-2 flex items-end gap-2 rounded-2xl border border-border bg-card p-2 pl-4 focus-within:border-accent/40">

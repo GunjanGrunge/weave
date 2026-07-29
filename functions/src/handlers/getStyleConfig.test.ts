@@ -48,6 +48,15 @@ describe("buildGetStyleConfigResponse", () => {
           expect.objectContaining({ id: "sparse-cinematic", active: true }),
         ]),
       },
+      writingConfig: {
+        genres: expect.arrayContaining([
+          expect.objectContaining({ id: "fantasy", label: "Fantasy" }),
+        ]),
+        defaults: {
+          genreProfile: { primaryGenre: "general-fiction" },
+          voiceProfile: { pointOfView: "unspecified" },
+        },
+      },
     });
     expect(getBookMock).not.toHaveBeenCalled();
   });

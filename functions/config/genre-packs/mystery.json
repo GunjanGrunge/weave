@@ -1,0 +1,18 @@
+{
+  "id": "mystery",
+  "label": "Mystery",
+  "description": "Fair clues, controlled disclosure, competing interpretations, and earned revelation.",
+  "principles": [
+    "Advance investigation, character understanding, or suspicion in every scene.",
+    "Plant observable clues before explaining their significance."
+  ],
+  "techniques": [
+    "Change the meaning of an established fact.",
+    "Let credible motives produce multiple plausible interpretations."
+  ],
+  "avoid": ["Solutions based on withheld evidence", "Coincidental confessions"],
+  "qualityChecks": [
+    "Does the scene alter suspicion?",
+    "Are clues visible without being overexplained?"
+  ]
+}

@@ -4,6 +4,7 @@ const {
   verifyIdTokenMock,
   assertOwnershipMock,
   getBookMock,
+  getVisionDocumentMock,
   prepareChapterEditMock,
   enhanceChapterEditMock,
   commitChapterEditMock,
@@ -11,6 +12,7 @@ const {
   verifyIdTokenMock: vi.fn(),
   assertOwnershipMock: vi.fn(),
   getBookMock: vi.fn(),
+  getVisionDocumentMock: vi.fn(),
   prepareChapterEditMock: vi.fn(),
   enhanceChapterEditMock: vi.fn(),
   commitChapterEditMock: vi.fn(),
@@ -24,7 +26,10 @@ vi.mock("../services/auth.js", async () => {
     assertOwnership: assertOwnershipMock,
   };
 });
-vi.mock("../services/books.js", () => ({ getBook: getBookMock }));
+vi.mock("../services/books.js", () => ({
+  getBook: getBookMock,
+  getVisionDocument: getVisionDocumentMock,
+}));
 vi.mock("../services/manuscriptEditor.js", async () => {
   const actual = await vi.importActual<typeof import("../services/manuscriptEditor.js")>(
     "../services/manuscriptEditor.js",
@@ -61,6 +66,15 @@ describe("buildEnhanceManuscriptResponse", () => {
     verifyIdTokenMock.mockReset();
     assertOwnershipMock.mockReset();
     getBookMock.mockReset();
+    getVisionDocumentMock.mockReset();
+    getVisionDocumentMock.mockResolvedValue({
+      theme: "Inheritance",
+      premise: "A lost heir returns.",
+      characterIntents: [],
+      structureMap: [],
+      guidanceDial: "normal",
+      threads: [],
+    });
     prepareChapterEditMock.mockReset();
     enhanceChapterEditMock.mockReset();
     commitChapterEditMock.mockReset();
@@ -102,6 +116,7 @@ describe("buildEnhanceManuscriptResponse", () => {
       expect.objectContaining({ titleDraft: "The Begining of the King" }),
       { presetIds: ["warm-character-driven"] },
       keys,
+      expect.objectContaining({ theme: "Inheritance" }),
     );
     expect(commitChapterEditMock).toHaveBeenCalledOnce();
     expect(result).toEqual({

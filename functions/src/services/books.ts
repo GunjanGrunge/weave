@@ -7,11 +7,17 @@ import type { Chapter } from "../types/chapter.js";
 import type { ChatMessage, ChatMessageType } from "../types/chatMessage.js";
 import type { Scene } from "../types/scene.js";
 import type { VisionDocument } from "../types/vision.js";
+import type { GenreProfile, VoiceProfile } from "../types/vision.js";
 import {
   getStyleCatalog,
   normalizeStoredStyle as normalizeCanonicalStoredStyle,
   parseStyleInput,
 } from "./styles.js";
+import {
+  normalizeGenreProfile,
+  normalizeVisionWritingProfiles,
+  normalizeVoiceProfile,
+} from "./writingProfiles.js";
 
 const STYLE_CATALOG = getStyleCatalog();
 const STYLE_PRESETS = STYLE_CATALOG.presets;
@@ -25,6 +31,8 @@ export type PremiseAnswers = {
 export type CreateBookInput = {
   premiseAnswers: PremiseAnswers;
   style: Style;
+  genreProfile?: GenreProfile;
+  voiceProfile?: VoiceProfile;
   idempotencyKey?: string;
 };
 
@@ -144,6 +152,8 @@ export async function createBookWithIntake(
     structureMap: [],
     guidanceDial: "normal",
     threads: [],
+    genreProfile: normalizeGenreProfile(input.genreProfile),
+    voiceProfile: normalizeVoiceProfile(input.voiceProfile),
   };
 
   batch.set(bookRef, book);
@@ -258,7 +268,6 @@ export async function createNextChapter(
   });
 }
 
-
 export type OwnedBook = {
   bookId: string;
   title: string;
@@ -307,12 +316,14 @@ export async function getVisionDocument(bookId: string): Promise<VisionDocument 
     .collection("vision")
     .doc("main")
     .get();
-  return snapshot.exists ? (snapshot.data() as VisionDocument) : undefined;
+  return snapshot.exists
+    ? normalizeVisionWritingProfiles(snapshot.data() as VisionDocument)
+    : undefined;
 }
 
 export type VisionUpdatePatch = Pick<
   VisionDocument,
-  "theme" | "premise" | "characterIntents" | "threads"
+  "theme" | "premise" | "characterIntents" | "threads" | "genreProfile" | "voiceProfile"
 >;
 
 export async function updateVisionDocument(
@@ -350,7 +361,9 @@ export async function updateVisionDocument(
   await batch.commit();
 
   const snapshot = await visionRef.get();
-  return snapshot.exists ? (snapshot.data() as VisionDocument) : undefined;
+  return snapshot.exists
+    ? normalizeVisionWritingProfiles(snapshot.data() as VisionDocument)
+    : undefined;
 }
 
 export async function upsertOpeningSuggestionMessage(bookId: string, text: string): Promise<void> {
@@ -589,7 +602,9 @@ export async function getPriorChapterSummaries(
       const data = doc.data() as Chapter;
       return data.summary;
     })
-    .filter((summary): summary is string => typeof summary === "string" && summary.trim().length > 0);
+    .filter(
+      (summary): summary is string => typeof summary === "string" && summary.trim().length > 0,
+    );
 }
 
 export async function retrieveRelevantFacts(
@@ -599,7 +614,7 @@ export async function retrieveRelevantFacts(
 ): Promise<string[]> {
   const db = firestore();
   const factsCollection = db.collection("books").doc(bookId).collection("facts");
-  
+
   const snapshot = await (
     factsCollection as unknown as {
       findNearest: (options: {
@@ -625,7 +640,10 @@ export async function retrieveRelevantFacts(
       const data = doc.data();
       return data?.description as string | undefined;
     })
-    .filter((desc: string | undefined): desc is string => typeof desc === "string" && desc.trim().length > 0);
+    .filter(
+      (desc: string | undefined): desc is string =>
+        typeof desc === "string" && desc.trim().length > 0,
+    );
 }
 
 export async function deleteBook(bookId: string, uid: string): Promise<void> {
@@ -646,12 +664,11 @@ export async function deleteBook(bookId: string, uid: string): Promise<void> {
     });
   });
 
-  const intakeRequests = await db
-    .collection("intakeRequests")
-    .where("bookId", "==", bookId)
-    .get();
+  const intakeRequests = await db.collection("intakeRequests").where("bookId", "==", bookId).get();
   await Promise.all(intakeRequests.docs.map((doc) => db.recursiveDelete(doc.ref)));
 
-  await getStorage().bucket().deleteFiles({ prefix: `exports/${bookId}-` });
+  await getStorage()
+    .bucket()
+    .deleteFiles({ prefix: `exports/${bookId}-` });
   await db.recursiveDelete(bookRef);
 }

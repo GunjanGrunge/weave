@@ -4,6 +4,7 @@ const {
   assembleContextMock,
   composePromptMock,
   generateSceneMock,
+  reviseSceneDraftMock,
   claimInitialGenerationMock,
   persistGeneratedCandidateMock,
   claimRegenerationMock,
@@ -15,6 +16,7 @@ const {
   assembleContextMock: vi.fn(),
   composePromptMock: vi.fn(),
   generateSceneMock: vi.fn(),
+  reviseSceneDraftMock: vi.fn(),
   claimInitialGenerationMock: vi.fn(),
   persistGeneratedCandidateMock: vi.fn(),
   claimRegenerationMock: vi.fn(),
@@ -26,7 +28,10 @@ const {
 
 vi.mock("./assembleContext.js", () => ({ assembleContext: assembleContextMock }));
 vi.mock("./composePrompt.js", () => ({ composePrompt: composePromptMock }));
-vi.mock("../services/gemini.js", () => ({ generateScene: generateSceneMock }));
+vi.mock("../services/gemini.js", () => ({
+  generateScene: generateSceneMock,
+  reviseSceneDraft: reviseSceneDraftMock,
+}));
 vi.mock("../services/books.js", () => ({ getBook: getBookMock }));
 vi.mock("../services/scenes.js", () => ({
   claimInitialGeneration: claimInitialGenerationMock,
@@ -69,8 +74,64 @@ describe("generation pipelines", () => {
       provider: "openai",
       model: "gpt-test",
     });
+    reviseSceneDraftMock.mockResolvedValue({
+      text: "Deeply revised prose.",
+      provider: "openai",
+      model: "gpt-deep",
+    });
     persistGeneratedCandidateMock.mockResolvedValue(persisted);
     getBookMock.mockResolvedValue({ manuscriptRevision: 2 });
+  });
+
+  it("runs a second editorial pass for Deep Write and persists its final prose", async () => {
+    const input = {
+      mode: "free-text" as const,
+      description: "A tense meeting.",
+      preferences: { length: "immersive" as const, quality: "deep" as const },
+    };
+    persistGeneratedCandidateMock.mockImplementation(async (request) => ({
+      ...persisted,
+      text: request.candidate.text,
+      model: request.candidate.model,
+    }));
+
+    const result = await runGenerate("book-1", input, keys);
+
+    expect(reviseSceneDraftMock).toHaveBeenCalledWith(
+      "book-1",
+      "live prompt",
+      "Generated prose.",
+      keys,
+    );
+    expect(persistGeneratedCandidateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        candidate: expect.objectContaining({
+          text: "Deeply revised prose.",
+          model: "gpt-deep",
+        }),
+      }),
+    );
+    expect(result).toMatchObject({ status: "ok", text: "Deeply revised prose." });
+  });
+
+  it("keeps a successful first draft when Deep Write revision fails", async () => {
+    reviseSceneDraftMock.mockRejectedValueOnce(new Error("editor unavailable"));
+
+    await runGenerate(
+      "book-1",
+      {
+        mode: "free-text",
+        description: "A tense meeting.",
+        preferences: { quality: "deep" },
+      },
+      keys,
+    );
+
+    expect(persistGeneratedCandidateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        candidate: expect.objectContaining({ text: "Generated prose." }),
+      }),
+    );
   });
 
   it("claims before inference and persists an actionable candidate without caching the prompt", async () => {
@@ -96,12 +157,7 @@ describe("generation pipelines", () => {
       "live prompt",
     );
     expect(generateSceneMock).toHaveBeenCalledTimes(1);
-    expect(generateSceneMock).toHaveBeenCalledWith(
-      "book-1",
-      "live prompt",
-      keys,
-      "generate",
-    );
+    expect(generateSceneMock).toHaveBeenCalledWith("book-1", "live prompt", keys, "generate");
   });
 
   it("does not run a second model call for in-progress or completed replays", async () => {
@@ -143,11 +199,7 @@ describe("generation pipelines", () => {
       }),
     ).resolves.toEqual({ status: "failed" });
 
-    expect(failInitialGenerationMock).toHaveBeenCalledWith(
-      "book-1",
-      "request-123",
-      "token-1",
-    );
+    expect(failInitialGenerationMock).toHaveBeenCalledWith("book-1", "request-123", "token-1");
   });
 
   it("reuses cached retrieval at the same manuscript revision while composing live", async () => {
@@ -176,12 +228,7 @@ describe("generation pipelines", () => {
       { mode: "free-text", description: "Original input" },
     );
     expect(generateSceneMock).toHaveBeenCalledTimes(1);
-    expect(generateSceneMock).toHaveBeenCalledWith(
-      "book-1",
-      "live prompt",
-      keys,
-      "regenerate",
-    );
+    expect(generateSceneMock).toHaveBeenCalledWith("book-1", "live prompt", keys, "regenerate");
   });
 
   it("reassembles retrieval when the manuscript revision changed", async () => {
@@ -230,10 +277,6 @@ describe("generation pipelines", () => {
       status: "failed",
     });
     expect(commitRegenerationMock).not.toHaveBeenCalled();
-    expect(failRegenerationMock).toHaveBeenCalledWith(
-      "book-1",
-      "session-1",
-      "regen-token",
-    );
+    expect(failRegenerationMock).toHaveBeenCalledWith("book-1", "session-1", "regen-token");
   });
 });

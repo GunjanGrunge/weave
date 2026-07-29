@@ -1,0 +1,18 @@
+{
+  "id": "general-fiction",
+  "label": "General Fiction",
+  "description": "Flexible, character-led storytelling without a dominant genre formula.",
+  "principles": [
+    "Build scenes around desire, resistance, choice, and consequence.",
+    "Make setting, action, dialogue, and interiority work together rather than decorate the scene."
+  ],
+  "techniques": [
+    "Give each scene a meaningful emotional or situational turn.",
+    "Prefer specific observed detail over generic description."
+  ],
+  "avoid": ["Plotless atmosphere", "Exposition without present conflict"],
+  "qualityChecks": [
+    "Does something meaningful change?",
+    "Could these details belong only to this story?"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "historical-fiction",
+  "label": "Historical Fiction",
+  "description": "Period-authentic lives shaped by material conditions, institutions, and historical pressure.",
+  "principles": [
+    "Embed period reality in choices, labor, status, language, and consequence.",
+    "Treat historical people as inhabitants of their present, not guides for modern readers."
+  ],
+  "techniques": [
+    "Use concrete period objects through action.",
+    "Let social rules create conflict without lectures."
+  ],
+  "avoid": ["Research-dump dialogue", "Modern assumptions wearing historical clothing"],
+  "qualityChecks": [
+    "Does the period materially shape the scene?",
+    "Is necessary context dramatized naturally?"
+  ]
+}

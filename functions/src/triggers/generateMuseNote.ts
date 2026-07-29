@@ -12,14 +12,11 @@ import {
   completeAutomationTask,
   failAutomationTask,
 } from "../services/automation.js";
-import {
-  callWithFallback,
-  readModelRegistry,
-  recordUsageBestEffort,
-} from "../services/gemini.js";
+import { callWithFallback, readModelRegistry, recordUsageBestEffort } from "../services/gemini.js";
 import type { Chapter } from "../types/chapter.js";
 import type { ChatMessage } from "../types/chatMessage.js";
 import type { VisionDocument } from "../types/vision.js";
+import { composeWritingProfileInstruction } from "../services/writingProfiles.js";
 
 function firestore() {
   if (getApps().length === 0) {
@@ -44,6 +41,7 @@ function buildMusePrompt(
   structureMap: Array<{ beat: string; sceneRef: string }>,
   priorChapterSummaries: string[],
   sceneText: string,
+  writingProfileInstruction = "",
 ): string {
   const mapText =
     structureMap && structureMap.length > 0
@@ -57,6 +55,7 @@ function buildMusePrompt(
 
   return [
     "You are a developmental editor analyzing a novel-in-progress to help the author maintain structure and momentum.",
+    writingProfileInstruction,
     "",
     "Book Premise:",
     premise || "(Not specified)",
@@ -144,7 +143,14 @@ export async function handleSceneAcceptForMuse(
       .filter((s): s is string => typeof s === "string" && s.trim().length > 0);
 
     // 3. Compose prompt and call registry-pinned model
-    const prompt = buildMusePrompt(premise, theme, structureMap, priorChapterSummaries, sceneText);
+    const prompt = buildMusePrompt(
+      premise,
+      theme,
+      structureMap,
+      priorChapterSummaries,
+      sceneText,
+      visionData ? composeWritingProfileInstruction(visionData) : "",
+    );
     const registry = await readModelRegistry();
     const apiKeys = {
       gemini: GOOGLE_API_KEY.value(),

@@ -60,6 +60,61 @@ describe("composePrompt", () => {
     expect(result?.prompt).toContain("Mara breaks into the vault.");
   });
 
+  it("adds the literary charter, hybrid genre contract, immersive depth, and silent quality gate", async () => {
+    getBookMock.mockResolvedValue({
+      uid: "user-a",
+      title: "The Glass Kingdom",
+      style: { presetIds: ["lyrical-introspective"] },
+      createdAt: "t",
+    });
+    getVisionDocumentMock.mockResolvedValue({
+      ...baseVision,
+      genreProfile: {
+        primaryGenre: "fantasy",
+        secondaryGenres: ["romance", "mystery"],
+        subgenre: "Gaslamp fantasy",
+        audience: "adult",
+        intensity: "strong",
+        tones: ["intimate", "unsettling"],
+        customDirection: "",
+      },
+      voiceProfile: {
+        pointOfView: "third-person-limited",
+        tense: "past",
+        narrativeDistance: "close",
+        proseDensity: "rich",
+        descriptionLevel: "rich",
+        interiorityLevel: "rich",
+        dialogueLevel: "balanced",
+        pacing: "measured",
+        emotionalIntensity: "rich",
+        customDirection: "",
+      },
+    });
+
+    const result = await composePrompt(
+      "book-1",
+      { chapterId: "chapter-1", priorScenesText: [] },
+      {
+        mode: "free-text",
+        description: "The detective discovers the mage's hidden wound.",
+        preferences: {
+          length: "immersive",
+          quality: "deep",
+          customDirection: "Let trust change through action, not confession.",
+        },
+      },
+    );
+
+    expect(result?.prompt).toContain("LITERARY WRITING CHARTER");
+    expect(result?.prompt).toContain("Primary genre (60%): Fantasy");
+    expect(result?.prompt).toContain("Secondary 1 genre (25%): Romance");
+    expect(result?.prompt).toContain("approximately 1,500-2,500 words");
+    expect(result?.prompt).toContain("privately identify the scene purpose");
+    expect(result?.prompt).toContain("silently revise it");
+    expect(result?.prompt).toContain("Let trust change through action, not confession.");
+  });
+
   it("includes open threads with subtlety-aware instructions and excludes paid-off threads", async () => {
     getBookMock.mockResolvedValue({
       uid: "user-a",
@@ -115,7 +170,9 @@ describe("composePrompt", () => {
     expect(result?.prompt).toContain("never state or hint at its hidden meaning");
 
     expect(result?.prompt).toContain("A scar on his cheek");
-    expect(result?.prompt).toContain("a character may notice the surface detail, but must not interpret or explain");
+    expect(result?.prompt).toContain(
+      "a character may notice the surface detail, but must not interpret or explain",
+    );
 
     expect(result?.prompt).toContain("A ticking pocketwatch");
     expect(result?.prompt).toContain("the hidden meaning may be openly stated in prose");

@@ -170,6 +170,62 @@ describe("buildCreateBookResponse", () => {
     });
   });
 
+  it("validates and passes the book genre and voice profiles", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    createBookWithIntakeMock.mockResolvedValue({ bookId: "book-profile" });
+    runIntakeOpeningSuggestionMock.mockResolvedValue({ status: "ok", openings: [] });
+    const genreProfile = {
+      primaryGenre: "fantasy",
+      secondaryGenres: ["romance"],
+      subgenre: "Gaslamp fantasy",
+      audience: "adult",
+      intensity: "strong",
+      tones: ["intimate"],
+      customDirection: "",
+    };
+    const voiceProfile = {
+      pointOfView: "third-person-limited",
+      tense: "past",
+      narrativeDistance: "close",
+      proseDensity: "rich",
+      descriptionLevel: "rich",
+      interiorityLevel: "rich",
+      dialogueLevel: "balanced",
+      pacing: "measured",
+      emotionalIntensity: "rich",
+      customDirection: "",
+    };
+
+    const result = await buildCreateBookResponse(
+      "Bearer valid",
+      {
+        premiseAnswers: {},
+        style: { presetIds: [] },
+        genreProfile,
+        voiceProfile,
+      },
+      apiKeys,
+    );
+
+    expect(result.statusCode).toBe(200);
+    expect(createBookWithIntakeMock).toHaveBeenCalledWith(
+      "user-a",
+      expect.objectContaining({ genreProfile, voiceProfile }),
+    );
+
+    const invalid = await buildCreateBookResponse(
+      "Bearer valid",
+      {
+        premiseAnswers: {},
+        style: { presetIds: [] },
+        genreProfile: { ...genreProfile, primaryGenre: "unknown" },
+        voiceProfile,
+      },
+      apiKeys,
+    );
+    expect(invalid.statusCode).toBe(400);
+  });
+
   it("returns 400 when the request body is not the intake payload shape", async () => {
     verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
 

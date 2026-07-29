@@ -7,9 +7,7 @@ const { verifyIdTokenMock, getBookMock, runGenerateMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("../services/auth.js", async () => {
-  const actual = await vi.importActual<typeof import("../services/auth.js")>(
-    "../services/auth.js",
-  );
+  const actual = await vi.importActual<typeof import("../services/auth.js")>("../services/auth.js");
   return { ...actual, verifyIdToken: verifyIdTokenMock };
 });
 vi.mock("../services/books.js", () => ({ getBook: getBookMock }));
@@ -108,18 +106,12 @@ describe("buildGenerateSceneResponse", () => {
 
   it.each([
     [{ bookId: "book-1", description: " " }, "empty free text"],
-    [
-      { bookId: "book-1", mode: "structured", fields: { mood: " " } },
-      "empty structured fields",
-    ],
+    [{ bookId: "book-1", mode: "structured", fields: { mood: " " } }, "empty structured fields"],
     [
       { bookId: "book-1", mode: "polish", draftText: "draft", aspects: [] },
       "missing polish aspects",
     ],
-    [
-      { bookId: "book-1", description: "x", idempotencyKey: "bad key" },
-      "invalid idempotency key",
-    ],
+    [{ bookId: "book-1", description: "x", idempotencyKey: "bad key" }, "invalid idempotency key"],
   ])("rejects invalid request: %s", async (body, _label) => {
     const result = await buildGenerateSceneResponse("Bearer token", body, keys);
     expect(result.statusCode).toBe(400);
@@ -138,6 +130,49 @@ describe("buildGenerateSceneResponse", () => {
       keys,
       expect.objectContaining({ userMessage: "Mood: tense." }),
     );
+  });
+
+  it("validates and passes scene depth, Deep Write, and custom direction", async () => {
+    await buildGenerateSceneResponse(
+      "Bearer token",
+      {
+        bookId: "book-1",
+        description: "A quiet confrontation.",
+        preferences: {
+          length: "immersive",
+          quality: "deep",
+          customDirection: "Keep the anger beneath the dialogue.",
+        },
+      },
+      keys,
+    );
+    expect(runGenerateMock).toHaveBeenCalledWith(
+      "book-1",
+      {
+        mode: "free-text",
+        description: "A quiet confrontation.",
+        preferences: {
+          length: "immersive",
+          quality: "deep",
+          customDirection: "Keep the anger beneath the dialogue.",
+        },
+      },
+      keys,
+      expect.any(Object),
+    );
+
+    vi.clearAllMocks();
+    const invalid = await buildGenerateSceneResponse(
+      "Bearer token",
+      {
+        bookId: "book-1",
+        description: "x",
+        preferences: { length: "endless" },
+      },
+      keys,
+    );
+    expect(invalid.statusCode).toBe(400);
+    expect(runGenerateMock).not.toHaveBeenCalled();
   });
 
   it("keeps the full polish draft for inference but bounds its message preview", async () => {

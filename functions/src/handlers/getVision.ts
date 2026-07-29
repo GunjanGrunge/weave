@@ -5,10 +5,12 @@ import { verifyIdToken, assertOwnership, AuthError } from "../services/auth.js";
 import { getBook, getVisionDocument } from "../services/books.js";
 import type { Book } from "../types/book.js";
 import type { VisionDocument } from "../types/vision.js";
+import { getWritingProfileConfig, type WritingProfileConfig } from "../services/writingProfiles.js";
 
 export type GetVisionSuccess = {
   book: Pick<Book, "title" | "style"> & { bookId: string };
   vision: VisionDocument;
+  writingConfig: WritingProfileConfig;
 };
 export type GetVisionError = { code: string; message: string };
 
@@ -48,12 +50,19 @@ export async function buildGetVisionResponse(
 
     const vision = await getVisionDocument(bookId);
     if (!vision) {
-      return { statusCode: 404, body: { code: "not-found", message: "Vision document not found." } };
+      return {
+        statusCode: 404,
+        body: { code: "not-found", message: "Vision document not found." },
+      };
     }
 
     return {
       statusCode: 200,
-      body: { book: { bookId, title: book.title, style: book.style }, vision },
+      body: {
+        book: { bookId, title: book.title, style: book.style },
+        vision,
+        writingConfig: getWritingProfileConfig(),
+      },
     };
   } catch (error) {
     if (error instanceof AuthError) {

@@ -1,0 +1,18 @@
+{
+  "id": "childrens-fiction",
+  "label": "Children's Fiction",
+  "description": "Clear, imaginative, emotionally safe storytelling that respects a child's intelligence.",
+  "principles": [
+    "Use clarity, wonder, concrete stakes, and emotionally legible cause and effect.",
+    "Respect the reader without oversimplifying feeling."
+  ],
+  "techniques": [
+    "Use memorable patterns, sensory play, and purposeful repetition.",
+    "Give young protagonists meaningful agency."
+  ],
+  "avoid": ["Preachy morals", "Abstract exposition beyond the intended audience"],
+  "qualityChecks": [
+    "Can the intended reader follow the stakes?",
+    "Is delight or emotional discovery present?"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "horror",
+  "label": "Horror",
+  "description": "Dread, vulnerability, transgression, and the destabilization of what feels safe or knowable.",
+  "principles": [
+    "Build fear through implication, specificity, vulnerability, and consequence.",
+    "Connect the source of horror to character, place, or theme."
+  ],
+  "techniques": [
+    "Disturb an ordinary pattern before revealing its cause.",
+    "Control what is seen, misunderstood, and anticipated."
+  ],
+  "avoid": ["Empty gore", "Generic darkness and unexplained noises as substitutes for dread"],
+  "qualityChecks": [
+    "What has become unsafe?",
+    "Does fear arise from this story's particular characters and rules?"
+  ]
+}

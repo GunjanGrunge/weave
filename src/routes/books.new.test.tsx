@@ -106,7 +106,7 @@ describe("NewBook intake chat", () => {
     const [url, init] = authenticatedFetchMock.mock.calls[0];
     expect(url).toBe("/createBook");
     expect(init).toMatchObject({ method: "POST" });
-    expect(JSON.parse(init.body)).toEqual({
+    expect(JSON.parse(init.body)).toMatchObject({
       premiseAnswers: {
         whatToWrite: "A survival story on a generation ship",
         mainCharacter: "Mara, an engineer hiding a mutiny",
@@ -114,6 +114,14 @@ describe("NewBook intake chat", () => {
       },
       style: {
         presetIds: ["sparse-cinematic", "warm-character-driven"],
+      },
+      genreProfile: {
+        primaryGenre: "general-fiction",
+        audience: "adult",
+      },
+      voiceProfile: {
+        pointOfView: "unspecified",
+        tense: "unspecified",
       },
       idempotencyKey: expect.any(String),
     });
@@ -130,12 +138,50 @@ describe("NewBook intake chat", () => {
     await skipAllQuestionsAndCreate();
 
     await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledTimes(1));
-    expect(JSON.parse(authenticatedFetchMock.mock.calls[0][1].body)).toEqual({
+    expect(JSON.parse(authenticatedFetchMock.mock.calls[0][1].body)).toMatchObject({
       premiseAnswers: {},
       style: {
         presetIds: ["warm-character-driven"],
       },
+      genreProfile: { primaryGenre: "general-fiction" },
+      voiceProfile: { pointOfView: "unspecified" },
       idempotencyKey: expect.any(String),
+    });
+  });
+
+  it("persists the selected genre blend, audience, point of view, and tense", async () => {
+    render(<NewBook />);
+    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+
+    fireEvent.change(await screen.findByLabelText("Primary genre"), {
+      target: { value: "fantasy" },
+    });
+    fireEvent.change(screen.getByLabelText("Secondary genre 1"), {
+      target: { value: "romance" },
+    });
+    fireEvent.change(screen.getByLabelText("Audience"), {
+      target: { value: "young-adult" },
+    });
+    fireEvent.change(screen.getByLabelText("Point of view"), {
+      target: { value: "third-person-limited" },
+    });
+    fireEvent.change(screen.getByLabelText("Narrative tense"), {
+      target: { value: "past" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /create book/i }));
+
+    await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledTimes(1));
+    const payload = JSON.parse(authenticatedFetchMock.mock.calls[0][1].body);
+    expect(payload.genreProfile).toMatchObject({
+      primaryGenre: "fantasy",
+      secondaryGenres: ["romance"],
+      audience: "young-adult",
+    });
+    expect(payload.voiceProfile).toMatchObject({
+      pointOfView: "third-person-limited",
+      tense: "past",
     });
   });
 
@@ -151,12 +197,14 @@ describe("NewBook intake chat", () => {
     fireEvent.click(await screen.findByRole("button", { name: /create book/i }));
 
     await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledTimes(1));
-    expect(JSON.parse(authenticatedFetchMock.mock.calls[0][1].body)).toEqual({
+    expect(JSON.parse(authenticatedFetchMock.mock.calls[0][1].body)).toMatchObject({
       premiseAnswers: {},
       style: {
         presetIds: [],
         customInstruction: "Terse, second-person, present tense.",
       },
+      genreProfile: { primaryGenre: "general-fiction" },
+      voiceProfile: { pointOfView: "unspecified" },
       idempotencyKey: expect.any(String),
     });
   });

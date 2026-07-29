@@ -1,0 +1,21 @@
+{
+  "id": "romance",
+  "label": "Romance",
+  "description": "Emotionally credible attraction, vulnerability, conflict, and relationship change.",
+  "principles": [
+    "Advance the relationship through choice, vulnerability, trust, desire, or conflict.",
+    "Give both characters agency and emotionally credible reasons for resistance."
+  ],
+  "techniques": [
+    "Use subtext, attention, physical awareness, and misalignment.",
+    "Make external events expose relational needs."
+  ],
+  "avoid": [
+    "Instant intimacy without earned connection",
+    "Possessiveness presented as automatic proof of love"
+  ],
+  "qualityChecks": [
+    "Has the relationship changed?",
+    "Is chemistry grounded in these particular characters?"
+  ]
+}

@@ -7,6 +7,11 @@ import { verifyIdToken, AuthError } from "../services/auth.js";
 import { createBookWithIntake, type CreateBookInput } from "../services/books.js";
 import type { AIProviderKeys, OpeningSuggestion } from "../services/gemini.js";
 import { parseStyleInput, StyleValidationError } from "../services/styles.js";
+import {
+  parseGenreProfile,
+  parseVoiceProfile,
+  WritingProfileValidationError,
+} from "../services/writingProfiles.js";
 
 const OPENING_SUGGESTION_TIMEOUT_MS = 12_000;
 
@@ -46,6 +51,10 @@ function parseCreateBookInput(body: unknown): CreateBookInput | undefined {
           : undefined,
     },
     style: parseStyleInput(body.style),
+    genreProfile:
+      body.genreProfile === undefined ? undefined : parseGenreProfile(body.genreProfile),
+    voiceProfile:
+      body.voiceProfile === undefined ? undefined : parseVoiceProfile(body.voiceProfile),
     idempotencyKey: typeof body.idempotencyKey === "string" ? body.idempotencyKey : undefined,
   };
 }
@@ -108,7 +117,7 @@ export async function buildCreateBookResponse(
     if (error instanceof AuthError) {
       return { statusCode: 401, body: { code: error.code, message: error.message } };
     }
-    if (error instanceof StyleValidationError) {
+    if (error instanceof StyleValidationError || error instanceof WritingProfileValidationError) {
       return {
         statusCode: 400,
         body: { code: "invalid-argument", message: error.message },

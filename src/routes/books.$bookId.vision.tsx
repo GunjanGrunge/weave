@@ -13,6 +13,14 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { authenticatedFetch } from "@/lib/api";
+import {
+  DEFAULT_GENRE_PROFILE,
+  DEFAULT_VOICE_PROFILE,
+  DEFAULT_WRITING_CONFIG,
+  type GenreProfile,
+  type VoiceProfile,
+  type WritingProfileConfig,
+} from "@/lib/writing-profiles";
 
 export const Route = createFileRoute("/books/$bookId/vision")({
   head: () => ({
@@ -46,6 +54,8 @@ type VisionDocument = {
   structureMap: StructureBeat[];
   guidanceDial: "normal";
   threads: NarrativeThread[];
+  genreProfile?: GenreProfile;
+  voiceProfile?: VoiceProfile;
 };
 
 type BookSummary = {
@@ -82,6 +92,13 @@ export function VisionPage({ bookId }: { bookId: string }) {
   const [premise, setPremise] = useState("");
   const [characterIntentText, setCharacterIntentText] = useState("");
   const [threads, setThreads] = useState<NarrativeThread[]>([]);
+  const [genreProfile, setGenreProfile] = useState<GenreProfile>({
+    ...DEFAULT_GENRE_PROFILE,
+  });
+  const [voiceProfile, setVoiceProfile] = useState<VoiceProfile>({
+    ...DEFAULT_VOICE_PROFILE,
+  });
+  const [writingConfig, setWritingConfig] = useState<WritingProfileConfig>(DEFAULT_WRITING_CONFIG);
   const [saveState, setSaveState] = useState<"idle" | "dirty" | "saving" | "saved" | "error">(
     "idle",
   );
@@ -108,7 +125,11 @@ export function VisionPage({ bookId }: { bookId: string }) {
           }
           return;
         }
-        const result = (await response.json()) as { book: BookSummary; vision: VisionDocument };
+        const result = (await response.json()) as {
+          book: BookSummary;
+          vision: VisionDocument;
+          writingConfig?: WritingProfileConfig;
+        };
         if (cancelled) return;
 
         setLoadState({ status: "ready", book: result.book, vision: result.vision });
@@ -116,6 +137,9 @@ export function VisionPage({ bookId }: { bookId: string }) {
         setPremise(result.vision.premise);
         setCharacterIntentText(result.vision.characterIntents.join("\n"));
         setThreads(result.vision.threads);
+        setGenreProfile(result.vision.genreProfile ?? { ...DEFAULT_GENRE_PROFILE });
+        setVoiceProfile(result.vision.voiceProfile ?? { ...DEFAULT_VOICE_PROFILE });
+        setWritingConfig(result.writingConfig ?? DEFAULT_WRITING_CONFIG);
         setSaveState("idle");
       } catch {
         if (!cancelled) {
@@ -172,6 +196,8 @@ export function VisionPage({ bookId }: { bookId: string }) {
             premise,
             characterIntents,
             threads,
+            genreProfile,
+            voiceProfile,
           },
         }),
       });
@@ -187,6 +213,8 @@ export function VisionPage({ bookId }: { bookId: string }) {
       setPremise(result.vision.premise);
       setCharacterIntentText(result.vision.characterIntents.join("\n"));
       setThreads(result.vision.threads);
+      setGenreProfile(result.vision.genreProfile ?? { ...DEFAULT_GENRE_PROFILE });
+      setVoiceProfile(result.vision.voiceProfile ?? { ...DEFAULT_VOICE_PROFILE });
       setLoadState((current) =>
         current.status === "ready" ? { ...current, vision: result.vision } : current,
       );
@@ -194,7 +222,7 @@ export function VisionPage({ bookId }: { bookId: string }) {
     } catch {
       setSaveState("error");
     }
-  }, [bookId, characterIntents, premise, theme, threads]);
+  }, [bookId, characterIntents, genreProfile, premise, theme, threads, voiceProfile]);
 
   useEffect(() => {
     if (saveState !== "dirty") return;
@@ -245,7 +273,7 @@ export function VisionPage({ bookId }: { bookId: string }) {
           </p>
           <h1 className="mt-1 font-display text-4xl italic">{book.title}</h1>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
           <Button type="button" variant="outline" asChild>
             <Link to="/books/$bookId/manuscript" params={{ bookId }}>
               <BookOpen className="size-4" />
@@ -258,7 +286,10 @@ export function VisionPage({ bookId }: { bookId: string }) {
               Chat
             </Link>
           </Button>
-          <span className="text-xs text-muted-foreground" aria-live="polite">
+          <span
+            className="order-last w-full text-xs text-muted-foreground sm:order-none sm:w-auto"
+            aria-live="polite"
+          >
             {saveState === "idle" && "Changes save automatically"}
             {saveState === "dirty" && "Unsaved changes"}
             {saveState === "saving" && "Saving..."}
@@ -282,7 +313,7 @@ export function VisionPage({ bookId }: { bookId: string }) {
         <section className="space-y-5">
           <div className="rounded-md border border-border bg-card p-5">
             <label htmlFor="vision-theme" className="text-sm font-medium">
-              Theme / genre
+              Theme
             </label>
             <input
               id="vision-theme"
@@ -293,6 +324,300 @@ export function VisionPage({ bookId }: { bookId: string }) {
               }}
               className="mt-2 h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-accent"
             />
+          </div>
+
+          <div className="rounded-md border border-border bg-card p-5">
+            <h2 className="text-sm font-medium">Genre contract</h2>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <label className="text-xs text-muted-foreground">
+                Primary genre
+                <select
+                  aria-label="Primary genre"
+                  value={genreProfile.primaryGenre}
+                  onChange={(event) => {
+                    const primaryGenre = event.target.value;
+                    setGenreProfile((current) => ({
+                      ...current,
+                      primaryGenre,
+                      secondaryGenres: current.secondaryGenres.filter(
+                        (genre) => genre !== primaryGenre,
+                      ),
+                    }));
+                    markDirty();
+                  }}
+                  className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-accent"
+                >
+                  {writingConfig.genres.map((genre) => (
+                    <option key={genre.id} value={genre.id}>
+                      {genre.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {[0, 1].map((index) => (
+                <label key={index} className="text-xs text-muted-foreground">
+                  Secondary genre {index + 1}
+                  <select
+                    aria-label={`Secondary genre ${index + 1}`}
+                    value={genreProfile.secondaryGenres[index] ?? ""}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setGenreProfile((current) => {
+                        const genres = [...current.secondaryGenres];
+                        if (value) genres[index] = value;
+                        else genres.splice(index, 1);
+                        return {
+                          ...current,
+                          secondaryGenres: genres
+                            .filter(
+                              (genre, genreIndex, values) =>
+                                genre !== current.primaryGenre &&
+                                values.indexOf(genre) === genreIndex,
+                            )
+                            .slice(0, 2),
+                        };
+                      });
+                      markDirty();
+                    }}
+                    className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-accent"
+                  >
+                    <option value="">None</option>
+                    {writingConfig.genres
+                      .filter((genre) => genre.id !== genreProfile.primaryGenre)
+                      .map((genre) => (
+                        <option key={genre.id} value={genre.id}>
+                          {genre.label}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              ))}
+              <label className="text-xs text-muted-foreground">
+                Audience
+                <select
+                  aria-label="Audience"
+                  value={genreProfile.audience}
+                  onChange={(event) => {
+                    setGenreProfile((current) => ({
+                      ...current,
+                      audience: event.target.value as GenreProfile["audience"],
+                    }));
+                    markDirty();
+                  }}
+                  className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-accent"
+                >
+                  <option value="adult">Adult</option>
+                  <option value="young-adult">Young adult</option>
+                  <option value="middle-grade">Middle grade</option>
+                  <option value="children">Children</option>
+                  <option value="general">General</option>
+                </select>
+              </label>
+              <label className="text-xs text-muted-foreground">
+                Genre intensity
+                <select
+                  aria-label="Genre intensity"
+                  value={genreProfile.intensity}
+                  onChange={(event) => {
+                    setGenreProfile((current) => ({
+                      ...current,
+                      intensity: event.target.value as GenreProfile["intensity"],
+                    }));
+                    markDirty();
+                  }}
+                  className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-accent"
+                >
+                  <option value="light">Light influence</option>
+                  <option value="balanced">Balanced</option>
+                  <option value="strong">Genre-forward</option>
+                </select>
+              </label>
+              <label className="text-xs text-muted-foreground">
+                Subgenre
+                <input
+                  aria-label="Subgenre"
+                  value={genreProfile.subgenre}
+                  onChange={(event) => {
+                    setGenreProfile((current) => ({
+                      ...current,
+                      subgenre: event.target.value,
+                    }));
+                    markDirty();
+                  }}
+                  maxLength={120}
+                  className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-accent"
+                />
+              </label>
+            </div>
+            <label className="mt-3 block text-xs text-muted-foreground">
+              Tone
+              <input
+                aria-label="Tone"
+                value={genreProfile.tones.join(", ")}
+                onChange={(event) => {
+                  setGenreProfile((current) => ({
+                    ...current,
+                    tones: event.target.value
+                      .split(",")
+                      .map((tone) => tone.trim())
+                      .filter(Boolean)
+                      .slice(0, 5),
+                  }));
+                  markDirty();
+                }}
+                placeholder="Somber, intimate, unsettling"
+                className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-accent"
+              />
+            </label>
+            <label className="mt-3 block text-xs text-muted-foreground">
+              Custom genre direction
+              <textarea
+                aria-label="Custom genre direction"
+                value={genreProfile.customDirection}
+                onChange={(event) => {
+                  setGenreProfile((current) => ({
+                    ...current,
+                    customDirection: event.target.value,
+                  }));
+                  markDirty();
+                }}
+                maxLength={1000}
+                rows={3}
+                className="mt-1 min-h-20 w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent"
+              />
+            </label>
+          </div>
+
+          <div className="rounded-md border border-border bg-card p-5">
+            <h2 className="text-sm font-medium">Book voice</h2>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {(
+                [
+                  [
+                    "pointOfView",
+                    "Point of view",
+                    [
+                      ["unspecified", "Decide from context"],
+                      ["first-person", "First person"],
+                      ["third-person-limited", "Third person limited"],
+                      ["third-person-omniscient", "Third person omniscient"],
+                      ["second-person", "Second person"],
+                    ],
+                  ],
+                  [
+                    "tense",
+                    "Tense",
+                    [
+                      ["unspecified", "Decide from context"],
+                      ["past", "Past"],
+                      ["present", "Present"],
+                    ],
+                  ],
+                  [
+                    "narrativeDistance",
+                    "Narrative distance",
+                    [
+                      ["close", "Close"],
+                      ["balanced", "Balanced"],
+                      ["distant", "Distant"],
+                    ],
+                  ],
+                  [
+                    "proseDensity",
+                    "Prose density",
+                    [
+                      ["restrained", "Restrained"],
+                      ["balanced", "Balanced"],
+                      ["rich", "Rich"],
+                    ],
+                  ],
+                  [
+                    "descriptionLevel",
+                    "Description",
+                    [
+                      ["restrained", "Restrained"],
+                      ["balanced", "Balanced"],
+                      ["rich", "Rich"],
+                    ],
+                  ],
+                  [
+                    "interiorityLevel",
+                    "Interiority",
+                    [
+                      ["restrained", "Restrained"],
+                      ["balanced", "Balanced"],
+                      ["rich", "Rich"],
+                    ],
+                  ],
+                  [
+                    "dialogueLevel",
+                    "Dialogue",
+                    [
+                      ["restrained", "Restrained"],
+                      ["balanced", "Balanced"],
+                      ["rich", "Rich"],
+                    ],
+                  ],
+                  [
+                    "pacing",
+                    "Pacing",
+                    [
+                      ["measured", "Measured"],
+                      ["balanced", "Balanced"],
+                      ["brisk", "Brisk"],
+                    ],
+                  ],
+                  [
+                    "emotionalIntensity",
+                    "Emotional intensity",
+                    [
+                      ["restrained", "Restrained"],
+                      ["balanced", "Balanced"],
+                      ["rich", "Rich"],
+                    ],
+                  ],
+                ] as const
+              ).map(([key, label, options]) => (
+                <label key={key} className="text-xs text-muted-foreground">
+                  {label}
+                  <select
+                    aria-label={label}
+                    value={voiceProfile[key]}
+                    onChange={(event) => {
+                      setVoiceProfile((current) => ({
+                        ...current,
+                        [key]: event.target.value,
+                      }));
+                      markDirty();
+                    }}
+                    className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-accent"
+                  >
+                    {options.map(([value, optionLabel]) => (
+                      <option key={value} value={value}>
+                        {optionLabel}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+            <label className="mt-3 block text-xs text-muted-foreground">
+              Custom voice direction
+              <textarea
+                aria-label="Custom voice direction"
+                value={voiceProfile.customDirection}
+                onChange={(event) => {
+                  setVoiceProfile((current) => ({
+                    ...current,
+                    customDirection: event.target.value,
+                  }));
+                  markDirty();
+                }}
+                maxLength={1000}
+                rows={3}
+                className="mt-1 min-h-20 w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent"
+              />
+            </label>
           </div>
 
           <div className="rounded-md border border-border bg-card p-5">

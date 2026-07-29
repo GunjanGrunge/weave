@@ -99,6 +99,58 @@ describe("buildUpdateVisionResponse", () => {
     });
   });
 
+  it("validates and persists genre and voice profiles without exposing system fields", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    getBookMock.mockResolvedValue(book);
+    updateVisionDocumentMock.mockImplementation(async (_bookId, patch) => ({
+      ...patch,
+      structureMap: [],
+      guidanceDial: "normal",
+    }));
+    const genreProfile = {
+      primaryGenre: "mystery",
+      secondaryGenres: ["romance"],
+      subgenre: "Cozy mystery",
+      audience: "adult",
+      intensity: "balanced",
+      tones: ["warm"],
+      customDirection: "",
+    };
+    const voiceProfile = {
+      pointOfView: "third-person-limited",
+      tense: "past",
+      narrativeDistance: "close",
+      proseDensity: "balanced",
+      descriptionLevel: "rich",
+      interiorityLevel: "rich",
+      dialogueLevel: "balanced",
+      pacing: "measured",
+      emotionalIntensity: "balanced",
+      customDirection: "",
+    };
+
+    const result = await buildUpdateVisionResponse("Bearer valid", {
+      bookId: "book-1",
+      vision: { ...visionPayload, genreProfile, voiceProfile },
+    });
+
+    expect(result.statusCode).toBe(200);
+    expect(updateVisionDocumentMock).toHaveBeenCalledWith(
+      "book-1",
+      expect.objectContaining({ genreProfile, voiceProfile }),
+    );
+
+    const invalid = await buildUpdateVisionResponse("Bearer valid", {
+      bookId: "book-1",
+      vision: {
+        ...visionPayload,
+        genreProfile: { ...genreProfile, secondaryGenres: ["unknown"] },
+        voiceProfile,
+      },
+    });
+    expect(invalid.statusCode).toBe(400);
+  });
+
   it("returns 401 for a missing token", async () => {
     verifyIdTokenMock.mockRejectedValue(
       new AuthError("Missing or malformed Authorization header."),

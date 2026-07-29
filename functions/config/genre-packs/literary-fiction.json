@@ -1,0 +1,18 @@
+{
+  "id": "literary-fiction",
+  "label": "Literary Fiction",
+  "description": "Character complexity, thematic resonance, subtext, ambiguity, and precise language.",
+  "principles": [
+    "Let outward events expose inward contradiction.",
+    "Develop theme through image, choice, consequence, and pattern rather than explanation."
+  ],
+  "techniques": [
+    "Use charged concrete detail and controlled ambiguity.",
+    "Allow silence and implication to carry meaning."
+  ],
+  "avoid": ["Vagueness mistaken for profundity", "Decorative metaphors without dramatic purpose"],
+  "qualityChecks": [
+    "Does language reveal character or theme?",
+    "Is ambiguity productive rather than confusing?"
+  ]
+}

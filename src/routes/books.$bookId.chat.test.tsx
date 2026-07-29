@@ -155,6 +155,45 @@ describe("ChatPage", () => {
         ),
       }),
     );
+    const generatedPayload = JSON.parse(authenticatedFetchMock.mock.calls[1][1].body);
+    expect(generatedPayload.preferences).toEqual({
+      length: "standard",
+      quality: "standard",
+    });
+  });
+
+  it("sends immersive Deep Write and scene-specific direction as generation preferences", async () => {
+    authenticatedFetchMock
+      .mockResolvedValueOnce(jsonResponse({ messages: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          sessionId: "session-1",
+          text: "Immersive prose.",
+          provider: "openai",
+          model: "gpt-test",
+        }),
+      );
+
+    render(<ChatPage bookId="book-1" />);
+    await waitFor(() => expect(screen.getByLabelText(/scene description/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Immersive" }));
+    fireEvent.click(screen.getByRole("button", { name: /deep write/i }));
+    fireEvent.change(screen.getByLabelText(/scene-specific direction/i), {
+      target: { value: "Build trust through action." },
+    });
+    fireEvent.change(screen.getByLabelText(/scene description/i), {
+      target: { value: "Mara treats Ivo's wound while guards approach." },
+    });
+    fireEvent.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => expect(screen.getByText("Immersive prose.")).toBeInTheDocument());
+    const payload = JSON.parse(authenticatedFetchMock.mock.calls[1][1].body);
+    expect(payload.preferences).toEqual({
+      length: "immersive",
+      quality: "deep",
+      customDirection: "Build trust through action.",
+    });
   });
 
   it("ignores a second Send click while a generation is already in flight", async () => {

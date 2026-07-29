@@ -1,13 +1,32 @@
 import { POLISH_ASPECTS } from "../config/polishAspects.js";
 import { getBook, getVisionDocument } from "../services/books.js";
 import { composeStyleInstruction } from "../services/styles.js";
+import { composeWritingProfileInstruction } from "../services/writingProfiles.js";
 import type { Style } from "../types/book.js";
 import type { SceneInput } from "../types/sceneInput.js";
-import type { NarrativeThread, ThreadSubtlety } from "../types/vision.js";
+import type { ThreadSubtlety, VisionDocument } from "../types/vision.js";
 
 import type { AssembledContext } from "./assembleContext.js";
 
 export type ComposedPrompt = { prompt: string; style: Style } | undefined;
+
+const LITERARY_WRITING_CHARTER = [
+  "LITERARY WRITING CHARTER",
+  "Write with the craft, judgment, and emotional intelligence of a seasoned novelist and editor. Produce natural, immersive, memorable prose suitable for a serious manuscript.",
+  "Dramatize the scene in lived moments. Use concrete sensory detail, character perception, interiority, dialogue, action, setting, rhythm, and subtext in proportions appropriate to this book.",
+  "Preserve the author's vision and established facts. Every paragraph must develop character, atmosphere, conflict, theme, causality, or emotional movement.",
+  "Prefer precise, story-specific images and behavior. Avoid generic filler, stock metaphors, clichés, repetitive sentence patterns, melodramatic abstraction, needless exposition, and recognizably AI-like summary language.",
+  "Do not merely paraphrase the scene request. Expand sparse ideas by supplying plausible connective action, emotional logic, and environmental life without changing the requested outcome.",
+].join("\n");
+
+const LENGTH_INSTRUCTIONS = {
+  concise:
+    "Scene depth: concise. Aim for approximately 300-600 words while still delivering a complete dramatic beat.",
+  standard:
+    "Scene depth: standard. Aim for approximately 800-1,500 words with developed action, setting, interiority, and an earned turn.",
+  immersive:
+    "Scene depth: immersive. Aim for approximately 1,500-2,500 words with sustained dramatic development; do not pad or repeat.",
+} as const;
 
 const SUBTLETY_INSTRUCTIONS: Record<ThreadSubtlety, string> = {
   invisible:
@@ -20,12 +39,7 @@ const SUBTLETY_INSTRUCTIONS: Record<ThreadSubtlety, string> = {
 
 function buildSharedLines(
   book: { style: Style },
-  vision: {
-    theme: string;
-    premise: string;
-    characterIntents: string[];
-    threads: NarrativeThread[];
-  },
+  vision: VisionDocument,
   context: AssembledContext,
   inputMode: SceneInput["mode"],
 ): string[] {
@@ -36,6 +50,8 @@ function buildSharedLines(
     inputMode === "polish"
       ? "You are a careful fiction editor revising an existing draft in a novel-in-progress."
       : "You are a co-author writing the next scene of a novel-in-progress.",
+    LITERARY_WRITING_CHARTER,
+    composeWritingProfileInstruction(vision),
     `Write in this style: ${styleInstruction || "no specific style constraints"}.`,
     `Theme: ${vision.theme || "(not specified)"}`,
     `Premise: ${vision.premise || "(not specified)"}`,
@@ -82,6 +98,22 @@ function buildSharedLines(
 }
 
 function appendInputLines(lines: string[], input: SceneInput): void {
+  const sceneLength = input.preferences?.length ?? "standard";
+  if (input.mode !== "polish") {
+    lines.push(
+      "",
+      "SCENE EXECUTION",
+      LENGTH_INSTRUCTIONS[sceneLength],
+      "Before drafting, privately identify the scene purpose, viewpoint desire, resistance, conflict, emotional turn, genre obligations, continuity constraints, sensory anchors, and ending consequence. Do not output this plan.",
+    );
+    if (input.preferences?.customDirection) {
+      lines.push(`Scene-specific author direction: ${input.preferences.customDirection}`);
+    }
+    lines.push(
+      "Before returning the scene, silently revise it: confirm that it dramatizes rather than summarizes, honors genre and voice, preserves continuity, contains meaningful movement, uses purposeful detail, and removes clichés, repetition, filler, and generic AI phrasing. Return only polished manuscript prose with no notes, headings, plan, rubric, or word count.",
+    );
+  }
+
   if (input.mode === "free-text") {
     lines.push(`Write the next scene from this description: ${input.description}`);
     return;

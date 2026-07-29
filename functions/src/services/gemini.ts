@@ -5,6 +5,7 @@ import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import type { ModelRegistry, TextModelConfig } from "../types/modelRegistry.js";
 import type { SceneUsageTask, UsageTask } from "../types/usage.js";
 import type { VisionDocument } from "../types/vision.js";
+import { composeWritingProfileInstruction } from "./writingProfiles.js";
 
 export class GeminiError extends Error {
   code: "gemini-error";
@@ -72,11 +73,12 @@ function buildOpeningSuggestionPrompt(vision: VisionDocument): string {
     vision.characterIntents.length > 0 ? vision.characterIntents.join(", ") : "(not specified)";
 
   return [
-    "You are helping a novelist choose how to open their book.",
+    "You are an accomplished novelist helping another writer choose how to open their book.",
+    composeWritingProfileInstruction(vision),
     `Theme/what they want to write: ${vision.theme || "(not specified)"}`,
     `Premise: ${vision.premise || "(not specified)"}`,
     `Character intents: ${characterIntents}`,
-    "Suggest 2 to 3 concrete, distinct ways this book could open as its first scene.",
+    "Suggest 2 to 3 concrete, distinct ways this book could open as its first scene. Each opening must honor the genre promises and book voice without relying on genre clichés.",
     "For each, give a one-line rationale for why it works as an opening.",
     'Respond as JSON: { "openings": [ { "text": "...", "rationale": "..." } ] }.',
   ].join("\n");
@@ -166,7 +168,12 @@ async function callOpenAIRaw(
       ...(schema
         ? {
             text: {
-              format: { type: "json_schema", name: schema.name, schema: schema.schema, strict: true },
+              format: {
+                type: "json_schema",
+                name: schema.name,
+                schema: schema.schema,
+                strict: true,
+              },
             },
           }
         : {}),
@@ -200,9 +207,7 @@ async function callGeminiRaw(
   const response = await ai.models.generateContent({
     model,
     contents: prompt,
-    ...(schema
-      ? { config: { responseSchema: schema, responseMimeType: "application/json" } }
-      : {}),
+    ...(schema ? { config: { responseSchema: schema, responseMimeType: "application/json" } } : {}),
   });
 
   const usage = response.usageMetadata;
@@ -333,5 +338,36 @@ export async function generateScene(
     );
   }
 
+  return { text: result.text, provider: result.provider, model: result.model };
+}
+
+export async function reviseSceneDraft(
+  bookId: string,
+  originalPrompt: string,
+  draft: string,
+  apiKeys: AIProviderKeys,
+): Promise<{ text: string; provider: "openai" | "gemini"; model: string }> {
+  const registry = await readModelRegistry();
+  const prompt = [
+    "You are the final literary editor for a novel scene.",
+    "Perform a substantive but faithful revision of the draft against the complete writing brief.",
+    "Strengthen scene embodiment, causality, emotional movement, character specificity, rhythm, imagery, dialogue, genre execution, and continuity.",
+    "Remove clichés, repetition, filler, generic AI phrasing, over-explanation, and ornamental language that does not serve the scene.",
+    "Preserve all requested events, established facts, point of view, tense, and author intent. Do not add commentary.",
+    "Return only the complete revised manuscript scene.",
+    "",
+    "BEGIN WRITING BRIEF",
+    originalPrompt,
+    "END WRITING BRIEF",
+    "",
+    "BEGIN DRAFT",
+    draft,
+    "END DRAFT",
+  ].join("\n");
+  const result = await callWithFallback(registry.generate, apiKeys, prompt);
+  await recordUsageBestEffort(bookId, "deepRevision", result);
+  if (!result.text) {
+    throw new GeminiError("Deep revision response had no text content.");
+  }
   return { text: result.text, provider: result.provider, model: result.model };
 }

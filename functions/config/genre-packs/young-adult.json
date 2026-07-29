@@ -1,0 +1,18 @@
+{
+  "id": "young-adult",
+  "label": "Young Adult",
+  "description": "Immediate identity, belonging, autonomy, first-defining choices, and emotionally direct stakes.",
+  "principles": [
+    "Center emerging autonomy, identity, belonging, and consequential firsts.",
+    "Respect young characters' intelligence and emotional complexity."
+  ],
+  "techniques": [
+    "Keep the narrative emotionally immediate.",
+    "Let institutions and relationships test self-definition."
+  ],
+  "avoid": ["Adult lectures disguised as narration", "Flattening young characters into trends"],
+  "qualityChecks": [
+    "Is the protagonist making identity-shaping choices?",
+    "Does the voice feel immediate without condescension?"
+  ]
+}

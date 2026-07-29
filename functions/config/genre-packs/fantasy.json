@@ -1,0 +1,18 @@
+{
+  "id": "fantasy",
+  "label": "Fantasy",
+  "description": "Wonder, myth, and internally consistent worlds shaped by power and consequence.",
+  "principles": [
+    "Make magic, culture, history, and power materially affect character choices.",
+    "Reveal the world through lived experience instead of explanatory inventory."
+  ],
+  "techniques": [
+    "Attach wonder to a character's desire or fear.",
+    "Let every use of power carry a limitation, cost, or consequence."
+  ],
+  "avoid": ["Generic medieval scenery", "Rule explanations detached from action"],
+  "qualityChecks": [
+    "Is the world internally consistent?",
+    "Does wonder alter the scene rather than merely decorate it?"
+  ]
+}

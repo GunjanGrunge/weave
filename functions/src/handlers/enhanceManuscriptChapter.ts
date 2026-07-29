@@ -3,7 +3,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import { allowedOrigins } from "../config/cors.js";
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "../config/secrets.js";
 import { assertOwnership, AuthError, verifyIdToken } from "../services/auth.js";
-import { getBook } from "../services/books.js";
+import { getBook, getVisionDocument } from "../services/books.js";
 import { GeminiError, type AIProviderKeys } from "../services/gemini.js";
 import {
   commitChapterEdit,
@@ -28,12 +28,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function requiredString(
-  value: unknown,
-  field: string,
-  maxLength: number,
-  trim = false,
-): string {
+function requiredString(value: unknown, field: string, maxLength: number, trim = false): string {
   if (typeof value !== "string") {
     throw new ManuscriptEditError("invalid-argument", `${field} must be a string.`);
   }
@@ -66,10 +61,7 @@ function parseRequest(body: unknown): { bookId: string; edit: ManuscriptChapterE
   let totalDraftLength = draftTitle.length;
   const scenes = body.scenes.map((value, index) => {
     if (!isRecord(value)) {
-      throw new ManuscriptEditError(
-        "invalid-argument",
-        `scenes[${index}] must be an object.`,
-      );
+      throw new ManuscriptEditError("invalid-argument", `scenes[${index}] must be an object.`);
     }
     const sceneId = requiredString(value.sceneId, `scenes[${index}].sceneId`, 200, true);
     if (sceneIds.has(sceneId)) {
@@ -117,7 +109,8 @@ export async function buildEnhanceManuscriptResponse(
     assertOwnership(decoded.uid, book.uid);
 
     const prepared = await prepareChapterEdit(bookId, edit);
-    const enhanced = await enhanceChapterEdit(bookId, prepared, book.style, apiKeys);
+    const vision = await getVisionDocument(bookId);
+    const enhanced = await enhanceChapterEdit(bookId, prepared, book.style, apiKeys, vision);
     const chapter = await commitChapterEdit(bookId, edit, enhanced);
     return { statusCode: 200, body: { chapter } };
   } catch (error) {

@@ -6,4 +6,5 @@ export type UsageTask =
   | "chapterSummary"
   | "museNote"
   | "manuscriptEdit"
+  | "deepRevision"
   | SceneUsageTask;

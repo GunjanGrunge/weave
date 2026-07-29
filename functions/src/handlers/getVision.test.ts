@@ -43,11 +43,16 @@ describe("buildGetVisionResponse", () => {
 
     const result = await buildGetVisionResponse("Bearer valid", { bookId: "book-1" });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       statusCode: 200,
       body: {
         book: { bookId: "book-1", title: "A heist", style: { presetIds: ["warm"] } },
         vision,
+        writingConfig: {
+          genres: expect.arrayContaining([
+            expect.objectContaining({ id: "fantasy", label: "Fantasy" }),
+          ]),
+        },
       },
     });
   });

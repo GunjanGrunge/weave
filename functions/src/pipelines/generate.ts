@@ -6,7 +6,7 @@ import { assembleContext, type AssembledContext } from "./assembleContext.js";
 import { composePrompt } from "./composePrompt.js";
 import { getBook } from "../services/books.js";
 import type { AIProviderKeys } from "../services/gemini.js";
-import { generateScene as generateSceneCall } from "../services/gemini.js";
+import { generateScene as generateSceneCall, reviseSceneDraft } from "../services/gemini.js";
 import {
   claimInitialGeneration,
   claimRegeneration,
@@ -48,9 +48,7 @@ const GenerateState = Annotation.Root({
 
 type GenerateStateValue = typeof GenerateState.State;
 
-async function assembleNode(
-  state: GenerateStateValue,
-): Promise<Partial<GenerateStateValue>> {
+async function assembleNode(state: GenerateStateValue): Promise<Partial<GenerateStateValue>> {
   if (state.assembledContext) {
     return {};
   }
@@ -59,9 +57,7 @@ async function assembleNode(
   };
 }
 
-async function composeNode(
-  state: GenerateStateValue,
-): Promise<Partial<GenerateStateValue>> {
+async function composeNode(state: GenerateStateValue): Promise<Partial<GenerateStateValue>> {
   if (!state.assembledContext) {
     return { status: "failed" };
   }
@@ -75,9 +71,7 @@ async function composeNode(
   return { prompt: composed.prompt };
 }
 
-async function generateNode(
-  state: GenerateStateValue,
-): Promise<Partial<GenerateStateValue>> {
+async function generateNode(state: GenerateStateValue): Promise<Partial<GenerateStateValue>> {
   if (!state.prompt) {
     return { status: "failed" };
   }
@@ -88,11 +82,22 @@ async function generateNode(
       state.apiKeys,
       state.usageTask,
     );
+    let final = generated;
+    if (state.input.preferences?.quality === "deep" && state.input.mode !== "polish") {
+      try {
+        final = await reviseSceneDraft(state.bookId, state.prompt, generated.text, state.apiKeys);
+      } catch (error) {
+        console.error("generate/deep-revision: using successful first draft", {
+          bookId: state.bookId,
+          error,
+        });
+      }
+    }
     return {
       candidate: {
-        text: generated.text,
-        provider: generated.provider,
-        model: generated.model,
+        text: final.text,
+        provider: final.provider,
+        model: final.model,
       },
       status: "ok",
     };
@@ -118,10 +123,13 @@ async function executeGeneration(
   apiKeys: AIProviderKeys,
   usageTask: SceneUsageTask,
   assembledContext?: AssembledContext,
-): Promise<{
-  candidate: SceneAttempt;
-  assembledContext: AssembledContext;
-} | undefined> {
+): Promise<
+  | {
+      candidate: SceneAttempt;
+      assembledContext: AssembledContext;
+    }
+  | undefined
+> {
   const result = await graph.invoke({
     bookId,
     input,
@@ -206,12 +214,7 @@ export async function runRegenerate(
   idempotencyKey: string,
   apiKeys: AIProviderKeys,
 ): Promise<RunGenerateResult> {
-  const claim = await claimRegeneration(
-    bookId,
-    sessionId,
-    idempotencyKey,
-    expectedRevision,
-  );
+  const claim = await claimRegeneration(bookId, sessionId, idempotencyKey, expectedRevision);
   if (claim.status === "in-progress") {
     return { status: "in-progress" };
   }

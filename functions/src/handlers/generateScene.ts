@@ -11,8 +11,9 @@ import { verifyIdToken, assertOwnership, AuthError } from "../services/auth.js";
 import { getBook } from "../services/books.js";
 import type { AIProviderKeys } from "../services/gemini.js";
 import type { SceneInput, StructuredSceneFields } from "../types/sceneInput.js";
+import type { GenerationQuality, SceneLength, ScenePreferences } from "../types/sceneInput.js";
 
-const GENERATE_SCENE_TIMEOUT_MS = 55_000;
+const GENERATE_SCENE_TIMEOUT_MS = 110_000;
 // Cap for the free-text description — prompt size/cost/latency budget.
 const MAX_DESCRIPTION_LENGTH = 4_000;
 // Structured fields are short quick-fill phrases, not paragraphs — a much
@@ -29,9 +30,10 @@ const MAX_DRAFT_LENGTH = 8_000;
 // How much of a long draft to keep in the persisted chat-history preview —
 // the full draft is always sent to the model regardless of this cap.
 const DRAFT_PREVIEW_LENGTH = 200;
-const POLISH_ASPECT_IDS: ReadonlySet<string> = new Set(
-  POLISH_ASPECTS.map((aspect) => aspect.id),
-);
+const MAX_SCENE_DIRECTION_LENGTH = 500;
+const SCENE_LENGTHS = new Set<SceneLength>(["concise", "standard", "immersive"]);
+const GENERATION_QUALITIES = new Set<GenerationQuality>(["standard", "deep"]);
+const POLISH_ASPECT_IDS: ReadonlySet<string> = new Set(POLISH_ASPECTS.map((aspect) => aspect.id));
 
 export type GenerateSceneSuccess = {
   sessionId: string;
@@ -97,6 +99,41 @@ function parsePolishAspects(rawAspects: unknown): PolishAspectId[] | undefined {
   return rawAspects as PolishAspectId[];
 }
 
+function parsePreferences(value: unknown): ScenePreferences | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    record.length !== undefined &&
+    (typeof record.length !== "string" || !SCENE_LENGTHS.has(record.length as SceneLength))
+  ) {
+    return undefined;
+  }
+  if (
+    record.quality !== undefined &&
+    (typeof record.quality !== "string" ||
+      !GENERATION_QUALITIES.has(record.quality as GenerationQuality))
+  ) {
+    return undefined;
+  }
+  if (
+    record.customDirection !== undefined &&
+    (typeof record.customDirection !== "string" ||
+      record.customDirection.length > MAX_SCENE_DIRECTION_LENGTH)
+  ) {
+    return undefined;
+  }
+  return {
+    ...(typeof record.length === "string" ? { length: record.length as SceneLength } : {}),
+    ...(typeof record.quality === "string" ? { quality: record.quality as GenerationQuality } : {}),
+    ...(typeof record.customDirection === "string" && record.customDirection.trim()
+      ? { customDirection: record.customDirection.trim() }
+      : {}),
+  };
+}
+
 function parseInput(
   body: unknown,
 ): { bookId: string; input: SceneInput; idempotencyKey: string } | undefined {
@@ -119,13 +156,21 @@ function parseInput(
     return undefined;
   }
   const idempotencyKey = typeof suppliedKey === "string" ? suppliedKey : randomUUID();
+  const preferences = parsePreferences(record.preferences);
+  if (record.preferences !== undefined && !preferences) {
+    return undefined;
+  }
 
   if (record.mode === "structured") {
     const fields = parseStructuredFields(record.fields);
     if (!fields) {
       return undefined;
     }
-    return { bookId, input: { mode: "structured", fields }, idempotencyKey };
+    return {
+      bookId,
+      input: { mode: "structured", fields, ...(preferences ? { preferences } : {}) },
+      idempotencyKey,
+    };
   }
 
   if (record.mode === "polish") {
@@ -141,7 +186,16 @@ function parseInput(
     if (!aspects) {
       return undefined;
     }
-    return { bookId, input: { mode: "polish", draftText, aspects }, idempotencyKey };
+    return {
+      bookId,
+      input: {
+        mode: "polish",
+        draftText,
+        aspects,
+        ...(preferences ? { preferences } : {}),
+      },
+      idempotencyKey,
+    };
   }
 
   if (record.mode !== undefined && record.mode !== "free-text") {
@@ -156,7 +210,15 @@ function parseInput(
   ) {
     return undefined;
   }
-  return { bookId, input: { mode: "free-text", description }, idempotencyKey };
+  return {
+    bookId,
+    input: {
+      mode: "free-text",
+      description,
+      ...(preferences ? { preferences } : {}),
+    },
+    idempotencyKey,
+  };
 }
 
 function summarizeSceneInput(input: SceneInput): string {
@@ -291,6 +353,7 @@ export const generateScene = onRequest(
   {
     cors: allowedOrigins(),
     region: "us-central1",
+    timeoutSeconds: 120,
     secrets: [GOOGLE_API_KEY, OPENAI_API_KEY],
   },
   async (request, response) => {

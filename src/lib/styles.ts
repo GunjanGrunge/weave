@@ -1,4 +1,5 @@
 import { authenticatedFetch } from "./api";
+import { parseWritingProfileConfig, type WritingProfileConfig } from "./writing-profiles";
 
 export const MAX_CUSTOM_INSTRUCTION_LENGTH = 1_000;
 
@@ -24,7 +25,8 @@ export type BookStyleState = {
   styleRevision: number;
 };
 
-export type StyleConfigResponse = StyleConfig & Partial<BookStyleState>;
+export type StyleConfigResponse = StyleConfig &
+  Partial<BookStyleState> & { writingConfig?: WritingProfileConfig };
 
 export class StyleApiError extends Error {
   constructor(
@@ -121,12 +123,19 @@ export function parseStyleConfigResponse(value: unknown): StyleConfigResponse | 
   }
 
   const config: StyleConfig = { presets, defaultPresetId: rawConfig.defaultPresetId };
+  const writingConfig =
+    envelope?.writingConfig === undefined
+      ? undefined
+      : parseWritingProfileConfig(envelope.writingConfig);
+  if (envelope?.writingConfig !== undefined && !writingConfig) {
+    return undefined;
+  }
   if (envelope?.style === undefined && envelope?.styleRevision === undefined) {
-    return config;
+    return { ...config, ...(writingConfig ? { writingConfig } : {}) };
   }
   const state = parseBookStyleState(envelope, true);
   return state && state.style.presetIds.every((id) => ids.has(id))
-    ? { ...config, ...state }
+    ? { ...config, ...state, ...(writingConfig ? { writingConfig } : {}) }
     : undefined;
 }
 
