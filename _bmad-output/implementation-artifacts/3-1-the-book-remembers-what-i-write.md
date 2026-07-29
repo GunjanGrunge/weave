@@ -4,7 +4,7 @@ baseline_commit: 82c6ce8cd2bca0d560351ddc3cd337867034346e
 
 # Story 3.1: The Book Remembers What I Write
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -55,8 +55,8 @@ so that later scenes stay consistent without me maintaining notes.
 - [x] [Review][Patch] Prevent distinct normalized entity names from colliding on the same fact document ID.
 - [x] [Review][Patch] Route context-query embedding usage through the central usage-accounting path.
 
-Configuration fixes above are committed locally only. No production deployment or
-live vector-query verification is claimed by this review.
+The review fixes, vector index, and `asia-south1` extraction trigger were deployed
+on 2026-07-29. The full backend verification passed with 233 tests.
 
 ## Dev Notes
 

@@ -72,7 +72,13 @@ Resolved in the review remediation:
 Still open:
 
 - [Story 4.5] Provision and verify PITR, scheduled managed exports, retention, and a restore drill before moving the story out of backlog.
-- [Release verification] The remediation has passed local frontend/backend verification but has not yet completed CI deployment or authenticated production verification.
+
+Release verification completed on 2026-07-29:
+
+- Firestore rules and the 768-dimensional vector index were deployed.
+- All HTTP functions and the three Firestore triggers were deployed; triggers are colocated with Firestore in `asia-south1`.
+- Hosting was released with all 22 API rewrites.
+- Authenticated production checks covered sign-in, shelf data, Book Chat, Vision navigation, scene controls, snapshot listing, export actions, and typed deletion confirmation with no browser console or request failures.
 
 ## Deferred from: code review of 2-6-see-what-my-writing-costs (2026-07-29)
 
