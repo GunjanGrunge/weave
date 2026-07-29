@@ -1,6 +1,7 @@
 {
   "firestore": {
-    "rules": "firestore.rules"
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
   },
   "hosting": {
     "public": ".output/public",
@@ -31,6 +32,13 @@
         "source": "/createBook",
         "function": {
           "functionId": "createBook",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/createChapter",
+        "function": {
+          "functionId": "createChapter",
           "region": "us-central1"
         }
       },
@@ -108,6 +116,48 @@
         "source": "/updateBookStyle",
         "function": {
           "functionId": "updateBookStyle",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/saveSnapshot",
+        "function": {
+          "functionId": "saveSnapshot",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/listSnapshots",
+        "function": {
+          "functionId": "listSnapshots",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/compareSnapshot",
+        "function": {
+          "functionId": "compareSnapshot",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/restoreSnapshot",
+        "function": {
+          "functionId": "restoreSnapshot",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/exportBook",
+        "function": {
+          "functionId": "exportBook",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/deleteBook",
+        "function": {
+          "functionId": "deleteBook",
           "region": "us-central1"
         }
       },

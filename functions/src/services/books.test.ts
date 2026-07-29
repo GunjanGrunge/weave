@@ -203,16 +203,32 @@ vi.mock("firebase-admin/app", () => ({
   initializeApp: vi.fn(),
 }));
 
+vi.mock("firebase-admin/storage", () => ({
+  getStorage: vi.fn(() => ({
+    bucket: vi.fn(() => ({
+      deleteFiles: vi.fn(async () => undefined),
+    })),
+  })),
+}));
+
 vi.mock("firebase-admin/firestore", () => ({
-  FieldValue: { serverTimestamp: serverTimestampMock },
+  FieldValue: {
+    serverTimestamp: serverTimestampMock,
+    increment: vi.fn((amount: number) => ({ __increment: amount })),
+  },
   getFirestore: vi.fn(() => ({
     collection: (name: string) => makeCollection(name),
     batch: () => {
       const pending: WriteCall[] = [];
+      const pendingUpdates: WriteCall[] = [];
       return {
         set: (ref: { path: string }, data: unknown) => {
           setCalls.push({ path: ref.path, data });
           pending.push({ path: ref.path, data });
+        },
+        update: (ref: { path: string }, data: unknown) => {
+          updateCalls.push({ path: ref.path, data });
+          pendingUpdates.push({ path: ref.path, data });
         },
         commit: async () => {
           // Real batch writes only become visible to subsequent reads once
@@ -220,6 +236,25 @@ vi.mock("firebase-admin/firestore", () => ({
           // against docs written by a prior batch behave like real Firestore.
           for (const { path, data } of pending) {
             docStore[path] = data;
+          }
+          for (const { path, data } of pendingUpdates) {
+            const current = (docStore[path] as Record<string, unknown> | undefined) ?? {};
+            const next = { ...current };
+            for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+              if (
+                typeof value === "object" &&
+                value !== null &&
+                "__increment" in value &&
+                typeof value.__increment === "number"
+              ) {
+                next[key] =
+                  (typeof current[key] === "number" ? (current[key] as number) : 0) +
+                  value.__increment;
+              } else {
+                next[key] = value;
+              }
+            }
+            docStore[path] = next;
           }
           return commitMock();
         },
@@ -229,6 +264,7 @@ vi.mock("firebase-admin/firestore", () => ({
       updateFn: (transaction: {
         get: (query: { get: () => Promise<unknown> }) => Promise<unknown>;
         set: (ref: { path: string }, data: unknown) => void;
+        update: (ref: { path: string }, data: unknown) => void;
       }) => Promise<T>,
     ): Promise<T> => {
       const transaction = {
@@ -241,8 +277,22 @@ vi.mock("firebase-admin/firestore", () => ({
             messagesStore[parentPath] = [...(messagesStore[parentPath] ?? []), data as StoredDoc];
           }
         },
+        update: (ref: { path: string }, data: unknown) => {
+          updateCalls.push({ path: ref.path, data });
+          docStore[ref.path] = {
+            ...(docStore[ref.path] as Record<string, unknown> | undefined),
+            ...(data as object),
+          };
+        },
       };
       return updateFn(transaction);
+    },
+    recursiveDelete: async (ref: { path: string }) => {
+      for (const path of Object.keys(docStore)) {
+        if (path === ref.path || path.startsWith(`${ref.path}/`)) {
+          delete docStore[path];
+        }
+      }
     },
   })),
 }));
@@ -263,6 +313,7 @@ import {
   getPriorChapterSummaries,
   retrieveRelevantFacts,
   getActiveChapter,
+  createNextChapter,
   deleteBook,
 } from "./books.js";
 import { DEFAULT_STYLE_PRESET_ID } from "./styles.js";
@@ -581,7 +632,12 @@ describe("updateVisionDocument", () => {
           threads: [],
         },
       },
+      {
+        path: "books/book-1",
+        data: { manuscriptRevision: { __increment: 1 } },
+      },
     ]);
+    expect(docStore["books/book-1"]).toMatchObject({ manuscriptRevision: 1 });
     expect(setCalls).toHaveLength(0);
     expect(vision).toMatchObject({
       theme: "new",
@@ -911,6 +967,51 @@ describe("getActiveChapter", () => {
   });
 });
 
+describe("createNextChapter", () => {
+  beforeEach(() => {
+    setCalls.length = 0;
+    updateCalls.length = 0;
+    docStore = {
+      "books/book-1": { uid: "user-a", nextChapterOrder: 1 },
+    };
+    messagesStore = {
+      "books/book-1/messages": [{ id: "message-1", order: 3 }],
+    };
+    chaptersStore = {
+      "books/book-1/chapters": [{ id: "chapter-1", order: 0 }],
+    };
+  });
+
+  it("commits the chapter, order counter, system message, and request record together", async () => {
+    const result = await createNextChapter("book-1", "request-1");
+
+    expect(result).toEqual({
+      chapterId: "book-auto-id",
+      order: 1,
+      prevChapterId: "chapter-1",
+    });
+    expect(docStore["books/book-1"]).toMatchObject({ nextChapterOrder: 2 });
+    expect(docStore["books/book-1/chapterRequests/request-1"]).toMatchObject(result);
+    expect(docStore["books/book-1/messages/book-auto-id"]).toMatchObject({
+      type: "system",
+      order: 4,
+    });
+  });
+
+  it("returns the original result when the same request is replayed", async () => {
+    const first = await createNextChapter("book-1", "request-1");
+    const chapterWritesAfterFirst = setCalls.filter((call) =>
+      call.path.startsWith("books/book-1/chapters/"),
+    ).length;
+    const second = await createNextChapter("book-1", "request-1");
+
+    expect(second).toEqual(first);
+    expect(
+      setCalls.filter((call) => call.path.startsWith("books/book-1/chapters/")),
+    ).toHaveLength(chapterWritesAfterFirst);
+  });
+});
+
 describe("getPreviousChapterLastScenes", () => {
   beforeEach(() => {
     docStore = {};
@@ -985,9 +1086,15 @@ describe("deleteBook", () => {
     docStore["books/book-1/messages/message-1"] = { text: "Hello" };
     docStore["books/book-1/vision/main"] = { theme: "Adventure" };
     docStore["books/book-1/facts/fact-1"] = { name: "Elena" };
+    docStore["books/book-1/sessions/session-1"] = { status: "active" };
+    docStore["books/book-1/generationRequests/request-1"] = { status: "completed" };
+    docStore["books/book-1/system/openingSuggestion"] = { state: "ok" };
+    docStore["books/book-1/usage/usage-1"] = { task: "generate" };
+    docStore["books/book-1/automation/task-1"] = { state: "completed" };
     docStore["books/book-1/snapshots/snap-1"] = { name: "Backup" };
     docStore["books/book-1/snapshots/snap-1/chapters/chapter-1"] = { order: 0 };
     docStore["books/book-1/snapshots/snap-1/chapters/chapter-1/scenes/scene-1"] = { text: "Old scene" };
+    docStore["intakeRequests/intake-1"] = { uid: "user-123", bookId: "book-1" };
 
     await deleteBook("book-1", "user-123");
 
@@ -1001,6 +1108,12 @@ describe("deleteBook", () => {
     expect(docStore["books/book-1/snapshots/snap-1"]).toBeUndefined();
     expect(docStore["books/book-1/snapshots/snap-1/chapters/chapter-1"]).toBeUndefined();
     expect(docStore["books/book-1/snapshots/snap-1/chapters/chapter-1/scenes/scene-1"]).toBeUndefined();
+    expect(docStore["books/book-1/sessions/session-1"]).toBeUndefined();
+    expect(docStore["books/book-1/generationRequests/request-1"]).toBeUndefined();
+    expect(docStore["books/book-1/system/openingSuggestion"]).toBeUndefined();
+    expect(docStore["books/book-1/usage/usage-1"]).toBeUndefined();
+    expect(docStore["books/book-1/automation/task-1"]).toBeUndefined();
+    expect(docStore["intakeRequests/intake-1"]).toBeUndefined();
   });
 
   it("throws error if book does not exist", async () => {

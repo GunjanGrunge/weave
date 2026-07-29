@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const { authenticatedFetchMock } = vi.hoisted(() => ({
+const { authenticatedFetchMock, invalidateQueriesMock, navigateMock } = vi.hoisted(() => ({
   authenticatedFetchMock: vi.fn(),
+  invalidateQueriesMock: vi.fn(),
+  navigateMock: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -15,10 +17,15 @@ vi.mock("@tanstack/react-router", () => ({
       {children}
     </a>
   ),
+  useNavigate: () => navigateMock,
 }));
 
 vi.mock("@/lib/api", () => ({
   authenticatedFetch: authenticatedFetchMock,
+}));
+
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ invalidateQueries: invalidateQueriesMock }),
 }));
 
 vi.mock("@/components/book/StyleControl", () => ({
@@ -27,6 +34,10 @@ vi.mock("@/components/book/StyleControl", () => ({
 
 vi.mock("@/components/book/UsageIndicator", () => ({
   UsageIndicator: ({ bookId }: { bookId: string }) => <span role="status">Usage for {bookId}</span>,
+}));
+
+vi.mock("@/components/book/BookTools", () => ({
+  BookTools: ({ bookId }: { bookId: string }) => <button>Tools for {bookId}</button>,
 }));
 
 import { ChatPage } from "./books.$bookId.chat";
@@ -45,6 +56,8 @@ const existingMessages = {
 describe("ChatPage", () => {
   beforeEach(() => {
     authenticatedFetchMock.mockReset();
+    invalidateQueriesMock.mockReset().mockResolvedValue(undefined);
+    navigateMock.mockReset();
   });
 
   it("loads and renders existing chat messages on mount", async () => {
@@ -54,9 +67,9 @@ describe("ChatPage", () => {
 
     await waitFor(() => expect(screen.getByText("A heist novel")).toBeInTheDocument());
     expect(screen.getByText("What do you want to write?")).toBeInTheDocument();
-    const usage = screen.getByRole("status");
-    expect(usage).toHaveTextContent("Usage for book-1");
-    expect(usage.parentElement).toHaveClass("flex-wrap");
+    expect(screen.getByRole("status")).toHaveTextContent("Usage for book-1");
+    expect(screen.getByTestId("chat-toolbar")).toHaveClass("flex-wrap");
+    expect(screen.getByRole("link", { name: /vision/i })).toBeInTheDocument();
     expect(authenticatedFetchMock).toHaveBeenCalledWith(
       "/getMessages",
       expect.objectContaining({ body: JSON.stringify({ bookId: "book-1" }) }),
@@ -73,6 +86,28 @@ describe("ChatPage", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/describe what happens/i);
     expect(authenticatedFetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses the chapter idempotency key when a failed request is retried", async () => {
+    authenticatedFetchMock
+      .mockResolvedValueOnce(jsonResponse({ messages: [] }))
+      .mockResolvedValueOnce(jsonResponse({ code: "temporary" }, 500))
+      .mockResolvedValueOnce(jsonResponse({ chapterId: "chapter-2", order: 1 }));
+
+    render(<ChatPage bookId="book-1" />);
+    const chapterButton = await screen.findByRole("button", { name: /new chapter/i });
+
+    fireEvent.click(chapterButton);
+    await screen.findByText(/couldn't start a new chapter/i);
+    const firstBody = JSON.parse(authenticatedFetchMock.mock.calls[1][1].body);
+
+    fireEvent.click(chapterButton);
+    await screen.findByText(/chapter 2 started/i);
+    const secondBody = JSON.parse(authenticatedFetchMock.mock.calls[2][1].body);
+
+    expect(firstBody).toMatchObject({ bookId: "book-1" });
+    expect(firstBody.idempotencyKey).toEqual(expect.any(String));
+    expect(secondBody.idempotencyKey).toBe(firstBody.idempotencyKey);
   });
 
   it("blocks submission on a whitespace-only description", async () => {

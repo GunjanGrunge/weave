@@ -140,9 +140,10 @@ describe("SceneReviewCard", () => {
 
   it("flushes pending prose before accepting and blocks a double accept", async () => {
     const accepted = deferred<SceneCandidate>();
+    const onAccepted = vi.fn();
     saveMock.mockResolvedValue(candidate({ text: "Latest prose.", revision: 1 }));
     acceptMock.mockReturnValue(accepted.promise);
-    render(<SceneReviewCard bookId="book-1" message={message} />);
+    render(<SceneReviewCard bookId="book-1" message={message} onAccepted={onAccepted} />);
     fireEvent.change(screen.getByLabelText("Generated scene"), {
       target: { value: "Latest prose." },
     });
@@ -168,6 +169,7 @@ describe("SceneReviewCard", () => {
       );
     });
     expect(await screen.findByText("Accepted")).toBeInTheDocument();
+    expect(onAccepted).toHaveBeenCalledTimes(1);
     expect(screen.queryByLabelText("Generated scene")).not.toBeInTheDocument();
   });
 

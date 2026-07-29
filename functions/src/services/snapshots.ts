@@ -6,6 +6,11 @@ import type { Chapter } from "../types/chapter.js";
 import type { Scene } from "../types/scene.js";
 import { getBook } from "./books.js";
 
+const MAX_ATOMIC_SNAPSHOT_WRITES = 450;
+const MAX_EXPORT_CHAPTERS = 200;
+const MAX_EXPORT_SCENES = 5_000;
+const MAX_EXPORT_CHARACTERS = 10_000_000;
+
 function firestore() {
   if (getApps().length === 0) {
     initializeApp();
@@ -55,21 +60,20 @@ export async function createBookSnapshot(
   const db = firestore();
   const snapshotRef = db.collection("books").doc(bookId).collection("snapshots").doc();
   const snapshotId = snapshotRef.id;
+  const sourceBook = await getBook(bookId);
+  const sourceRevision =
+    typeof sourceBook?.manuscriptRevision === "number" ? sourceBook.manuscriptRevision : 0;
+  const writes: Array<{ ref: FirebaseFirestore.DocumentReference; data: FirebaseFirestore.DocumentData }> = [];
 
-  // 1. Write snapshot metadata
-  await snapshotRef.set({
-    name,
-    createdAt: FieldValue.serverTimestamp(),
-  });
-
-  // 2. Copy Vision document
   const visionRef = db.collection("books").doc(bookId).collection("vision").doc("main");
   const visionSnap = await visionRef.get();
   if (visionSnap.exists) {
-    await snapshotRef.collection("vision").doc("main").set(visionSnap.data()!);
+    writes.push({
+      ref: snapshotRef.collection("vision").doc("main"),
+      data: visionSnap.data()!,
+    });
   }
 
-  // 3. Copy Chapters and Scenes
   const chaptersSnap = await db
     .collection("books")
     .doc(bookId)
@@ -81,16 +85,60 @@ export async function createBookSnapshot(
     const chapterData = chapterDoc.data();
 
     const snapChapRef = snapshotRef.collection("chapters").doc(chapterId);
-    await snapChapRef.set(chapterData);
+    writes.push({ ref: snapChapRef, data: chapterData });
 
     const scenesSnap = await chapterDoc.ref.collection("scenes").get();
     for (const sceneDoc of scenesSnap.docs) {
       const sceneId = sceneDoc.id;
       const sceneData = sceneDoc.data();
 
-      await snapChapRef.collection("scenes").doc(sceneId).set(sceneData);
+      writes.push({
+        ref: snapChapRef.collection("scenes").doc(sceneId),
+        data: sceneData,
+      });
     }
   }
+
+  for (const collectionName of ["messages", "sessions"] as const) {
+    const sourceDocs = await db.collection("books").doc(bookId).collection(collectionName).get();
+    for (const sourceDoc of sourceDocs.docs) {
+      writes.push({
+        ref: snapshotRef.collection(collectionName).doc(sourceDoc.id),
+        data: sourceDoc.data(),
+      });
+    }
+  }
+
+  if (writes.length + 1 > MAX_ATOMIC_SNAPSHOT_WRITES) {
+    throw new SnapshotError(
+      "resource-exhausted",
+      "This manuscript is too large for an atomic snapshot.",
+    );
+  }
+
+  const bookRef = db.collection("books").doc(bookId);
+  await db.runTransaction(async (transaction) => {
+    const currentBook = await transaction.get(bookRef);
+    const currentRevision =
+      typeof currentBook.data()?.manuscriptRevision === "number"
+        ? (currentBook.data()?.manuscriptRevision as number)
+        : 0;
+    if (!currentBook.exists || currentRevision !== sourceRevision) {
+      throw new SnapshotError(
+        "aborted",
+        "The manuscript changed while the snapshot was being prepared. Try again.",
+      );
+    }
+    for (const write of writes) {
+      transaction.set(write.ref, write.data);
+    }
+    transaction.set(snapshotRef, {
+      name,
+      state: "ready",
+      sourceRevision,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  });
 
   return snapshotId;
 }
@@ -109,14 +157,19 @@ export async function listBookSnapshots(
     .orderBy("createdAt", "desc")
     .get();
 
-  return snapshotsSnap.docs.map((doc) => {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      name: data.name as string,
-      createdAt: data.createdAt,
-    };
-  });
+  return snapshotsSnap.docs
+    .filter((doc) => {
+      const state = doc.data().state;
+      return state === undefined || state === "ready";
+    })
+    .map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        name: data.name as string,
+        createdAt: data.createdAt,
+      };
+    });
 }
 
 export async function compareBookSnapshot(
@@ -131,6 +184,9 @@ export async function compareBookSnapshot(
   const snapDoc = await snapshotRef.get();
   if (!snapDoc.exists) {
     throw new SnapshotError("not-found", "Snapshot not found.");
+  }
+  if (snapDoc.data()?.state !== undefined && snapDoc.data()?.state !== "ready") {
+    throw new SnapshotError("failed-precondition", "Snapshot is not ready.");
   }
 
   // Fetch live chapters and scenes
@@ -266,60 +322,108 @@ export async function restoreBookSnapshot(
   if (!snapDoc.exists) {
     throw new SnapshotError("not-found", "Snapshot not found.");
   }
+  if (snapDoc.data()?.state !== undefined && snapDoc.data()?.state !== "ready") {
+    throw new SnapshotError("failed-precondition", "Snapshot is not ready.");
+  }
 
-  // 1. Purge all live chapters and scenes
+  const deletes: FirebaseFirestore.DocumentReference[] = [];
+  const restores: Array<{
+    ref: FirebaseFirestore.DocumentReference;
+    data: FirebaseFirestore.DocumentData;
+  }> = [];
+
   const liveChapters = await db.collection("books").doc(bookId).collection("chapters").get();
   for (const chap of liveChapters.docs) {
     const scenes = await chap.ref.collection("scenes").get();
     for (const sc of scenes.docs) {
-      await sc.ref.delete();
+      deletes.push(sc.ref);
     }
-    await chap.ref.delete();
+    deletes.push(chap.ref);
   }
 
-  // 2. Purge facts
-  const liveFacts = await db.collection("books").doc(bookId).collection("facts").get();
-  for (const fact of liveFacts.docs) {
-    await fact.ref.delete();
+  for (const collectionName of [
+    "facts",
+    "messages",
+    "sessions",
+    "generationRequests",
+    "chapterRequests",
+  ] as const) {
+    const liveDocs = await db.collection("books").doc(bookId).collection(collectionName).get();
+    deletes.push(...liveDocs.docs.map((doc) => doc.ref));
   }
 
-  // 3. Delete live Vision Document
   const visionRef = db.collection("books").doc(bookId).collection("vision").doc("main");
-  await visionRef.delete();
+  const liveVision = await visionRef.get();
+  if (liveVision.exists) {
+    deletes.push(visionRef);
+  }
 
-  // 4. Restore Vision Document from Snapshot
   const snapVisionRef = snapshotRef.collection("vision").doc("main");
   const snapVisionSnap = await snapVisionRef.get();
   if (snapVisionSnap.exists) {
-    await visionRef.set(snapVisionSnap.data()!);
+    restores.push({ ref: visionRef, data: snapVisionSnap.data()! });
   }
 
-  // 5. Restore Chapters and Scenes from Snapshot
   const snapChapters = await snapshotRef.collection("chapters").get();
   for (const snapChap of snapChapters.docs) {
     const chapterId = snapChap.id;
     const chapterData = snapChap.data();
 
     const liveChapRef = db.collection("books").doc(bookId).collection("chapters").doc(chapterId);
-    await liveChapRef.set(chapterData);
+    restores.push({
+      ref: liveChapRef,
+      data: { ...chapterData, restoredFromSnapshot: snapshotId },
+    });
 
     const snapScenes = await snapChap.ref.collection("scenes").get();
     for (const snapSc of snapScenes.docs) {
       const sceneId = snapSc.id;
       const sceneData = snapSc.data();
 
-      await liveChapRef.collection("scenes").doc(sceneId).set(sceneData);
+      restores.push({
+        ref: liveChapRef.collection("scenes").doc(sceneId),
+        data: { ...sceneData, restoredFromSnapshot: snapshotId },
+      });
     }
   }
 
-  // 6. Increment manuscriptRevision of the book
   const bookRef = db.collection("books").doc(bookId);
+  for (const collectionName of ["messages", "sessions"] as const) {
+    const snapshotDocs = await snapshotRef.collection(collectionName).get();
+    for (const snapshotDoc of snapshotDocs.docs) {
+      restores.push({
+        ref: bookRef.collection(collectionName).doc(snapshotDoc.id),
+        data: snapshotDoc.data(),
+      });
+    }
+  }
+
+  const restorePaths = new Set(restores.map((restore) => restore.ref.path));
+  const uniqueDeletes = deletes.filter((ref) => !restorePaths.has(ref.path));
+  const operationCount = uniqueDeletes.length + restores.length + 1;
+  if (operationCount > MAX_ATOMIC_SNAPSHOT_WRITES) {
+    throw new SnapshotError(
+      "resource-exhausted",
+      "This restore is too large to complete atomically.",
+    );
+  }
+
   await db.runTransaction(async (transaction) => {
     const bookSnap = await transaction.get(bookRef);
-    if (bookSnap.exists) {
-      const currentRev = (bookSnap.data()?.manuscriptRevision as number | undefined) ?? 0;
-      transaction.update(bookRef, { manuscriptRevision: currentRev + 1 });
+    if (!bookSnap.exists) {
+      throw new SnapshotError("not-found", "Book not found.");
     }
+    const currentRev = (bookSnap.data()?.manuscriptRevision as number | undefined) ?? 0;
+    for (const ref of uniqueDeletes) {
+      transaction.delete(ref);
+    }
+    for (const restore of restores) {
+      transaction.set(restore.ref, restore.data);
+    }
+    transaction.update(bookRef, {
+      manuscriptRevision: currentRev + 1,
+      restoredAt: FieldValue.serverTimestamp(),
+    });
   });
 }
 
@@ -346,6 +450,7 @@ export async function exportBookManuscript(
     .get();
 
   const lines: string[] = [];
+  let sceneCount = 0;
 
   if (format === "markdown") {
     lines.push(`# ${book.title}`);
@@ -356,6 +461,9 @@ export async function exportBookManuscript(
   }
 
   for (const chapDoc of chaptersSnap.docs) {
+    if (chaptersSnap.size > MAX_EXPORT_CHAPTERS) {
+      throw new SnapshotError("resource-exhausted", "This book has too many chapters to export.");
+    }
     const chapData = chapDoc.data() as Chapter;
     const title = `Chapter ${chapData.order + 1}`;
     if (format === "markdown") {
@@ -367,6 +475,10 @@ export async function exportBookManuscript(
     }
 
     const scenesSnap = await chapDoc.ref.collection("scenes").orderBy("order", "asc").get();
+    sceneCount += scenesSnap.size;
+    if (sceneCount > MAX_EXPORT_SCENES) {
+      throw new SnapshotError("resource-exhausted", "This book has too many scenes to export.");
+    }
     for (const scDoc of scenesSnap.docs) {
       const scData = scDoc.data() as Scene;
       lines.push(scData.text);
@@ -375,6 +487,9 @@ export async function exportBookManuscript(
   }
 
   const content = lines.join("\n");
+  if (content.length > MAX_EXPORT_CHARACTERS) {
+    throw new SnapshotError("resource-exhausted", "This book is too large to export.");
+  }
 
   const bucket = getStorage().bucket();
   const ext = format === "markdown" ? "md" : "txt";
@@ -382,19 +497,14 @@ export async function exportBookManuscript(
 
   await file.save(content, {
     contentType: format === "markdown" ? "text/markdown" : "text/plain",
+    metadata: {
+      cacheControl: "private, no-store",
+    },
   });
 
-  let downloadUrl = "";
-  try {
-    const [url] = await file.getSignedUrl({
-      action: "read",
-      expires: Date.now() + 1000 * 60 * 60 * 24, // 24 hours
-    });
-    downloadUrl = url;
-  } catch (err) {
-    console.warn("Could not generate signed URL, falling back to public URL:", err);
-    downloadUrl = file.publicUrl();
-  }
-
+  const [downloadUrl] = await file.getSignedUrl({
+    action: "read",
+    expires: Date.now() + 1000 * 60 * 15,
+  });
   return downloadUrl;
 }

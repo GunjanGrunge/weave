@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-26 08:17
-last_updated: 2026-07-29 10:56
+last_updated: 2026-07-29 20:00
 project: Story
 project_key: NOKEY
 tracking_system: file-system
@@ -64,17 +64,17 @@ development_status:
   2-5-change-my-books-voice-at-any-time: done
   2-6-see-what-my-writing-costs: done
   epic-2-retrospective: optional
-  epic-3: done
-  3-1-the-book-remembers-what-i-write: done
-  3-2-start-a-new-chapter-and-settle-the-last-one: done
-  3-3-late-chapters-read-like-the-same-book: done
-  3-4-the-muse-tells-me-where-my-story-stands: done
+  epic-3: in-progress
+  3-1-the-book-remembers-what-i-write: review
+  3-2-start-a-new-chapter-and-settle-the-last-one: review
+  3-3-late-chapters-read-like-the-same-book: review
+  3-4-the-muse-tells-me-where-my-story-stands: review
   3-5-my-planted-secrets-stay-planted: done
   epic-3-retrospective: optional
-  epic-4: done
-  4-1-save-a-named-moment-in-my-book: done
-  4-2-see-what-changed-since-a-snapshot: done
-  4-3-go-back-to-a-saved-moment-coherently: done
-  4-4-take-my-manuscript-with-me: done
-  4-5-my-manuscript-survives-even-if-i-never-snapshot: done
+  epic-4: in-progress
+  4-1-save-a-named-moment-in-my-book: review
+  4-2-see-what-changed-since-a-snapshot: review
+  4-3-go-back-to-a-saved-moment-coherently: review
+  4-4-take-my-manuscript-with-me: review
+  4-5-my-manuscript-survives-even-if-i-never-snapshot: backlog
   epic-4-retrospective: optional

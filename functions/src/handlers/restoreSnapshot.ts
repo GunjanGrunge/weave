@@ -26,7 +26,7 @@ function parseBody(
   return {
     bookId: (body as Record<string, unknown>).bookId as string,
     snapshotId: (body as Record<string, unknown>).snapshotId as string,
-    confirmed: !!(body as Record<string, unknown>).confirmed,
+    confirmed: (body as Record<string, unknown>).confirmed === true,
   };
 }
 

@@ -8,6 +8,11 @@ import {
 
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "../config/secrets.js";
 import {
+  claimAutomationTask,
+  completeAutomationTask,
+  failAutomationTask,
+} from "../services/automation.js";
+import {
   callWithFallback,
   readModelRegistry,
   recordUsageBestEffort,
@@ -90,6 +95,10 @@ export async function handleSceneAcceptForMuse(
 
   const { bookId, chapterId, sceneId } = event.params;
   const sceneData = snap.data();
+  if (typeof sceneData?.restoredFromSnapshot === "string") {
+    console.log("Restored scene detected. Skipping Muse note generation.");
+    return;
+  }
   const sceneText = sceneData?.text;
 
   if (!sceneText || typeof sceneText !== "string" || sceneText.trim() === "") {
@@ -98,8 +107,16 @@ export async function handleSceneAcceptForMuse(
   }
 
   const db = firestore();
+  const taskId = `muse-${chapterId}-${sceneId}`;
+  let claimed = false;
 
   try {
+    claimed = await claimAutomationTask(bookId, taskId);
+    if (!claimed) {
+      console.log("Muse note already claimed for this scene.");
+      return;
+    }
+
     // 1. Fetch Vision document
     const visionRef = db.collection("books").doc(bookId).collection("vision").doc("main");
     const visionSnap = await visionRef.get();
@@ -159,40 +176,53 @@ export async function handleSceneAcceptForMuse(
       return;
     }
 
-    // 4. Safely transaction-append structural note chat message
+    // 4. Atomically append the deterministic note and structure-map entry.
     await db.runTransaction(async (transaction) => {
       const messagesRef = db.collection("books").doc(bookId).collection("messages");
-      const lastMessageSnap = await transaction.get(messagesRef.orderBy("order", "desc").limit(1));
+      const messageRef = messagesRef.doc(`muse-${chapterId}-${sceneId}`);
+      const [existingMessage, lastMessageSnap] = await Promise.all([
+        transaction.get(messageRef),
+        transaction.get(messagesRef.orderBy("order", "desc").limit(1)),
+      ]);
+      if (existingMessage.exists) {
+        return;
+      }
       const nextOrder = lastMessageSnap.empty
         ? 0
         : ((lastMessageSnap.docs[0]?.data().order as number | undefined) ?? -1) + 1;
 
-      const newMessageRef = messagesRef.doc();
       const message: ChatMessage = {
         type: "structural_note",
         text: structuralNote,
         order: nextOrder,
       };
 
-      transaction.set(newMessageRef, {
+      transaction.set(messageRef, {
         ...message,
         createdAt: FieldValue.serverTimestamp(),
       });
+      transaction.update(visionRef, {
+        structureMap: FieldValue.arrayUnion({
+          beat,
+          sceneRef: `chapters/${chapterId}/scenes/${sceneId}`,
+        }),
+      });
     });
-
-    // 5. Update Vision document's structureMap using arrayUnion (concurrency-safe)
-    const sceneRefPath = `chapters/${chapterId}/scenes/${sceneId}`;
-    await visionRef.update({
-      structureMap: FieldValue.arrayUnion({
-        beat,
-        sceneRef: sceneRefPath,
-      }),
-    });
+    await completeAutomationTask(bookId, taskId);
 
     console.log(`Successfully generated Muse note and updated Structure Map for scene ${sceneId}.`);
   } catch (error) {
     // Fail silently — Muse note generation is background guidance, never user-blocking
     console.error(`Muse note generation failed for book ${bookId}:`, error);
+    if (claimed) {
+      await failAutomationTask(
+        bookId,
+        taskId,
+        error instanceof Error ? error.message : "Unknown Muse failure.",
+      ).catch((claimError) => {
+        console.error("Failed to record Muse automation state:", claimError);
+      });
+    }
   }
 }
 

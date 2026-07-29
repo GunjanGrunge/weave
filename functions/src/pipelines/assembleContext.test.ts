@@ -9,6 +9,7 @@ const {
   retrieveRelevantFactsMock,
   readModelRegistryMock,
   embedContentMock,
+  recordUsageBestEffortMock,
 } = vi.hoisted(() => ({
   getActiveChapterScenesMock: vi.fn(),
   getBookMock: vi.fn(),
@@ -18,6 +19,7 @@ const {
   retrieveRelevantFactsMock: vi.fn(),
   readModelRegistryMock: vi.fn(),
   embedContentMock: vi.fn(),
+  recordUsageBestEffortMock: vi.fn(),
 }));
 
 vi.mock("../services/books.js", () => ({
@@ -31,6 +33,7 @@ vi.mock("../services/books.js", () => ({
 
 vi.mock("../services/gemini.js", () => ({
   readModelRegistry: readModelRegistryMock,
+  recordUsageBestEffort: recordUsageBestEffortMock,
 }));
 
 vi.mock("@google/genai", () => ({
@@ -54,6 +57,7 @@ describe("assembleContext", () => {
     retrieveRelevantFactsMock.mockReset();
     readModelRegistryMock.mockReset();
     embedContentMock.mockReset();
+    recordUsageBestEffortMock.mockReset();
 
     getBookMock.mockResolvedValue({ manuscriptRevision: 4 });
     getActiveChapterMock.mockResolvedValue({ id: "chapter-2", order: 1 });

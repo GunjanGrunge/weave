@@ -8,7 +8,11 @@ import {
   getPriorChapterSummaries,
   retrieveRelevantFacts,
 } from "../services/books.js";
-import { readModelRegistry, type AIProviderKeys } from "../services/gemini.js";
+import {
+  readModelRegistry,
+  recordUsageBestEffort,
+  type AIProviderKeys,
+} from "../services/gemini.js";
 import type { SceneInput } from "../types/sceneInput.js";
 
 /**
@@ -52,56 +56,65 @@ export async function assembleContext(
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const before = await getBook(bookId);
     const { chapterId, scenes } = await getActiveChapterScenes(bookId);
-    const after = await getBook(bookId);
     const beforeRevision =
       typeof before?.manuscriptRevision === "number" ? before.manuscriptRevision : 0;
-    const afterRevision =
-      typeof after?.manuscriptRevision === "number" ? after.manuscriptRevision : 0;
 
-    if (beforeRevision === afterRevision) {
-      // 1. Fetch previous chapter scenes and prior chapter summaries (if not first chapter)
-      let lastScenesText: string[] = [];
-      let priorChapterSummaries: string[] = [];
+    let lastScenesText: string[] = [];
+    let priorChapterSummaries: string[] = [];
 
+    try {
+      const activeChapter = await getActiveChapter(bookId);
+      if (activeChapter) {
+        const activeChapterOrder = activeChapter.order;
+        if (activeChapterOrder > 0) {
+          const prevScenes = await getPreviousChapterLastScenes(bookId, activeChapterOrder);
+          lastScenesText = prevScenes.map((s) => s.text);
+          priorChapterSummaries = await getPriorChapterSummaries(bookId, activeChapterOrder);
+        }
+      }
+    } catch (err) {
+      console.error("Context assembly - chapter history retrieval failed, degrading gracefully:", err);
+    }
+
+    let relevantFactsText: string[] = [];
+    if (input && apiKeys?.gemini) {
       try {
-        const activeChapter = await getActiveChapter(bookId);
-        if (activeChapter) {
-          const activeChapterOrder = activeChapter.order;
-          if (activeChapterOrder > 0) {
-            const prevScenes = await getPreviousChapterLastScenes(bookId, activeChapterOrder);
-            lastScenesText = prevScenes.map((s) => s.text);
-            priorChapterSummaries = await getPriorChapterSummaries(bookId, activeChapterOrder);
+        const queryText = getEmbeddingQueryText(input);
+        if (queryText.length > 0) {
+          const registry = await readModelRegistry();
+          const ai = new GoogleGenAI({ apiKey: apiKeys.gemini });
+          const embedResponse = await ai.models.embedContent({
+            model: registry.embedding.model,
+            contents: queryText,
+            config: {
+              outputDimensionality: registry.embedding.outputDimensionality,
+            },
+          });
+          const embeddingValues = embedResponse.embeddings?.[0]?.values;
+          if (embeddingValues && Array.isArray(embeddingValues)) {
+            relevantFactsText = await retrieveRelevantFacts(bookId, embeddingValues);
+            const usageMetadata = (
+              embedResponse as { usageMetadata?: { promptTokenCount?: number } }
+            ).usageMetadata;
+            await recordUsageBestEffort(bookId, "embedding", {
+              text: "",
+              provider: "gemini",
+              model: registry.embedding.model,
+              inputTokens:
+                usageMetadata?.promptTokenCount ?? Math.max(1, Math.ceil(queryText.length / 4)),
+              outputTokens: 0,
+            });
           }
         }
       } catch (err) {
-        console.error("Context assembly - chapter history retrieval failed, degrading gracefully:", err);
+        console.error("Context assembly - fact retrieval failed, degrading gracefully:", err);
       }
+    }
 
-      // 2. Fetch nearest facts based on input prompt embedding similarity
-      let relevantFactsText: string[] = [];
-      if (input && apiKeys?.gemini) {
-        try {
-          const queryText = getEmbeddingQueryText(input);
-          if (queryText.length > 0) {
-            const registry = await readModelRegistry();
-            const ai = new GoogleGenAI({ apiKey: apiKeys.gemini });
-            const embedResponse = await ai.models.embedContent({
-              model: registry.embedding.model,
-              contents: queryText,
-              config: {
-                outputDimensionality: registry.embedding.outputDimensionality,
-              },
-            });
-            const embeddingValues = embedResponse.embeddings?.[0]?.values;
-            if (embeddingValues && Array.isArray(embeddingValues)) {
-              relevantFactsText = await retrieveRelevantFacts(bookId, embeddingValues);
-            }
-          }
-        } catch (err) {
-          console.error("Context assembly - fact retrieval failed, degrading gracefully:", err);
-        }
-      }
-
+    const after = await getBook(bookId);
+    const afterRevision =
+      typeof after?.manuscriptRevision === "number" ? after.manuscriptRevision : 0;
+    if (beforeRevision === afterRevision) {
       return {
         chapterId,
         priorScenesText: scenes.map((scene) => scene.text),

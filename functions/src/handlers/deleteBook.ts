@@ -15,7 +15,8 @@ function parseBody(body: unknown): { bookId: string } | undefined {
     typeof body !== "object" ||
     body === null ||
     typeof (body as Record<string, unknown>).bookId !== "string" ||
-    !(body as Record<string, unknown>).bookId
+    !(body as Record<string, unknown>).bookId ||
+    (body as Record<string, unknown>).confirmation !== "DELETE"
   ) {
     return undefined;
   }
@@ -32,7 +33,10 @@ export async function buildDeleteBookResponse(
   if (!parsed) {
     return {
       statusCode: 400,
-      body: { code: "invalid-argument", message: "A non-empty bookId is required." },
+      body: {
+        code: "invalid-argument",
+        message: "A non-empty bookId and DELETE confirmation are required.",
+      },
     };
   }
 

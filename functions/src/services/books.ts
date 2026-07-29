@@ -1,5 +1,6 @@
 import { getApps, initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 
 import type { Book, Style } from "../types/book.js";
 import type { Chapter } from "../types/chapter.js";
@@ -168,7 +169,10 @@ export async function createBookWithIntake(
 
 export async function getBook(bookId: string): Promise<Book | undefined> {
   const snapshot = await firestore().collection("books").doc(bookId).get();
-  return snapshot.exists ? (snapshot.data() as Book) : undefined;
+  if (!snapshot.exists || snapshot.data()?.deletionState === "deleting") {
+    return undefined;
+  }
+  return snapshot.data() as Book;
 }
 
 export class NoChaptersError extends Error {
@@ -180,30 +184,73 @@ export class NoChaptersError extends Error {
 
 export async function createNextChapter(
   bookId: string,
+  idempotencyKey: string,
 ): Promise<{ chapterId: string; order: number; prevChapterId: string }> {
   const db = firestore();
+  const bookRef = db.collection("books").doc(bookId);
+  const requestRef = bookRef.collection("chapterRequests").doc(idempotencyKey);
+  const chaptersRef = bookRef.collection("chapters");
+  const newChapterRef = chaptersRef.doc();
+  const systemMessageRef = bookRef.collection("messages").doc();
 
   return db.runTransaction(async (transaction) => {
-    // Get the current last chapter (highest order value)
-    const chaptersRef = db.collection("books").doc(bookId).collection("chapters");
-    const lastSnap = await transaction.get(
-      chaptersRef.orderBy("order", "desc").limit(1),
-    );
+    const [requestSnap, bookSnap, lastSnap, lastMessage] = await Promise.all([
+      transaction.get(requestRef),
+      transaction.get(bookRef),
+      transaction.get(chaptersRef.orderBy("order", "desc").limit(1)),
+      transaction.get(bookRef.collection("messages").orderBy("order", "desc").limit(1)),
+    ]);
 
-    if (lastSnap.empty) {
+    const existing = requestSnap.data() as
+      | { chapterId?: string; order?: number; prevChapterId?: string }
+      | undefined;
+    if (
+      requestSnap.exists &&
+      typeof existing?.chapterId === "string" &&
+      typeof existing.order === "number" &&
+      typeof existing.prevChapterId === "string"
+    ) {
+      return {
+        chapterId: existing.chapterId,
+        order: existing.order,
+        prevChapterId: existing.prevChapterId,
+      };
+    }
+
+    if (!bookSnap.exists || lastSnap.empty) {
       throw new NoChaptersError();
     }
 
     const lastDoc = lastSnap.docs[0]!;
     const prevChapterId = lastDoc.id;
     const prevOrder = (lastDoc.data() as Chapter).order;
-    const newOrder = prevOrder + 1;
+    const storedNextOrder = bookSnap.data()?.nextChapterOrder;
+    const newOrder =
+      typeof storedNextOrder === "number"
+        ? Math.max(storedNextOrder, prevOrder + 1)
+        : prevOrder + 1;
+    const nextMessageOrder = lastMessage.empty
+      ? 0
+      : ((lastMessage.docs[0]?.data().order as number | undefined) ?? -1) + 1;
+    const createdAt = FieldValue.serverTimestamp();
 
-    const newChapterRef = chaptersRef.doc();
     transaction.set(newChapterRef, {
       order: newOrder,
       nextSceneOrder: 0,
-      createdAt: FieldValue.serverTimestamp(),
+      createdAt,
+    });
+    transaction.update(bookRef, { nextChapterOrder: newOrder + 1 });
+    transaction.set(systemMessageRef, {
+      type: "system",
+      text: `Chapter ${newOrder + 1} started. The previous chapter is being archived in the background.`,
+      order: nextMessageOrder,
+      createdAt,
+    });
+    transaction.set(requestRef, {
+      chapterId: newChapterRef.id,
+      order: newOrder,
+      prevChapterId,
+      createdAt,
     });
 
     return { chapterId: newChapterRef.id, order: newOrder, prevChapterId };
@@ -271,7 +318,9 @@ export async function updateVisionDocument(
   bookId: string,
   patch: VisionUpdatePatch,
 ): Promise<VisionDocument | undefined> {
-  const visionRef = firestore().collection("books").doc(bookId).collection("vision").doc("main");
+  const db = firestore();
+  const bookRef = db.collection("books").doc(bookId);
+  const visionRef = bookRef.collection("vision").doc("main");
 
   const existing = await visionRef.get();
   if (!existing.exists) {
@@ -292,7 +341,12 @@ export async function updateVisionDocument(
     appearances: existingAppearancesById.get(thread.id) ?? [],
   }));
 
-  await visionRef.update({ ...patch, threads });
+  const batch = db.batch();
+  batch.update(visionRef, { ...patch, threads });
+  batch.update(bookRef, {
+    manuscriptRevision: FieldValue.increment(1),
+  });
+  await batch.commit();
 
   const snapshot = await visionRef.get();
   return snapshot.exists ? (snapshot.data() as VisionDocument) : undefined;
@@ -576,58 +630,27 @@ export async function retrieveRelevantFacts(
 export async function deleteBook(bookId: string, uid: string): Promise<void> {
   const db = firestore();
   const bookRef = db.collection("books").doc(bookId);
-  const bookSnap = await bookRef.get();
-  if (!bookSnap.exists) {
-    throw new Error("Book not found.");
-  }
-  const book = bookSnap.data() as Book;
-  if (book.uid !== uid) {
-    throw new Error("Permission denied.");
-  }
-
-  const purgeCollection = async (colRef: {
-    get: () => Promise<{ docs: Array<{ ref: { delete: () => Promise<unknown> } }> }>;
-  }) => {
-    const snap = await colRef.get();
-    for (const doc of snap.docs) {
-      await doc.ref.delete();
+  await db.runTransaction(async (transaction) => {
+    const bookSnap = await transaction.get(bookRef);
+    if (!bookSnap.exists) {
+      throw new Error("Book not found.");
     }
-  };
-
-  // 1. Delete chapters and nested scenes
-  const chaptersSnap = await bookRef.collection("chapters").get();
-  for (const chapDoc of chaptersSnap.docs) {
-    await purgeCollection(chapDoc.ref.collection("scenes"));
-    await chapDoc.ref.delete();
-  }
-
-  // 2. Delete messages
-  await purgeCollection(bookRef.collection("messages"));
-
-  // 3. Delete vision doc
-  await purgeCollection(bookRef.collection("vision"));
-
-  // 4. Delete facts (embeddings)
-  await purgeCollection(bookRef.collection("facts"));
-
-  // 5. Delete snapshots (and nested chapters, scenes, vision)
-  const snapshotsSnap = await bookRef.collection("snapshots").get();
-  for (const snapDoc of snapshotsSnap.docs) {
-    await purgeCollection(snapDoc.ref.collection("vision"));
-    const snapChaptersSnap = await snapDoc.ref.collection("chapters").get();
-    for (const snapChapDoc of snapChaptersSnap.docs) {
-      await purgeCollection(snapChapDoc.ref.collection("scenes"));
-      await snapChapDoc.ref.delete();
+    const book = bookSnap.data() as Book;
+    if (book.uid !== uid) {
+      throw new Error("Permission denied.");
     }
-    await snapDoc.ref.delete();
-  }
+    transaction.update(bookRef, {
+      deletionState: "deleting",
+      deletionRequestedAt: FieldValue.serverTimestamp(),
+    });
+  });
 
-  // 6. Delete openingSuggestionAttempts
-  await purgeCollection(bookRef.collection("openingSuggestionAttempts"));
+  const intakeRequests = await db
+    .collection("intakeRequests")
+    .where("bookId", "==", bookId)
+    .get();
+  await Promise.all(intakeRequests.docs.map((doc) => db.recursiveDelete(doc.ref)));
 
-  // 7. Delete generationSessions
-  await purgeCollection(bookRef.collection("generationSessions"));
-
-  // 8. Delete the book document itself
-  await bookRef.delete();
+  await getStorage().bucket().deleteFiles({ prefix: `exports/${bookId}-` });
+  await db.recursiveDelete(bookRef);
 }

@@ -74,18 +74,16 @@ describe("VisionPage", () => {
   });
 
   it("saves theme, premise, and character intents through /updateVision", async () => {
-    authenticatedFetchMock
-      .mockResolvedValueOnce(jsonResponse(loadedVision))
-      .mockResolvedValueOnce(
-        jsonResponse({
-          vision: {
-            ...loadedVision.vision,
-            theme: "Mystery",
-            premise: "A cleaner heist premise.",
-            characterIntents: ["Mara wants out", "Ivo wants revenge"],
-          },
-        }),
-      );
+    authenticatedFetchMock.mockResolvedValueOnce(jsonResponse(loadedVision)).mockResolvedValueOnce(
+      jsonResponse({
+        vision: {
+          ...loadedVision.vision,
+          theme: "Mystery",
+          premise: "A cleaner heist premise.",
+          characterIntents: ["Mara wants out", "Ivo wants revenge"],
+        },
+      }),
+    );
 
     render(<VisionPage bookId="book-1" />);
 
@@ -115,7 +113,9 @@ describe("VisionPage", () => {
 
   it("adds, edits, and marks a narrative thread paid off", async () => {
     authenticatedFetchMock
-      .mockResolvedValueOnce(jsonResponse({ ...loadedVision, vision: { ...loadedVision.vision, threads: [] } }))
+      .mockResolvedValueOnce(
+        jsonResponse({ ...loadedVision, vision: { ...loadedVision.vision, threads: [] } }),
+      )
       .mockResolvedValueOnce(
         jsonResponse({
           vision: {
@@ -177,6 +177,32 @@ describe("VisionPage", () => {
 
     expect(screen.queryByLabelText(/thread 1 surface detail/i)).not.toBeInTheDocument();
     expect(screen.getByText("No narrative threads yet.")).toBeInTheDocument();
+  });
+
+  it("automatically saves narrative thread changes after a short delay", async () => {
+    authenticatedFetchMock.mockResolvedValueOnce(jsonResponse(loadedVision)).mockResolvedValueOnce(
+      jsonResponse({
+        vision: {
+          ...loadedVision.vision,
+          threads: [{ ...loadedVision.vision.threads[0], surface: "A stopped watch" }],
+        },
+      }),
+    );
+
+    render(<VisionPage bookId="book-1" />);
+
+    fireEvent.change(await screen.findByLabelText(/thread 1 surface detail/i), {
+      target: { value: "A stopped watch" },
+    });
+
+    await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledTimes(2), {
+      timeout: 1_500,
+    });
+    expect(JSON.parse(authenticatedFetchMock.mock.calls[1][1].body as string)).toMatchObject({
+      vision: {
+        threads: [expect.objectContaining({ surface: "A stopped watch" })],
+      },
+    });
   });
 
   it("shows a distinct message when the caller doesn't own the book (401)", async () => {

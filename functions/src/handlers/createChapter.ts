@@ -3,7 +3,6 @@ import { onRequest } from "firebase-functions/v2/https";
 import { allowedOrigins } from "../config/cors.js";
 import { AuthError, verifyIdToken } from "../services/auth.js";
 import {
-  appendChatMessage,
   createNextChapter,
   getBook,
   NoChaptersError,
@@ -20,16 +19,22 @@ export type CreateChapterResult =
   | { statusCode: 200; body: CreateChapterSuccess }
   | { statusCode: 400 | 401 | 404 | 409; body: CreateChapterError };
 
-function parseBody(body: unknown): { bookId: string } | undefined {
+function parseBody(body: unknown): { bookId: string; idempotencyKey: string } | undefined {
   if (
     typeof body !== "object" ||
     body === null ||
     typeof (body as Record<string, unknown>).bookId !== "string" ||
-    !(body as Record<string, unknown>).bookId
+    !(body as Record<string, unknown>).bookId ||
+    typeof (body as Record<string, unknown>).idempotencyKey !== "string" ||
+    !(body as Record<string, unknown>).idempotencyKey ||
+    ((body as Record<string, unknown>).idempotencyKey as string).length > 128
   ) {
     return undefined;
   }
-  return { bookId: (body as Record<string, unknown>).bookId as string };
+  return {
+    bookId: (body as Record<string, unknown>).bookId as string,
+    idempotencyKey: (body as Record<string, unknown>).idempotencyKey as string,
+  };
 }
 
 export async function buildCreateChapterResponse(
@@ -40,7 +45,10 @@ export async function buildCreateChapterResponse(
   if (!parsed) {
     return {
       statusCode: 400,
-      body: { code: "invalid-argument", message: "A non-empty bookId is required." },
+      body: {
+        code: "invalid-argument",
+        message: "A non-empty bookId and idempotencyKey are required.",
+      },
     };
   }
 
@@ -67,10 +75,7 @@ export async function buildCreateChapterResponse(
   }
 
   try {
-    const result = await createNextChapter(parsed.bookId);
-    const chapterNumber = result.order + 1;
-    const systemText = `Chapter ${chapterNumber} started. The previous chapter is being archived in the background.`;
-    await appendChatMessage(parsed.bookId, "system", systemText);
+    const result = await createNextChapter(parsed.bookId, parsed.idempotencyKey);
     return { statusCode: 200, body: { chapterId: result.chapterId, order: result.order } };
   } catch (error) {
     if (error instanceof NoChaptersError) {

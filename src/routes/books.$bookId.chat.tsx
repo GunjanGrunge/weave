@@ -1,7 +1,9 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, Loader2, Send, Sparkles } from "lucide-react";
+import { ArrowLeft, BookOpen, Eye, Loader2, Send, Sparkles } from "lucide-react";
 
+import { BookTools } from "@/components/book/BookTools";
 import { SceneReviewCard } from "@/components/scene/SceneReviewCard";
 import { StyleControl } from "@/components/book/StyleControl";
 import { UsageIndicator } from "@/components/book/UsageIndicator";
@@ -95,9 +97,27 @@ function messageStyles(type: ChatMessageType): string {
   return "border-border bg-card text-foreground";
 }
 
+function messageKey(message: ChatMessage, index: number): string {
+  return message.id ?? `${message.type}:${message.order}:${index}`;
+}
+
+function reconcileMessages(current: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
+  if (incoming.length < current.length) return current;
+  const currentByKey = new Map(
+    current.map((message, index) => [messageKey(message, index), message]),
+  );
+  return incoming.map((message, index) => {
+    const existing = currentByKey.get(messageKey(message, index));
+    return existing && JSON.stringify(existing) === JSON.stringify(message) ? existing : message;
+  });
+}
+
 export function ChatPage({ bookId }: { bookId: string }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const activeBookIdRef = useRef(bookId);
   const routeVersionRef = useRef(0);
+  const chapterRequestRef = useRef<string | null>(null);
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [description, setDescription] = useState("");
   const [inputMode, setInputMode] = useState<InputMode>("free-text");
@@ -128,10 +148,15 @@ export function ChatPage({ bookId }: { bookId: string }) {
     setValidationError(null);
     setGenerationState({ status: "idle" });
     setChapterState({ status: "idle" });
+    chapterRequestRef.current = null;
     generationRequestRef.current = null;
 
-    async function loadMessages() {
-      setLoadState({ status: "loading" });
+    let pollInFlight = false;
+
+    async function loadMessages(showLoading: boolean) {
+      if (pollInFlight) return;
+      pollInFlight = true;
+      if (showLoading) setLoadState({ status: "loading" });
       try {
         const response = await authenticatedFetch("/getMessages", {
           method: "POST",
@@ -146,20 +171,55 @@ export function ChatPage({ bookId }: { bookId: string }) {
           throw new Error("Invalid messages response.");
         }
         if (!cancelled) {
-          setLoadState({ status: "ready", messages });
+          setLoadState((current) => ({
+            status: "ready",
+            messages:
+              showLoading || current.status !== "ready"
+                ? messages
+                : reconcileMessages(current.messages, messages),
+          }));
         }
       } catch {
-        if (!cancelled) {
+        if (!cancelled && showLoading) {
           setLoadState({ status: "error", message: "Could not load this book's Chat." });
         }
+      } finally {
+        pollInFlight = false;
       }
     }
 
-    void loadMessages();
+    void loadMessages(true);
+    const pollId = window.setInterval(() => {
+      if (document.visibilityState !== "hidden") {
+        void loadMessages(false);
+      }
+    }, 5_000);
     return () => {
       cancelled = true;
+      window.clearInterval(pollId);
     };
   }, [bookId]);
+
+  async function refreshMessages() {
+    try {
+      const response = await authenticatedFetch("/getMessages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookId }),
+      });
+      if (!response.ok) return;
+      const messages = parseChatMessages(await response.json());
+      if (messages && activeBookIdRef.current === bookId) {
+        setLoadState((current) => ({
+          status: "ready",
+          messages:
+            current.status === "ready" ? reconcileMessages(current.messages, messages) : messages,
+        }));
+      }
+    } catch {
+      // The regular poll will retry without interrupting the writing flow.
+    }
+  }
 
   async function submitScene() {
     if (generationState.status === "loading") {
@@ -293,11 +353,13 @@ export function ChatPage({ bookId }: { bookId: string }) {
       return;
     }
     setChapterState({ status: "loading" });
+    const idempotencyKey = chapterRequestRef.current ?? crypto.randomUUID();
+    chapterRequestRef.current = idempotencyKey;
     try {
       const response = await authenticatedFetch("/createChapter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookId }),
+        body: JSON.stringify({ bookId, idempotencyKey }),
       });
       if (!response.ok) {
         throw new Error("Failed to create new chapter.");
@@ -319,6 +381,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
           ],
         };
       });
+      chapterRequestRef.current = null;
       setChapterState({ status: "idle" });
     } catch {
       setChapterState({
@@ -389,9 +452,26 @@ export function ChatPage({ bookId }: { bookId: string }) {
         <ArrowLeft className="size-3" /> Back to shelf
       </Link>
 
-      <div className="mt-2 flex items-center justify-between gap-4">
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
         <h1 className="font-display text-4xl italic">Book Chat</h1>
-        <StyleControl bookId={bookId} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button type="button" variant="outline" size="sm" asChild>
+            <Link to="/books/$bookId/vision" params={{ bookId }}>
+              <Eye className="size-4" />
+              Vision
+            </Link>
+          </Button>
+          <StyleControl bookId={bookId} />
+          <BookTools
+            bookId={bookId}
+            onDeleted={() => {
+              void queryClient
+                .invalidateQueries({ queryKey: ["books"] })
+                .finally(() => navigate({ to: "/books" }));
+            }}
+            onRestored={() => window.location.reload()}
+          />
+        </div>
       </div>
 
       <div className="mt-6 flex-1 space-y-4 overflow-y-auto pr-2" data-testid="message-list">
@@ -406,7 +486,13 @@ export function ChatPage({ bookId }: { bookId: string }) {
             className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}
           >
             {message.type === "assistant_scene" && message.sessionId ? (
-              <SceneReviewCard bookId={bookId} message={message} />
+              <SceneReviewCard
+                bookId={bookId}
+                message={message}
+                onAccepted={() => {
+                  void refreshMessages();
+                }}
+              />
             ) : (
               <div
                 className={`max-w-[82%] whitespace-pre-wrap rounded-md border px-4 py-3 text-sm leading-relaxed ${messageStyles(message.type)}`}
@@ -444,13 +530,20 @@ export function ChatPage({ bookId }: { bookId: string }) {
       {chapterState.status === "error" && (
         <div className="mt-2 flex items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm">
           <p className="text-muted-foreground">{chapterState.message}</p>
-          <Button type="button" variant="outline" onClick={() => setChapterState({ status: "idle" })}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setChapterState({ status: "idle" })}
+          >
             Dismiss
           </Button>
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+      <div
+        className="mt-4 flex flex-wrap items-center justify-between gap-2"
+        data-testid="chat-toolbar"
+      >
         <div className="flex flex-wrap gap-2">
           <button
             type="button"

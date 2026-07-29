@@ -8,6 +8,7 @@ interface FactRecord {
   description: string;
   embedding?: number[];
   updatedAt?: string;
+  version?: number;
 }
 
 interface UsageLog {
@@ -19,6 +20,12 @@ interface UsageLog {
 const usageLogs: UsageLog[] = [];
 const savedFacts: Record<string, FactRecord> = {};
 let existingFactData: FactRecord | null = null;
+
+vi.mock("../services/automation.js", () => ({
+  claimAutomationTask: vi.fn(async () => true),
+  completeAutomationTask: vi.fn(async () => undefined),
+  failAutomationTask: vi.fn(async () => undefined),
+}));
 
 vi.mock("../services/gemini.js", () => ({
   readModelRegistry: vi.fn(async () => ({
@@ -81,8 +88,12 @@ vi.mock("firebase-admin/firestore", () => ({
         collection: vi.fn((_subName: string) => ({
           doc: vi.fn((subDocId: string) => ({
             get: vi.fn(async () => ({
-              exists: existingFactData !== null && subDocId === "elena",
-              data: vi.fn(() => existingFactData)
+              exists: existingFactData !== null && subDocId.startsWith("elena-"),
+              data: vi.fn(() =>
+                existingFactData !== null && subDocId.startsWith("elena-")
+                  ? existingFactData
+                  : undefined,
+              ),
             })),
             set: vi.fn(async (data: FactRecord) => {
               savedFacts[subDocId] = data;
@@ -90,7 +101,14 @@ vi.mock("firebase-admin/firestore", () => ({
           }))
         }))
       }))
-    }))
+    })),
+    runTransaction: vi.fn(async (fn) =>
+      fn({
+        get: (ref: { get: () => Promise<unknown> }) => ref.get(),
+        set: (ref: { set: (data: FactRecord) => Promise<void> }, data: FactRecord) =>
+          ref.set(data),
+      }),
+    ),
   }))
 }));
 
@@ -118,19 +136,18 @@ describe("Background Entity Extraction on Scene Accept Trigger", () => {
   it("extracts and creates new facts when none exist", async () => {
     await handleSceneAccept(makeEvent("Elena sat alone in The Crimson Inn, thinking about her past heists."));
 
-    // Should create elena and the_crimson_inn
-    expect(savedFacts.elena).toBeDefined();
-    expect(savedFacts.elena.name).toBe("Elena");
-    expect(savedFacts.elena.type).toBe("character");
-    expect(savedFacts.elena.description).toBe("Elena is a retired cat burglar.");
-    expect(savedFacts.elena.embedding).toHaveLength(768);
-    expect(savedFacts.elena.updatedAt).toBe("server-timestamp");
+    const elena = Object.values(savedFacts).find((fact) => fact.name === "Elena");
+    const inn = Object.values(savedFacts).find((fact) => fact.name === "The Crimson Inn");
+    expect(elena).toBeDefined();
+    expect(elena?.type).toBe("character");
+    expect(elena?.description).toBe("Elena is a retired cat burglar.");
+    expect(elena?.embedding).toHaveLength(768);
+    expect(elena?.updatedAt).toBe("server-timestamp");
 
-    expect(savedFacts.the_crimson_inn).toBeDefined();
-    expect(savedFacts.the_crimson_inn.name).toBe("The Crimson Inn");
-    expect(savedFacts.the_crimson_inn.type).toBe("location");
-    expect(savedFacts.the_crimson_inn.description).toBe("A dusty tavern.");
-    expect(savedFacts.the_crimson_inn.embedding).toHaveLength(768);
+    expect(inn).toBeDefined();
+    expect(inn?.type).toBe("location");
+    expect(inn?.description).toBe("A dusty tavern.");
+    expect(inn?.embedding).toHaveLength(768);
 
     // Verify usage logging: 1 extraction and 2 embedding calls logged
     const extractionLogs = usageLogs.filter(log => log.task === "entityExtraction");
@@ -149,9 +166,9 @@ describe("Background Entity Extraction on Scene Accept Trigger", () => {
     await handleSceneAccept(makeEvent("Elena sat alone in The Crimson Inn, thinking about her past heists."));
 
     // Elena should be updated with merged description
-    expect(savedFacts.elena).toBeDefined();
-    expect(savedFacts.elena.name).toBe("Elena");
-    expect(savedFacts.elena.description).toBe("Elena is a retired cat burglar who lives in the shadows.");
+    const elena = Object.values(savedFacts).find((fact) => fact.name === "Elena");
+    expect(elena).toBeDefined();
+    expect(elena?.description).toBe("Elena is a retired cat burglar who lives in the shadows.");
 
     // Verify merge usage was logged
     const extractionLogs = usageLogs.filter(log => log.task === "entityExtraction");

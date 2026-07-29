@@ -145,6 +145,24 @@ describe("Snapshot & Export HTTP Handlers", () => {
       });
       expect(restoreBookSnapshotMock).toHaveBeenCalledWith("book-1", "snap-123", true, "user-1");
     });
+
+    it("does not treat a truthy string as destructive confirmation", async () => {
+      verifyIdTokenMock.mockResolvedValue({ uid: "user-1" });
+      restoreBookSnapshotMock.mockResolvedValue(undefined);
+
+      await buildRestoreSnapshotResponse("Bearer token", {
+        bookId: "book-1",
+        snapshotId: "snap-123",
+        confirmed: "false",
+      });
+
+      expect(restoreBookSnapshotMock).toHaveBeenCalledWith(
+        "book-1",
+        "snap-123",
+        false,
+        "user-1",
+      );
+    });
   });
 
   describe("exportBook", () => {

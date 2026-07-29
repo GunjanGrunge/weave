@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { verifyIdTokenMock, getBookMock, createNextChapterMock, appendChatMessageMock } = vi.hoisted(() => ({
+const { verifyIdTokenMock, getBookMock, createNextChapterMock } = vi.hoisted(() => ({
   verifyIdTokenMock: vi.fn(),
   getBookMock: vi.fn(),
   createNextChapterMock: vi.fn(),
-  appendChatMessageMock: vi.fn(),
 }));
 
 vi.mock("../services/auth.js", async () => {
@@ -20,7 +19,6 @@ vi.mock("../services/books.js", async () => {
     ...actual,
     getBook: getBookMock,
     createNextChapter: createNextChapterMock,
-    appendChatMessage: appendChatMessageMock,
   };
 });
 
@@ -33,7 +31,6 @@ describe("buildCreateChapterResponse", () => {
     verifyIdTokenMock.mockReset();
     getBookMock.mockReset();
     createNextChapterMock.mockReset();
-    appendChatMessageMock.mockReset();
   });
 
   it("returns 200 {chapterId, order} for a valid owned book", async () => {
@@ -45,18 +42,16 @@ describe("buildCreateChapterResponse", () => {
       prevChapterId: "chapter-1",
     });
 
-    const result = await buildCreateChapterResponse("Bearer valid", { bookId: "book-1" });
+    const result = await buildCreateChapterResponse("Bearer valid", {
+      bookId: "book-1",
+      idempotencyKey: "request-1",
+    });
 
     expect(result).toEqual({
       statusCode: 200,
       body: { chapterId: "chapter-2", order: 1 },
     });
-    expect(createNextChapterMock).toHaveBeenCalledWith("book-1");
-    expect(appendChatMessageMock).toHaveBeenCalledWith(
-      "book-1",
-      "system",
-      "Chapter 2 started. The previous chapter is being archived in the background.",
-    );
+    expect(createNextChapterMock).toHaveBeenCalledWith("book-1", "request-1");
   });
 
   it("returns 401 when auth token is missing or invalid", async () => {
@@ -64,7 +59,10 @@ describe("buildCreateChapterResponse", () => {
       new AuthError("Missing or invalid token."),
     );
 
-    const result = await buildCreateChapterResponse(undefined, { bookId: "book-1" });
+    const result = await buildCreateChapterResponse(undefined, {
+      bookId: "book-1",
+      idempotencyKey: "request-1",
+    });
 
     expect(result.statusCode).toBe(401);
     expect((result.body as { code: string }).code).toBe("unauthenticated");
@@ -75,7 +73,10 @@ describe("buildCreateChapterResponse", () => {
     verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
     getBookMock.mockResolvedValue(undefined);
 
-    const result = await buildCreateChapterResponse("Bearer valid", { bookId: "nonexistent" });
+    const result = await buildCreateChapterResponse("Bearer valid", {
+      bookId: "nonexistent",
+      idempotencyKey: "request-1",
+    });
 
     expect(result.statusCode).toBe(404);
     expect(createNextChapterMock).not.toHaveBeenCalled();
@@ -85,7 +86,10 @@ describe("buildCreateChapterResponse", () => {
     verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
     getBookMock.mockResolvedValue({ uid: "user-b", title: "Their Book" });
 
-    const result = await buildCreateChapterResponse("Bearer valid", { bookId: "book-2" });
+    const result = await buildCreateChapterResponse("Bearer valid", {
+      bookId: "book-2",
+      idempotencyKey: "request-1",
+    });
 
     expect(result.statusCode).toBe(401);
     expect((result.body as { code: string }).code).toBe("permission-denied");
@@ -97,7 +101,10 @@ describe("buildCreateChapterResponse", () => {
     getBookMock.mockResolvedValue({ uid: "user-a", title: "Empty Book" });
     createNextChapterMock.mockRejectedValue(new NoChaptersError());
 
-    const result = await buildCreateChapterResponse("Bearer valid", { bookId: "book-empty" });
+    const result = await buildCreateChapterResponse("Bearer valid", {
+      bookId: "book-empty",
+      idempotencyKey: "request-1",
+    });
 
     expect(result.statusCode).toBe(409);
     expect((result.body as { code: string }).code).toBe("failed-precondition");

@@ -131,12 +131,47 @@ vi.mock("firebase-admin/firestore", () => ({
   },
   getFirestore: vi.fn(() => ({
     collection: (cName: string) => makeCollectionRef(cName),
+    batch: vi.fn(() => {
+      const operations: Array<() => void> = [];
+      return {
+        set: vi.fn((ref: { path: string }, data: unknown) => {
+          operations.push(() => {
+            docStore[ref.path] = data;
+          });
+        }),
+        delete: vi.fn((ref: { path: string }) => {
+          operations.push(() => {
+            delete docStore[ref.path];
+            deletedPaths.push(ref.path);
+          });
+        }),
+        update: vi.fn((ref: { path: string }, data: Record<string, unknown>) => {
+          operations.push(() => {
+            updateCalls[ref.path] = data;
+            docStore[ref.path] = {
+              ...(docStore[ref.path] as Record<string, unknown> | undefined),
+              ...data,
+            };
+          });
+        }),
+        commit: vi.fn(async () => {
+          operations.forEach((operation) => operation());
+        }),
+      };
+    }),
     runTransaction: vi.fn(async (fn) => {
       const transaction = {
         get: vi.fn(async (ref: { path: string }) => ({
           exists: docStore[ref.path] !== undefined,
           data: () => docStore[ref.path],
         })),
+        set: vi.fn((ref: { path: string }, data: unknown) => {
+          docStore[ref.path] = data;
+        }),
+        delete: vi.fn((ref: { path: string }) => {
+          delete docStore[ref.path];
+          deletedPaths.push(ref.path);
+        }),
         update: vi.fn((ref: { path: string }, data: Record<string, unknown>) => {
           updateCalls[ref.path] = data;
           if (docStore[ref.path]) {
@@ -167,7 +202,9 @@ import {
 
 describe("Snapshots Service", () => {
   beforeEach(() => {
-    docStore = {};
+    docStore = {
+      "books/book-1": { uid: "user-123", manuscriptRevision: 1 },
+    };
     deletedPaths = [];
     updateCalls = {};
 
@@ -207,11 +244,27 @@ describe("Snapshots Service", () => {
         createBookSnapshot("book-1", "Backup", "wrong-user"),
       ).rejects.toThrow("Permission denied.");
     });
+
+    it("does not publish a snapshot when the manuscript revision changes during capture", async () => {
+      getBookMock
+        .mockResolvedValueOnce({ uid: "user-123", manuscriptRevision: 1 })
+        .mockResolvedValueOnce({ uid: "user-123", manuscriptRevision: 1 });
+      docStore["books/book-1"] = { uid: "user-123", manuscriptRevision: 2 };
+
+      await expect(
+        createBookSnapshot("book-1", "Raced Backup", "user-123"),
+      ).rejects.toThrow("The manuscript changed while the snapshot was being prepared.");
+      expect(docStore["books/book-1/snapshots/mock-generated-id"]).toBeUndefined();
+    });
   });
 
   describe("listBookSnapshots", () => {
     it("lists metadata of saved snapshots", async () => {
       docStore["books/book-1/snapshots/snap-1"] = { name: "First", createdAt: "2026-07-29T12:00:00Z" };
+      docStore["books/book-1/snapshots/snap-building"] = {
+        name: "Incomplete",
+        state: "creating",
+      };
 
       const list = await listBookSnapshots("book-1", "user-123");
 
@@ -283,14 +336,21 @@ describe("Snapshots Service", () => {
 
       // Restored content matches snapshot
       expect(docStore["books/book-1/vision/main"]).toEqual({ theme: "Restored adventure" });
-      expect(docStore["books/book-1/chapters/chapter-restored"]).toEqual({ order: 0 });
+      expect(docStore["books/book-1/chapters/chapter-restored"]).toEqual({
+        order: 0,
+        restoredFromSnapshot: "snap-restore",
+      });
       expect(docStore["books/book-1/chapters/chapter-restored/scenes/scene-restored"]).toEqual({
         text: "Restored text",
         order: 0,
+        restoredFromSnapshot: "snap-restore",
       });
 
       // manuscriptRevision is incremented
-      expect(updateCalls["books/book-1"]).toEqual({ manuscriptRevision: 2 });
+      expect(updateCalls["books/book-1"]).toEqual({
+        manuscriptRevision: 2,
+        restoredAt: "server-timestamp",
+      });
     });
 
     it("throws error if restore is not explicitly confirmed", async () => {
@@ -312,8 +372,20 @@ describe("Snapshots Service", () => {
       expect(url).toBe("http://google-storage/mock-signed-url");
       expect(saveMock).toHaveBeenCalledWith(
         expect.stringContaining("# Elena's Legacy\n\n## Chapter 1\n\nOpening scene."),
-        { contentType: "text/markdown" },
+        {
+          contentType: "text/markdown",
+          metadata: { cacheControl: "private, no-store" },
+        },
       );
+    });
+
+    it("fails securely when a signed URL cannot be generated", async () => {
+      getSignedUrlMock.mockRejectedValue(new Error("signing unavailable"));
+
+      await expect(
+        exportBookManuscript("book-1", "plain-text", "user-123"),
+      ).rejects.toThrow("signing unavailable");
+      expect(publicUrlMock).not.toHaveBeenCalled();
     });
   });
 });

@@ -14,6 +14,12 @@ let visionUpdatedWith: unknown = null;
 const appendedMessages: unknown[] = [];
 let museModelCalledWithPrompt = "";
 
+vi.mock("../services/automation.js", () => ({
+  claimAutomationTask: vi.fn(async () => true),
+  completeAutomationTask: vi.fn(async () => undefined),
+  failAutomationTask: vi.fn(async () => undefined),
+}));
+
 vi.mock("../services/gemini.js", () => ({
   readModelRegistry: vi.fn(async () => ({
     museNote: { primary: { provider: "gemini", model: "gemini-3.6-flash" } },
@@ -142,9 +148,13 @@ vi.mock("firebase-admin/firestore", () => ({
       return {};
     }),
     runTransaction: vi.fn(async (fn) => {
+      let getCall = 0;
       const transaction = {
         get: vi.fn(async (_ref: unknown) => {
-          // Mock the messages reference get inside transaction
+          getCall += 1;
+          if (getCall === 1) {
+            return { exists: false, data: () => undefined };
+          }
           return {
             empty: false,
             docs: [{ data: () => ({ order: 5 }) }],
@@ -152,6 +162,9 @@ vi.mock("firebase-admin/firestore", () => ({
         }),
         set: vi.fn((_ref: unknown, val: unknown) => {
           appendedMessages.push(val);
+        }),
+        update: vi.fn((_ref: unknown, val: unknown) => {
+          visionUpdatedWith = val;
         }),
       };
       return fn(transaction);

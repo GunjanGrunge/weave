@@ -52,7 +52,15 @@ function fromMessage(message: ChatMessage): SceneCandidate {
   };
 }
 
-export function SceneReviewCard({ bookId, message }: { bookId: string; message: ChatMessage }) {
+export function SceneReviewCard({
+  bookId,
+  message,
+  onAccepted,
+}: {
+  bookId: string;
+  message: ChatMessage;
+  onAccepted?: () => void;
+}) {
   const initial = fromMessage(message);
   const identity = `${bookId}:${initial.sessionId}`;
   const identityRef = useRef(identity);
@@ -241,6 +249,8 @@ export function SceneReviewCard({ bookId, message }: { bookId: string; message: 
       applyCanonical(next);
       if (kind === "revert") {
         setCompareOpen(false);
+      } else if (kind === "accept") {
+        onAccepted?.();
       }
     } catch (error) {
       if (identityRef.current !== requestIdentity) {

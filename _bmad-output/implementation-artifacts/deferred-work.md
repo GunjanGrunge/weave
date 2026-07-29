@@ -54,6 +54,26 @@
 - **Resolved by Story 2.3a (2026-07-28):** Real books and the functional Book Chat were disconnected from the visible shelf and `/write` studio. The new ownership-scoped `listBooks` endpoint now powers the dashboard and shelf, cards open `/books/{bookId}/chat`, and the mock `/write` route/catalog were removed.
 - Assembled prompts can grow without a total context budget as accepted scenes accumulate [functions/src/pipelines/assembleContext.ts:16, functions/src/pipelines/composePrompt.ts:56]. This predates Story 2.3 and is already represented by the Story 2.1 deferred item for unbounded prior-scene context; retained here because the 8,000-character draft mode adds to the same model-latency risk.
 
+## Epics 3-4 and book deletion review (2026-07-29)
+
+Resolved in the review remediation:
+
+- Chapter creation now uses a client idempotency key and one contended Firestore transaction.
+- Background summaries, entity extraction, and Muse notes use durable automation claims and deterministic output IDs.
+- Fact merges use optimistic version checks and collision-resistant entity IDs.
+- Context revision is checked after all reads, embedding usage is recorded, and Muse notes refresh in Chat.
+- Snapshots publish atomically against a watched manuscript revision.
+- Restore is bounded and atomic, restores coherent message/session state, and suppresses restore-generated triggers.
+- Snapshot, compare, restore, export, Vision navigation, and deletion controls are wired into the authenticated UI.
+- Restore/delete confirmation is strict, exports require signed URLs, and large operations are bounded.
+- Recursive book deletion covers unknown nested state, intake requests, and Storage exports.
+- Function deployment coverage, Hosting rewrites, the vector index, and the frontend assertion were repaired.
+
+Still open:
+
+- [Story 4.5] Provision and verify PITR, scheduled managed exports, retention, and a restore drill before moving the story out of backlog.
+- [Release verification] The remediation has passed local frontend/backend verification but has not yet completed CI deployment or authenticated production verification.
+
 ## Deferred from: code review of 2-6-see-what-my-writing-costs (2026-07-29)
 
 - The frontend subscribes directly to `books/{bookId}/usage` using `onSnapshot` and reduces all usage records in memory. For books with a very high number of generations, this will retrieve and process a large array of documents, causing network and client-side processing overhead. [src/lib/usage.ts:40-54] — deferred, design choice (pre-optimization avoided in V1).

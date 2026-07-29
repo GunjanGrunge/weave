@@ -1,64 +1,84 @@
-# Firestore Durability & Recovery Runbook
+# Firestore Durability and Recovery Runbook
 
-This document details the configuration and recovery procedures for the platform's production Firestore database backups, in compliance with **AD-12** and **NFR-3**.
+This runbook describes recovery capabilities that are evidenced by this
+repository. It does not assert that Google Cloud project settings have been
+enabled unless they can be verified from version-controlled configuration.
 
----
+## Capability Status
 
-## 1. Durability Architecture
+| Capability | Repository evidence | Operational status |
+| --- | --- | --- |
+| Named book snapshots | `saveSnapshot`, `listSnapshots`, `compareSnapshot`, and `restoreSnapshot` Functions | Implemented; deployment and live recovery verification are not recorded |
+| Manuscript export | `exportBook` Function writes Markdown or plain text to the Firebase project's default Storage bucket | Implemented; deployment and signed-download verification are not recorded |
+| Firestore point-in-time recovery (PITR) | None | Not verified or provisioned by this repository |
+| Scheduled managed Firestore exports | None | Not provisioned by this repository |
+| Backup bucket lifecycle/retention policy | None | Not provisioned by this repository |
 
-1. **Point-in-Time Recovery (PITR):**
-   - Enabled on the production Firestore database.
-   - Provides a continuous **7-day recovery window**.
-   - Allows restoring the database state to any microsecond timestamp within the last 7 days.
-2. **Weekly Managed Exports:**
-   - A scheduled weekly Cloud Scheduler job triggers a managed Firestore export to a Cloud Storage (GCS) bucket (`gs://story-weaver-backups-prod`).
-   - Retained for at least **4 weeks**.
-3. **Important Distinction:**
-   - **Version Snapshots** (Story 4.1) are user-level, experimental checkpoints saved under the book subcollections. They are *not* part of the infrastructure disaster recovery/durability system.
+Named book snapshots are application-level editing checkpoints. They are stored
+inside the same Firestore database as the live book and therefore are not an
+independent disaster-recovery backup.
 
----
+## Application Snapshot Recovery
 
-## 2. Recovery Procedures
+The restore endpoint is destructive and must remain an operator-supervised
+operation:
 
-### A. Restoring from Point-in-Time Recovery (PITR)
+1. Confirm the snapshot exists and comparison output matches the intended
+   rollback point.
+2. Create an independent export before restoring.
+3. Call the authenticated `restoreSnapshot` endpoint with an explicit boolean
+   confirmation.
+4. Verify the book, chapters, scenes, Vision document, messages, generation
+   sessions, and background-trigger results before allowing edits to resume.
 
-To recover the database to a specific microsecond timestamp in the last 7 days:
+Restore is committed as one revision-watched Firestore transaction and rejects
+manuscripts that exceed its bounded atomic write limit. Restored chapter and
+scene documents carry a restore marker so creation triggers do not regenerate
+summaries, facts, or Muse notes.
 
-#### Option 1: Using the `gcloud` CLI
-Execute the `gcloud firestore databases restore` command:
-```bash
-gcloud firestore databases restore \
-  --database='(default)' \
-  --destination-database='restored-db-prod' \
-  --snapshot-time='2026-07-29T12:00:00Z'
-```
-*Note: Firestore requires restoring to a new database instance. Once restored, configure your application/functions to point to the destination database.*
+Do not present this procedure as disaster recovery. A database outage or
+database-wide data loss can remove both the live data and these snapshots.
 
-#### Option 2: Using the Google Cloud Console
-1. Navigate to **Firestore** in the GCP Console.
-2. Click on the **Databases** tab.
-3. Select the target database and click **Restore**.
-4. Specify the **Snapshot time** (within the 7-day PITR window).
-5. Enter a new **Destination database ID** and click **Restore**.
+## Manuscript Export
 
----
+The `exportBook` endpoint creates a Markdown or plain-text object under
+`exports/` in the project's default Firebase Storage bucket and returns a
+15-minute signed URL. It does not fall back to an unauthenticated public URL.
 
-### B. Restoring from a GCS Export
+An export is a manuscript copy, not a complete Firestore backup. It does not
+contain all operational metadata, messages, usage records, model state, or
+snapshot history. Signed URL generation and bucket access must be verified
+after deployment before relying on this path.
 
-To import a weekly backup exported to Cloud Storage back into Firestore:
+## Infrastructure Recovery Prerequisites
 
-#### Step 1: Ensure Permissions
-Ensure the Firestore Service Agent has the `Storage Object Viewer` permission on the backup bucket.
+Before claiming NFR-3 or AD-12 infrastructure recovery coverage, an operator
+must provision and record evidence for all of the following:
 
-#### Step 2: Run Import Command
-Execute the import command via `gcloud`:
-```bash
-gcloud firestore import gs://story-weaver-backups-prod/2026-07-26T04:00:00_weekly/ \
-  --database='(default)'
-```
-*To import only specific collections (e.g. `books`):*
-```bash
-gcloud firestore import gs://story-weaver-backups-prod/2026-07-26T04:00:00_weekly/ \
-  --collection-ids='books' \
-  --database='(default)'
-```
+1. Enable Firestore PITR for the production database and record the database
+   name, recovery window, and verification date.
+2. Create a dedicated backup bucket in the required region.
+3. Configure scheduled managed Firestore exports.
+4. Configure object retention or lifecycle rules for the approved retention
+   period.
+5. Grant only the required Firestore service-agent and recovery-operator IAM
+   roles.
+6. Perform a restore drill into a separate database or project and record the
+   result.
+
+The exact `gcloud` commands depend on the production database, region, bucket,
+retention policy, and organization IAM policy. Do not copy placeholder project
+or bucket names into an operational command.
+
+## Evidence Record
+
+For each recovery control, record:
+
+- project and database ID;
+- configuration command or infrastructure change reference;
+- completion timestamp and operator;
+- relevant policy output;
+- restore-drill date, destination, result, and cleanup confirmation.
+
+Until that evidence exists, production PITR and scheduled managed exports must
+be reported as unverified.

@@ -8,6 +8,11 @@ import {
 
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "../config/secrets.js";
 import {
+  claimAutomationTask,
+  completeAutomationTask,
+  failAutomationTask,
+} from "../services/automation.js";
+import {
   callWithFallback,
   readModelRegistry,
   recordUsageBestEffort,
@@ -48,6 +53,10 @@ export async function handleChapterCreate(
 
   const { bookId } = event.params;
   const newChapterData = snap.data() as Chapter;
+  if (typeof (newChapterData as Chapter & { restoredFromSnapshot?: unknown }).restoredFromSnapshot === "string") {
+    console.log("Restored chapter detected. Skipping chapter summarization.");
+    return;
+  }
   const newOrder = newChapterData.order;
 
   // First chapter — no previous chapter to summarize
@@ -57,6 +66,8 @@ export async function handleChapterCreate(
   }
 
   const db = firestore();
+  let taskId: string | undefined;
+  let claimed = false;
 
   try {
     // Find the previous chapter by order
@@ -82,6 +93,12 @@ export async function handleChapterCreate(
       console.log(`Chapter ${prevChapterId} already has a summary. Skipping.`);
       return;
     }
+    taskId = `summary-${prevChapterId}`;
+    claimed = await claimAutomationTask(bookId, taskId);
+    if (!claimed) {
+      console.log(`Chapter ${prevChapterId} summarization already claimed.`);
+      return;
+    }
 
     const prevChapterRef = db
       .collection("books")
@@ -101,6 +118,7 @@ export async function handleChapterCreate(
         summary: "(No scenes accepted in this chapter.)",
         summarizedAt: FieldValue.serverTimestamp(),
       });
+      await completeAutomationTask(bookId, taskId);
       console.log(`Chapter ${prevChapterId} had no scenes; wrote placeholder summary.`);
       return;
     }
@@ -127,11 +145,21 @@ export async function handleChapterCreate(
     });
 
     await recordUsageBestEffort(bookId, "chapterSummary", result);
+    await completeAutomationTask(bookId, taskId);
 
     console.log(`Successfully summarized chapter ${prevChapterId} for book ${bookId}.`);
   } catch (error) {
     // Fail silently — summarization is background infrastructure, never user-blocking
     console.error(`Chapter summarization failed for book ${bookId}:`, error);
+    if (claimed && taskId) {
+      await failAutomationTask(
+        bookId,
+        taskId,
+        error instanceof Error ? error.message : "Unknown summary failure.",
+      ).catch((claimError) => {
+        console.error("Failed to record summary automation state:", claimError);
+      });
+    }
   }
 }
 

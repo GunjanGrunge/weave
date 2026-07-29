@@ -26,7 +26,10 @@ describe("buildDeleteBookResponse", () => {
     verifyIdTokenMock.mockResolvedValue({ uid: "user-123" });
     deleteBookMock.mockResolvedValue(undefined);
 
-    const result = await buildDeleteBookResponse("Bearer token", { bookId: "book-1" });
+    const result = await buildDeleteBookResponse("Bearer token", {
+      bookId: "book-1",
+      confirmation: "DELETE",
+    });
 
     expect(result).toEqual({
       statusCode: 200,
@@ -40,11 +43,23 @@ describe("buildDeleteBookResponse", () => {
     expect(result.statusCode).toBe(400);
   });
 
+  it("returns 400 without the exact destructive confirmation", async () => {
+    const result = await buildDeleteBookResponse("Bearer token", {
+      bookId: "book-1",
+      confirmation: "delete",
+    });
+    expect(result.statusCode).toBe(400);
+    expect(verifyIdTokenMock).not.toHaveBeenCalled();
+  });
+
   it("returns 404 when book is not found", async () => {
     verifyIdTokenMock.mockResolvedValue({ uid: "user-123" });
     deleteBookMock.mockRejectedValue(new Error("Book not found."));
 
-    const result = await buildDeleteBookResponse("Bearer token", { bookId: "book-1" });
+    const result = await buildDeleteBookResponse("Bearer token", {
+      bookId: "book-1",
+      confirmation: "DELETE",
+    });
     expect(result.statusCode).toBe(404);
   });
 
@@ -52,7 +67,10 @@ describe("buildDeleteBookResponse", () => {
     verifyIdTokenMock.mockResolvedValue({ uid: "user-123" });
     deleteBookMock.mockRejectedValue(new Error("Permission denied."));
 
-    const result = await buildDeleteBookResponse("Bearer token", { bookId: "book-1" });
+    const result = await buildDeleteBookResponse("Bearer token", {
+      bookId: "book-1",
+      confirmation: "DELETE",
+    });
     expect(result.statusCode).toBe(401);
   });
 });

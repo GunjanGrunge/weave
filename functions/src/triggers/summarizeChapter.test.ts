@@ -21,6 +21,12 @@ const scenes: Record<string, StoredScene[]> = {};    // keyed by chapterId
 const updates: Record<string, Record<string, unknown>> = {};
 let geminiShouldFail = false;
 
+vi.mock("../services/automation.js", () => ({
+  claimAutomationTask: vi.fn(async () => true),
+  completeAutomationTask: vi.fn(async () => undefined),
+  failAutomationTask: vi.fn(async () => undefined),
+}));
+
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
 vi.mock("../services/gemini.js", () => ({

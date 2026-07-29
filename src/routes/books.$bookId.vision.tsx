@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Check, Loader2, Plus, Save, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -67,6 +67,7 @@ function VisionRoute() {
 }
 
 export function VisionPage({ bookId }: { bookId: string }) {
+  const editVersionRef = useRef(0);
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [theme, setTheme] = useState("");
   const [premise, setPremise] = useState("");
@@ -121,11 +122,16 @@ export function VisionPage({ bookId }: { bookId: string }) {
   }, [bookId]);
 
   const characterIntents = useMemo(
-    () => characterIntentText.split("\n").map((line) => line.trim()).filter(Boolean),
+    () =>
+      characterIntentText
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean),
     [characterIntentText],
   );
 
   function markDirty() {
+    editVersionRef.current += 1;
     setSaveState((current) => (current === "saving" ? current : "dirty"));
   }
 
@@ -143,7 +149,8 @@ export function VisionPage({ bookId }: { bookId: string }) {
     markDirty();
   }
 
-  async function saveVision() {
+  const saveVision = useCallback(async () => {
+    const savingVersion = editVersionRef.current;
     setSaveState("saving");
     try {
       const response = await authenticatedFetch("/updateVision", {
@@ -163,6 +170,10 @@ export function VisionPage({ bookId }: { bookId: string }) {
         throw new Error("Save failed.");
       }
       const result = (await response.json()) as { vision: VisionDocument };
+      if (editVersionRef.current !== savingVersion) {
+        setSaveState("dirty");
+        return;
+      }
       setTheme(result.vision.theme);
       setPremise(result.vision.premise);
       setCharacterIntentText(result.vision.characterIntents.join("\n"));
@@ -174,7 +185,15 @@ export function VisionPage({ bookId }: { bookId: string }) {
     } catch {
       setSaveState("error");
     }
-  }
+  }, [bookId, characterIntents, premise, theme, threads]);
+
+  useEffect(() => {
+    if (saveState !== "dirty") return;
+    const timer = window.setTimeout(() => {
+      void saveVision();
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [saveState, saveVision]);
 
   if (loadState.status === "loading") {
     return (
@@ -219,6 +238,7 @@ export function VisionPage({ bookId }: { bookId: string }) {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground" aria-live="polite">
+            {saveState === "idle" && "Changes save automatically"}
             {saveState === "dirty" && "Unsaved changes"}
             {saveState === "saving" && "Saving..."}
             {saveState === "saved" && "Saved"}
@@ -388,7 +408,10 @@ export function VisionPage({ bookId }: { bookId: string }) {
                 <p className="text-sm text-muted-foreground">No structure beats recorded yet.</p>
               ) : (
                 vision.structureMap.map((beat) => (
-                  <div key={`${beat.beat}-${beat.sceneRef}`} className="rounded border border-border p-3">
+                  <div
+                    key={`${beat.beat}-${beat.sceneRef}`}
+                    className="rounded border border-border p-3"
+                  >
                     <p className="text-sm font-medium">{beat.beat}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{beat.sceneRef}</p>
                   </div>

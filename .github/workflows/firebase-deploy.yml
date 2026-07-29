@@ -88,12 +88,11 @@ jobs:
         shell: bash
         run: |
           batches=(
-            "functions:health,functions:whoami,functions:listBooks"
-            "functions:createBook,functions:retryOpeningSuggestion,functions:getVision"
-            "functions:updateVision,functions:getMessages,functions:generateScene"
-            "functions:saveGeneratedScene,functions:regenerateScene"
-            "functions:revertGeneratedScene,functions:acceptScene"
-            "functions:getStyleConfig,functions:updateBookStyle"
+            "functions:health,functions:whoami,functions:listBooks,functions:createBook,functions:createChapter"
+            "functions:retryOpeningSuggestion,functions:getVision,functions:updateVision,functions:getMessages,functions:generateScene"
+            "functions:saveGeneratedScene,functions:regenerateScene,functions:revertGeneratedScene,functions:acceptScene,functions:getStyleConfig"
+            "functions:updateBookStyle,functions:saveSnapshot,functions:listSnapshots,functions:compareSnapshot,functions:restoreSnapshot"
+            "functions:exportBook,functions:deleteBook,functions:extractEntitiesOnSceneAccept,functions:summarizePreviousChapter,functions:generateMuseNoteOnSceneAccept"
           )
 
           for batch in "${batches[@]}"; do
