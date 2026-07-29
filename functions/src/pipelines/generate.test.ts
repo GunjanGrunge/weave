@@ -203,7 +203,11 @@ describe("generation pipelines", () => {
 
     await runRegenerate("book-1", "session-1", 0, "regen-123", keys);
 
-    expect(assembleContextMock).toHaveBeenCalledWith("book-1");
+    expect(assembleContextMock).toHaveBeenCalledWith(
+      "book-1",
+      { mode: "free-text", description: "Original input" },
+      keys,
+    );
   });
 
   it("preserves the current candidate when regeneration fails", async () => {

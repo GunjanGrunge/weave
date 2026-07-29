@@ -442,7 +442,9 @@ export async function appendChatMessage(
   return message;
 }
 
-async function getActiveChapterId(bookId: string): Promise<string | undefined> {
+export async function getActiveChapter(
+  bookId: string,
+): Promise<{ id: string; order: number } | undefined> {
   const snapshot = await firestore()
     .collection("books")
     .doc(bookId)
@@ -451,16 +453,23 @@ async function getActiveChapterId(bookId: string): Promise<string | undefined> {
     .limit(1)
     .get();
 
-  return snapshot.empty ? undefined : snapshot.docs[0]?.id;
+  if (snapshot.empty) {
+    return undefined;
+  }
+  const doc = snapshot.docs[0]!;
+  const data = doc.data() as Chapter;
+  return { id: doc.id, order: data.order };
 }
 
 export async function getActiveChapterScenes(
   bookId: string,
 ): Promise<{ chapterId: string | undefined; scenes: Scene[] }> {
-  const chapterId = await getActiveChapterId(bookId);
-  if (!chapterId) {
+  const chapter = await getActiveChapter(bookId);
+  if (!chapter) {
     return { chapterId: undefined, scenes: [] };
   }
+
+  const chapterId = chapter.id;
 
   const snapshot = await firestore()
     .collection("books")
@@ -472,4 +481,94 @@ export async function getActiveChapterScenes(
     .get();
 
   return { chapterId, scenes: snapshot.docs.map((doc) => doc.data() as Scene) };
+}
+
+export async function getPreviousChapterLastScenes(
+  bookId: string,
+  activeChapterOrder: number,
+  limitCount = 2,
+): Promise<Scene[]> {
+  const db = firestore();
+  const prevChapterSnap = await db
+    .collection("books")
+    .doc(bookId)
+    .collection("chapters")
+    .where("order", "==", activeChapterOrder - 1)
+    .limit(1)
+    .get();
+
+  if (prevChapterSnap.empty) {
+    return [];
+  }
+
+  const prevChapterId = prevChapterSnap.docs[0]!.id;
+  const scenesSnap = await db
+    .collection("books")
+    .doc(bookId)
+    .collection("chapters")
+    .doc(prevChapterId)
+    .collection("scenes")
+    .orderBy("order", "desc")
+    .limit(limitCount)
+    .get();
+
+  const scenes = scenesSnap.docs.map((doc) => doc.data() as Scene);
+  return scenes.sort((a, b) => a.order - b.order);
+}
+
+export async function getPriorChapterSummaries(
+  bookId: string,
+  activeChapterOrder: number,
+): Promise<string[]> {
+  const db = firestore();
+  const priorChaptersSnap = await db
+    .collection("books")
+    .doc(bookId)
+    .collection("chapters")
+    .where("order", "<", activeChapterOrder)
+    .orderBy("order", "asc")
+    .get();
+
+  return priorChaptersSnap.docs
+    .map((doc) => {
+      const data = doc.data() as Chapter;
+      return data.summary;
+    })
+    .filter((summary): summary is string => typeof summary === "string" && summary.trim().length > 0);
+}
+
+export async function retrieveRelevantFacts(
+  bookId: string,
+  queryVector: number[],
+  limitCount = 5,
+): Promise<string[]> {
+  const db = firestore();
+  const factsCollection = db.collection("books").doc(bookId).collection("facts");
+  
+  const snapshot = await (
+    factsCollection as unknown as {
+      findNearest: (options: {
+        vectorField: string;
+        queryVector: number[];
+        distanceMeasure: string;
+        limit: number;
+      }) => {
+        get: () => Promise<{ docs: Array<{ data: () => Record<string, unknown> | undefined }> }>;
+      };
+    }
+  )
+    .findNearest({
+      vectorField: "embedding",
+      queryVector,
+      distanceMeasure: "COSINE",
+      limit: limitCount,
+    })
+    .get();
+
+  return snapshot.docs
+    .map((doc) => {
+      const data = doc.data();
+      return data?.description as string | undefined;
+    })
+    .filter((desc: string | undefined): desc is string => typeof desc === "string" && desc.trim().length > 0);
 }

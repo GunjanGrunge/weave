@@ -54,25 +54,54 @@ function makeCollection(path: string) {
 
   return {
     doc: (id?: string) => makeDoc(`${path}/${id ?? "book-auto-id"}`),
-    where: (field: string, _operator: "==", value: unknown) => ({
-      get: async () => {
+    where: (field: string, operator: string, value: unknown) => {
+      const getFilteredDocs = () => {
         const prefix = `${path}/`;
-        const docs = Object.entries(docStore)
+        return Object.entries(docStore)
           .filter(([docPath, data]) => {
             const remainder = docPath.slice(prefix.length);
-            return (
-              docPath.startsWith(prefix) &&
-              !remainder.includes("/") &&
-              (data as Record<string, unknown> | undefined)?.[field] === value
-            );
+            if (!docPath.startsWith(prefix) || remainder.includes("/")) {
+              return false;
+            }
+            const record = data as Record<string, unknown> | undefined;
+            if (operator === "==") {
+              return record?.[field] === value;
+            }
+            if (operator === "<") {
+              return (
+                typeof record?.[field] === "number" &&
+                typeof value === "number" &&
+                record[field] < value
+              );
+            }
+            return false;
           })
           .map(([docPath, data]) => ({
             id: docPath.slice(prefix.length),
+            order: ((data as Record<string, unknown> | undefined)?.order as number | undefined) ?? 0,
             data: () => data,
           }));
-        return { empty: docs.length === 0, docs };
-      },
-    }),
+      };
+
+      const chain = (
+        docsList: Array<{ id: string; order: number; data: () => unknown }>,
+      ) => ({
+        orderBy: (_f: string, dir: "asc" | "desc" = "asc") => {
+          const sorted = [...docsList].sort((a, b) =>
+            dir === "desc" ? b.order - a.order : a.order - b.order,
+          );
+          return chain(sorted);
+        },
+        limit: (n: number) => {
+          return chain(docsList.slice(0, n));
+        },
+        get: async () => {
+          return { empty: docsList.length === 0, docs: docsList };
+        },
+      });
+
+      return chain(getFilteredDocs());
+    },
     orderBy: (_field: string, direction: "asc" | "desc" = "asc") => ({
       get: async () => {
         const docs = sortedDocs(direction).map((item) => ({ id: item.id, data: () => item }));
@@ -86,6 +115,27 @@ function makeCollection(path: string) {
           return { empty: docs.length === 0, docs };
         },
       }),
+    }),
+    findNearest: (opts: {
+      vectorField: string;
+      queryVector: number[];
+      distanceMeasure: string;
+      limit: number;
+    }) => ({
+      get: async () => {
+        const prefix = `${path}/`;
+        const docs = Object.entries(docStore)
+          .filter(([docPath]) => {
+            const remainder = docPath.slice(prefix.length);
+            return docPath.startsWith(prefix) && !remainder.includes("/");
+          })
+          .slice(0, opts.limit)
+          .map(([docPath, data]) => ({
+            id: docPath.slice(prefix.length),
+            data: () => data,
+          }));
+        return { empty: docs.length === 0, docs };
+      },
     }),
   };
 }
@@ -151,6 +201,10 @@ import {
   resolveOpeningSuggestionAttempt,
   updateVisionDocument,
   upsertOpeningSuggestionMessage,
+  getPreviousChapterLastScenes,
+  getPriorChapterSummaries,
+  retrieveRelevantFacts,
+  getActiveChapter,
 } from "./books.js";
 import { DEFAULT_STYLE_PRESET_ID } from "./styles.js";
 
@@ -775,5 +829,87 @@ describe("getActiveChapterScenes", () => {
 
     expect(result.chapterId).toBeUndefined();
     expect(result.scenes).toEqual([]);
+  });
+});
+
+describe("getActiveChapter", () => {
+  beforeEach(() => {
+    chaptersStore = {};
+  });
+
+  it("returns latest chapter id and order", async () => {
+    chaptersStore["books/book-1/chapters"] = [
+      { id: "chapter-1", order: 0 },
+      { id: "chapter-2", order: 1 },
+    ];
+    const result = await getActiveChapter("book-1");
+    expect(result).toEqual({ id: "chapter-2", order: 1 });
+  });
+
+  it("returns undefined if book has no chapters", async () => {
+    const result = await getActiveChapter("book-without-chapters");
+    expect(result).toBeUndefined();
+  });
+});
+
+describe("getPreviousChapterLastScenes", () => {
+  beforeEach(() => {
+    docStore = {};
+    scenesStore = {};
+  });
+
+  it("returns previous chapter's last scenes, sorted ascending", async () => {
+    // Seed previous chapter
+    docStore["books/book-1/chapters/chapter-0"] = { order: 0 };
+    
+    // Seed scenes
+    scenesStore["books/book-1/chapters/chapter-0/scenes"] = [
+      { order: 2, text: "third scene", modelUsed: "gemini", provider: "gemini" },
+      { order: 1, text: "second scene", modelUsed: "gemini", provider: "gemini" },
+      { order: 0, text: "first scene", modelUsed: "gemini", provider: "gemini" },
+    ];
+
+    const result = await getPreviousChapterLastScenes("book-1", 1, 2);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]?.text).toBe("second scene");
+    expect(result[1]?.text).toBe("third scene");
+  });
+
+  it("returns empty array if no previous chapter exists", async () => {
+    const result = await getPreviousChapterLastScenes("book-1", 0, 2);
+    expect(result).toEqual([]);
+  });
+});
+
+describe("getPriorChapterSummaries", () => {
+  beforeEach(() => {
+    docStore = {};
+  });
+
+  it("returns summaries of all prior chapters, ordered ascending", async () => {
+    docStore["books/book-1/chapters/chapter-0"] = { order: 0, summary: "Summary of 1." };
+    docStore["books/book-1/chapters/chapter-1"] = { order: 1, summary: "Summary of 2." };
+    docStore["books/book-1/chapters/chapter-2"] = { order: 2 }; // No summary
+
+    const result = await getPriorChapterSummaries("book-1", 2);
+
+    expect(result).toEqual(["Summary of 1.", "Summary of 2."]);
+  });
+});
+
+describe("retrieveRelevantFacts", () => {
+  beforeEach(() => {
+    docStore = {};
+  });
+
+  it("returns matched facts via findNearest", async () => {
+    docStore["books/book-1/facts/elena"] = { name: "Elena", description: "Elena is a rogue." };
+    docStore["books/book-1/facts/crimson_inn"] = { name: "The Crimson Inn", description: "A cozy tavern." };
+
+    const result = await retrieveRelevantFacts("book-1", [0.1, 0.2], 5);
+
+    expect(result).toContain("Elena is a rogue.");
+    expect(result).toContain("A cozy tavern.");
   });
 });

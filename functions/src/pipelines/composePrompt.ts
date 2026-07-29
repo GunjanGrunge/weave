@@ -59,6 +59,25 @@ function buildSharedLines(
     lines.push(...context.priorScenesText);
   }
 
+  if (context.priorChapterSummaries && context.priorChapterSummaries.length > 0) {
+    lines.push("Summary of prior chapters:");
+    for (const summary of context.priorChapterSummaries) {
+      lines.push(`- ${summary}`);
+    }
+  }
+
+  if (context.lastScenesText && context.lastScenesText.length > 0) {
+    lines.push("Recent scenes from the previous chapter, verbatim:");
+    lines.push(...context.lastScenesText);
+  }
+
+  if (context.relevantFactsText && context.relevantFactsText.length > 0) {
+    lines.push("Relevant background details:");
+    for (const fact of context.relevantFactsText) {
+      lines.push(`- ${fact}`);
+    }
+  }
+
   return lines;
 }
 

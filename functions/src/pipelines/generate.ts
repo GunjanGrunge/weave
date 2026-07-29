@@ -54,7 +54,9 @@ async function assembleNode(
   if (state.assembledContext) {
     return {};
   }
-  return { assembledContext: await assembleContext(state.bookId) };
+  return {
+    assembledContext: await assembleContext(state.bookId, state.input, state.apiKeys),
+  };
 }
 
 async function composeNode(
