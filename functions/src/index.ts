@@ -17,3 +17,8 @@ export { updateBookStyle } from "./handlers/updateBookStyle.js";
 export { extractEntitiesOnSceneAccept } from "./triggers/extractEntities.js";
 export { summarizePreviousChapter } from "./triggers/summarizeChapter.js";
 export { generateMuseNoteOnSceneAccept } from "./triggers/generateMuseNote.js";
+export { saveSnapshot } from "./handlers/saveSnapshot.js";
+export { listSnapshots } from "./handlers/listSnapshots.js";
+export { compareSnapshot } from "./handlers/compareSnapshot.js";
+export { restoreSnapshot } from "./handlers/restoreSnapshot.js";
+export { exportBook } from "./handlers/exportBook.js";
