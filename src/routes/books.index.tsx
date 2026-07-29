@@ -8,7 +8,7 @@ import { formatBookDate, useBooks } from "@/lib/books";
 export const Route = createFileRoute("/books/")({
   head: () => ({
     meta: [
-      { title: "My Books - Story Platform" },
+      { title: "My Books - WEAVE" },
       { name: "description", content: "Open or continue one of your manuscripts." },
     ],
   }),

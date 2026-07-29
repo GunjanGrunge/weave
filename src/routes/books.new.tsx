@@ -16,12 +16,12 @@ import {
 export const Route = createFileRoute("/books/new")({
   head: () => ({
     meta: [
-      { title: "New Book - Story Platform" },
+      { title: "New Book - WEAVE" },
       {
         name: "description",
         content: "Start a book through a guided writing conversation.",
       },
-      { property: "og:title", content: "Begin a new book - Story Platform" },
+      { property: "og:title", content: "Begin a new book - WEAVE" },
       { property: "og:description", content: "A chat-first way to start your manuscript." },
     ],
   }),
@@ -116,9 +116,7 @@ function loadIntakeDraft(uid: string): IntakeDraft | null {
             .slice(0, 2)
         : [],
       customInstruction:
-        typeof parsed.customInstruction === "string"
-          ? parsed.customInstruction
-          : "",
+        typeof parsed.customInstruction === "string" ? parsed.customInstruction : "",
       idempotencyKey: parsed.idempotencyKey.trim(),
     };
   } catch {

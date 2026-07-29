@@ -1,11 +1,11 @@
-# Story
+# WEAVE
 
-Story is a private AI-assisted novel writing workspace. The current app is a Firebase-hosted React/TanStack Start frontend backed by Firebase Auth, Firestore, Cloud Functions, and a model-registry-driven AI layer.
+WEAVE is a private AI-assisted novel writing workspace. The current app is a Firebase-hosted React/TanStack Start frontend backed by Firebase Auth, Firestore, Cloud Functions, and a model-registry-driven AI layer.
 
 The implemented writing flow covers private book intake, scene generation and refinement,
 long-book context, Muse guidance, manuscript preview, snapshots, export, and book deletion.
 
-![Story Solution Architecture Diagram](public/architecture_infographic.png)
+![WEAVE Solution Architecture Diagram](public/architecture_infographic.png)
 
 ## Current Capabilities
 

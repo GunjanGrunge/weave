@@ -17,7 +17,7 @@ import { authenticatedFetch } from "@/lib/api";
 export const Route = createFileRoute("/books/$bookId/vision")({
   head: () => ({
     meta: [
-      { title: "Book Vision - Story Platform" },
+      { title: "Book Vision - WEAVE" },
       { name: "description", content: "View and shape your book's author-intent layer." },
     ],
   }),

@@ -8,8 +8,8 @@ import { authenticatedFetch } from "@/lib/api";
 export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
-      { title: "Sign in - Story Platform" },
-      { name: "description", content: "Sign in to your private Story workspace." },
+      { title: "Sign in - WEAVE" },
+      { name: "description", content: "Sign in to your private WEAVE workspace." },
     ],
   }),
   component: LoginRoute,
@@ -162,9 +162,9 @@ function LoginRoute() {
       <section className="hidden min-h-svh w-[42%] shrink-0 flex-col justify-between border-r border-border bg-sidebar p-8 lg:flex">
         <div className="flex items-center gap-2.5">
           <span className="grid size-9 place-items-center rounded-md bg-accent font-display text-xl italic text-accent-foreground">
-            S
+            W
           </span>
-          <span className="text-sm font-semibold tracking-tight">Story Platform</span>
+          <span className="text-sm font-semibold tracking-tight">WEAVE</span>
         </div>
 
         <div className="max-w-md">
@@ -195,9 +195,9 @@ function LoginRoute() {
         <div className="w-full max-w-md">
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
             <span className="grid size-9 place-items-center rounded-md bg-accent font-display text-xl italic text-accent-foreground">
-              S
+              W
             </span>
-            <span className="text-sm font-semibold tracking-tight">Story Platform</span>
+            <span className="text-sm font-semibold tracking-tight">WEAVE</span>
           </div>
 
           <div className="rounded-lg border border-border bg-card p-6 shadow-sm sm:p-8">

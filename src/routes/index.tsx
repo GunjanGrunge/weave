@@ -10,7 +10,7 @@ import { checkBackendHealth, type HealthCheckResult } from "@/lib/health";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Workspace - Story Platform" },
+      { title: "Workspace - WEAVE" },
       { name: "description", content: "Open a manuscript or begin a new book." },
     ],
   }),

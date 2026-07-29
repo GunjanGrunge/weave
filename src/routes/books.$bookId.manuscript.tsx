@@ -17,7 +17,7 @@ import { manuscriptQueryKey, useManuscript, type ManuscriptChapter } from "@/lib
 export const Route = createFileRoute("/books/$bookId/manuscript")({
   head: () => ({
     meta: [
-      { title: "Manuscript - Story Platform" },
+      { title: "Manuscript - WEAVE" },
       {
         name: "description",
         content: "Read and prepare an ordered book manuscript for export.",

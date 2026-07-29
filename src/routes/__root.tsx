@@ -86,14 +86,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Story Platform — AI Writing Workspace for Authors" },
+      { title: "WEAVE - AI Writing Workspace for Authors" },
       {
         name: "description",
         content:
           "A premium AI-first workspace for planning, drafting, refactoring, and publishing books.",
       },
-      { name: "author", content: "Story Platform" },
-      { property: "og:title", content: "Story Platform — AI Writing Workspace" },
+      { name: "author", content: "WEAVE" },
+      { property: "og:title", content: "WEAVE - AI Writing Workspace" },
       {
         property: "og:description",
         content:

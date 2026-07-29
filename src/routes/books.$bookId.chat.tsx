@@ -16,7 +16,7 @@ import { parseChatMessages, parseGeneratedScene, type ChatMessage } from "@/lib/
 export const Route = createFileRoute("/books/$bookId/chat")({
   head: () => ({
     meta: [
-      { title: "Book Chat - Story Platform" },
+      { title: "Book Chat - WEAVE" },
       {
         name: "description",
         content: "Write your book's next scene through a chat-first surface.",

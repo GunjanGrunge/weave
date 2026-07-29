@@ -49,10 +49,10 @@ export function AppSidebar({
         <div className="flex h-14 shrink-0 items-center justify-between px-4">
           <Link to="/" className="flex items-center gap-2.5 min-w-0">
             <span className="grid size-8 shrink-0 place-items-center rounded-md bg-accent font-display text-lg italic text-accent-foreground">
-              S
+              W
             </span>
             {showLabels && (
-              <span className="truncate text-sm font-semibold tracking-tight">Story Platform</span>
+              <span className="truncate text-sm font-semibold tracking-tight">WEAVE</span>
             )}
           </Link>
           <button
@@ -105,11 +105,11 @@ export function AppSidebar({
         <div className="border-t border-border p-3">
           <div className="flex items-center gap-2.5">
             <div className="grid size-8 shrink-0 place-items-center rounded-full bg-foreground/10 font-mono text-[10px] font-bold text-foreground">
-              SP
+              W
             </div>
             {showLabels && (
               <div className="min-w-0 flex-1">
-                <div className="truncate text-xs font-semibold">Story Platform</div>
+                <div className="truncate text-xs font-semibold">WEAVE</div>
                 <div className="truncate font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
                   Workspace
                 </div>

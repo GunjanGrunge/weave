@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/settings")({
   head: () => ({
     meta: [
-      { title: "Settings - Story Platform" },
+      { title: "Settings - WEAVE" },
       { name: "description", content: "Manage your account and workspace appearance." },
     ],
   }),

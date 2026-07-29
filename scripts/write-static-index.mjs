@@ -19,7 +19,7 @@ const html = `<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Story Platform</title>
+    <title>WEAVE</title>
     <meta
       name="description"
       content="A premium AI-first workspace for planning, drafting, refactoring, and publishing books."
