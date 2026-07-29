@@ -71,10 +71,10 @@ development_status:
   3-4-the-muse-tells-me-where-my-story-stands: done
   3-5-my-planted-secrets-stay-planted: done
   epic-3-retrospective: optional
-  epic-4: backlog
-  4-1-save-a-named-moment-in-my-book: backlog
-  4-2-see-what-changed-since-a-snapshot: backlog
-  4-3-go-back-to-a-saved-moment-coherently: backlog
-  4-4-take-my-manuscript-with-me: backlog
-  4-5-my-manuscript-survives-even-if-i-never-snapshot: backlog
+  epic-4: done
+  4-1-save-a-named-moment-in-my-book: done
+  4-2-see-what-changed-since-a-snapshot: done
+  4-3-go-back-to-a-saved-moment-coherently: done
+  4-4-take-my-manuscript-with-me: done
+  4-5-my-manuscript-survives-even-if-i-never-snapshot: done
   epic-4-retrospective: optional
