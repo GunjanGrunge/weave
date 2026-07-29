@@ -14,6 +14,7 @@ jobs:
   verify-and-deploy:
     name: Verify and deploy
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     permissions:
       contents: read
 
@@ -84,22 +85,42 @@ jobs:
           --only firestore
           --non-interactive
 
-      - name: Deploy Functions in quota-safe batches
+      - name: Deploy Functions sequentially
         shell: bash
         run: |
-          batches=(
-            "functions:health,functions:whoami,functions:listBooks,functions:createBook,functions:createChapter"
-            "functions:retryOpeningSuggestion,functions:getVision,functions:updateVision,functions:getMessages,functions:generateScene"
-            "functions:saveGeneratedScene,functions:regenerateScene,functions:revertGeneratedScene,functions:acceptScene,functions:getStyleConfig"
-            "functions:updateBookStyle,functions:saveSnapshot,functions:listSnapshots,functions:compareSnapshot,functions:restoreSnapshot"
-            "functions:exportBook,functions:deleteBook,functions:extractEntitiesOnSceneAccept,functions:summarizePreviousChapter,functions:generateMuseNoteOnSceneAccept"
+          functions=(
+            health
+            whoami
+            listBooks
+            createBook
+            createChapter
+            retryOpeningSuggestion
+            getVision
+            updateVision
+            getMessages
+            generateScene
+            saveGeneratedScene
+            regenerateScene
+            revertGeneratedScene
+            acceptScene
+            getStyleConfig
+            updateBookStyle
+            saveSnapshot
+            listSnapshots
+            compareSnapshot
+            restoreSnapshot
+            exportBook
+            deleteBook
+            extractEntitiesOnSceneAccept
+            summarizePreviousChapter
+            generateMuseNoteOnSceneAccept
           )
 
-          for batch in "${batches[@]}"; do
+          for function_name in "${functions[@]}"; do
             npx firebase-tools deploy \
               --config firebase.ci.json \
               --project "$FIREBASE_PROJECT_ID" \
-              --only "$batch" \
+              --only "functions:$function_name" \
               --non-interactive
           done
 

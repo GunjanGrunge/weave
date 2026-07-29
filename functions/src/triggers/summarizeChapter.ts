@@ -167,7 +167,7 @@ export const summarizePreviousChapter = onDocumentCreated(
   {
     document: "books/{bookId}/chapters/{chapterId}",
     secrets: [GOOGLE_API_KEY, OPENAI_API_KEY],
-    region: "us-central1",
+    region: "asia-south1",
     timeoutSeconds: 540,
   },
   (event) => handleChapterCreate(event),

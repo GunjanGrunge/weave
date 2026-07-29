@@ -259,6 +259,7 @@ export const extractEntitiesOnSceneAccept = onDocumentCreated(
   {
     document: "books/{bookId}/chapters/{chapterId}/scenes/{sceneId}",
     secrets: [GOOGLE_API_KEY, OPENAI_API_KEY],
+    region: "asia-south1",
   },
   handleSceneAccept
 );
