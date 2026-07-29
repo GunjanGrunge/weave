@@ -162,6 +162,13 @@
         }
       },
       {
+        "source": "/enhanceManuscriptChapter",
+        "function": {
+          "functionId": "enhanceManuscriptChapter",
+          "region": "us-central1"
+        }
+      },
+      {
         "source": "/deleteBook",
         "function": {
           "functionId": "deleteBook",

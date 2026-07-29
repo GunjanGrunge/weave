@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const { useManuscriptMock, refetchMock } = vi.hoisted(() => ({
-  useManuscriptMock: vi.fn(),
-  refetchMock: vi.fn(),
-}));
+const { useManuscriptMock, refetchMock, enhanceChapterMock, invalidateQueriesMock } = vi.hoisted(
+  () => ({
+    useManuscriptMock: vi.fn(),
+    refetchMock: vi.fn(),
+    enhanceChapterMock: vi.fn(),
+    invalidateQueriesMock: vi.fn(),
+  }),
+);
 
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({
-    invalidateQueries: vi.fn().mockResolvedValue(undefined),
+    invalidateQueries: invalidateQueriesMock,
   }),
 }));
 
@@ -39,6 +43,7 @@ vi.mock("@/components/book/BookTools", () => ({
 }));
 
 vi.mock("@/lib/manuscript", () => ({
+  enhanceManuscriptChapter: enhanceChapterMock,
   manuscriptQueryKey: (bookId: string) => ["manuscript", bookId],
   useManuscript: useManuscriptMock,
 }));
@@ -73,6 +78,9 @@ describe("ManuscriptPage", () => {
   beforeEach(() => {
     refetchMock.mockReset();
     useManuscriptMock.mockReset();
+    enhanceChapterMock.mockReset();
+    invalidateQueriesMock.mockReset();
+    invalidateQueriesMock.mockResolvedValue(undefined);
     vi.stubGlobal("print", vi.fn());
   });
 
@@ -112,6 +120,70 @@ describe("ManuscriptPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /print/i }));
 
     expect(window.print).toHaveBeenCalledOnce();
+  });
+
+  it("edits a chapter and submits the draft for enhancement", async () => {
+    useManuscriptMock.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: loadedManuscript,
+      refetch: refetchMock,
+    });
+    enhanceChapterMock.mockResolvedValue({
+      chapterId: "chapter-1",
+      title: "The Beginning of the King",
+      scenes: [{ sceneId: "scene-1", text: "The road began beneath a quiet moon." }],
+    });
+
+    render(<ManuscriptPage bookId="book-1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit", exact: true }));
+    fireEvent.change(screen.getByLabelText("Chapter title"), {
+      target: { value: "The Begining of the King" },
+    });
+    fireEvent.change(screen.getByLabelText("Chapter 1 text 1"), {
+      target: { value: "The road began beneath a quiet moon." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Enhance & save" }));
+
+    await waitFor(() =>
+      expect(enhanceChapterMock).toHaveBeenCalledWith("book-1", {
+        chapterId: "chapter-1",
+        originalTitle: "Chapter 1",
+        draftTitle: "The Begining of the King",
+        scenes: [
+          {
+            sceneId: "scene-1",
+            originalText: "The road began under a quiet moon.",
+            draftText: "The road began beneath a quiet moon.",
+          },
+        ],
+      }),
+    );
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({
+      queryKey: ["manuscript", "book-1"],
+    });
+  });
+
+  it("keeps an unsaved draft visible when enhancement fails", async () => {
+    useManuscriptMock.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: loadedManuscript,
+      refetch: refetchMock,
+    });
+    enhanceChapterMock.mockRejectedValue(new Error("WEAVE could not enhance this chapter."));
+
+    render(<ManuscriptPage bookId="book-1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit", exact: true }));
+    fireEvent.change(screen.getByLabelText("Chapter 1 text 1"), {
+      target: { value: "My unsaved revision." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Enhance & save" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "WEAVE could not enhance this chapter.",
+    );
+    expect(screen.getByDisplayValue("My unsaved revision.")).toBeInTheDocument();
   });
 
   it("explains that only accepted scenes appear in an empty manuscript", () => {

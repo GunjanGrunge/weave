@@ -1,18 +1,27 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useState, type FormEvent } from "react";
 import {
   ArrowLeft,
   Eye,
   FileText,
   Loader2,
   MessageSquareText,
+  Pencil,
   Printer,
   RefreshCw,
+  Sparkles,
+  X,
 } from "lucide-react";
 
 import { BookTools } from "@/components/book/BookTools";
 import { Button } from "@/components/ui/button";
-import { manuscriptQueryKey, useManuscript, type ManuscriptChapter } from "@/lib/manuscript";
+import {
+  enhanceManuscriptChapter,
+  manuscriptQueryKey,
+  useManuscript,
+  type ManuscriptChapter,
+} from "@/lib/manuscript";
 
 export const Route = createFileRoute("/books/$bookId/manuscript")({
   head: () => ({
@@ -48,10 +57,151 @@ function proseParagraphs(text: string): string[] {
     .filter(Boolean);
 }
 
+function ChapterEditor({
+  bookId,
+  chapter,
+  onCancel,
+  onSaved,
+}: {
+  bookId: string;
+  chapter: ManuscriptChapter;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const [title, setTitle] = useState(chapter.title);
+  const [sceneDrafts, setSceneDrafts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(chapter.scenes.map((scene) => [scene.sceneId, scene.text])),
+  );
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const hasChanges =
+    title.trim() !== chapter.title ||
+    chapter.scenes.some((scene) => sceneDrafts[scene.sceneId] !== scene.text);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!hasChanges || !title.trim()) return;
+    setError(null);
+    setIsSaving(true);
+    try {
+      await enhanceManuscriptChapter(bookId, {
+        chapterId: chapter.chapterId,
+        originalTitle: chapter.title,
+        draftTitle: title.trim(),
+        scenes: chapter.scenes
+          .filter((scene) => sceneDrafts[scene.sceneId] !== scene.text)
+          .map((scene) => ({
+            sceneId: scene.sceneId,
+            originalText: scene.text,
+            draftText: sceneDrafts[scene.sceneId] ?? scene.text,
+          })),
+      });
+      onSaved();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not save this chapter.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="mx-auto max-w-[38rem]" data-print-hide>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink/10 pb-4">
+        <p className="text-sm font-semibold text-ink">Edit chapter</p>
+        <div className="flex items-center gap-1">
+          <Button
+            type="submit"
+            size="sm"
+            aria-label="Enhance and save chapter"
+            disabled={isSaving || !hasChanges || !title.trim()}
+          >
+            {isSaving ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Sparkles className="size-4" />
+            )}
+            {isSaving ? "Enhancing..." : "Enhance & save"}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onCancel}
+            disabled={isSaving}
+            aria-label="Cancel manuscript edit"
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
+      </div>
+
+      <label className="mt-7 block text-xs font-medium text-ink/65" htmlFor="chapter-title">
+        Chapter title
+      </label>
+      <input
+        id="chapter-title"
+        value={title}
+        onChange={(event) => setTitle(event.target.value)}
+        maxLength={160}
+        disabled={isSaving}
+        className="mt-2 h-11 w-full rounded-md border border-ink/15 bg-white px-3 font-serif text-lg text-ink outline-none focus:border-warm focus:ring-2 focus:ring-warm/20"
+      />
+
+      <div className="mt-7 space-y-6">
+        {chapter.scenes.map((scene, index) => (
+          <div key={scene.sceneId}>
+            {index > 0 ? (
+              <div
+                className="mb-6 text-center text-xs tracking-[0.35rem] text-ink/45"
+                aria-hidden="true"
+              >
+                * * *
+              </div>
+            ) : null}
+            <label className="sr-only" htmlFor={`scene-${scene.sceneId}`}>
+              {chapter.title} text {index + 1}
+            </label>
+            <textarea
+              id={`scene-${scene.sceneId}`}
+              value={sceneDrafts[scene.sceneId] ?? ""}
+              onChange={(event) =>
+                setSceneDrafts((current) => ({
+                  ...current,
+                  [scene.sceneId]: event.target.value,
+                }))
+              }
+              maxLength={60_000}
+              disabled={isSaving}
+              className="min-h-48 w-full resize-y rounded-md border border-ink/15 bg-white px-4 py-3 font-serif text-[1.02rem] leading-7 text-ink outline-none focus:border-warm focus:ring-2 focus:ring-warm/20"
+            />
+          </div>
+        ))}
+      </div>
+
+      {error ? (
+        <p role="alert" className="mt-5 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-ink/10 pt-5">
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isSaving}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={isSaving || !hasChanges || !title.trim()}>
+          {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+          {isSaving ? "Enhancing..." : "Enhance & save"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 export function ManuscriptPage({ bookId }: { bookId: string }) {
   const manuscriptQuery = useManuscript(bookId);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const [editingChapterId, setEditingChapterId] = useState<string | null>(null);
 
   if (manuscriptQuery.isPending) {
     return (
@@ -128,7 +278,23 @@ export function ManuscriptPage({ bookId }: { bookId: string }) {
                 Vision
               </Link>
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => window.print()}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={acceptedChapters.length === 0 || editingChapterId !== null}
+              onClick={() => setEditingChapterId(acceptedChapters[0]?.chapterId ?? null)}
+            >
+              <Pencil className="size-4" />
+              Edit
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={editingChapterId !== null}
+              onClick={() => window.print()}
+            >
               <Printer className="size-4" />
               Print
             </Button>
@@ -195,28 +361,56 @@ export function ManuscriptPage({ bookId }: { bookId: string }) {
                 id={chapterAnchor(chapter)}
                 className="scroll-mt-28 border-b border-ink/10 px-7 py-12 last:border-b-0 sm:px-16 sm:py-14"
               >
-                <header className="mb-10 text-center sm:mb-12">
-                  <h2 className="font-serif text-2xl font-semibold">{chapter.title}</h2>
-                </header>
+                {editingChapterId === chapter.chapterId ? (
+                  <ChapterEditor
+                    bookId={bookId}
+                    chapter={chapter}
+                    onCancel={() => setEditingChapterId(null)}
+                    onSaved={() => {
+                      setEditingChapterId(null);
+                      void queryClient.invalidateQueries({
+                        queryKey: manuscriptQueryKey(bookId),
+                      });
+                    }}
+                  />
+                ) : (
+                  <>
+                    <header className="relative mb-10 text-center sm:mb-12">
+                      <h2 className="font-serif text-2xl font-semibold">{chapter.title}</h2>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        data-print-hide
+                        disabled={editingChapterId !== null}
+                        onClick={() => setEditingChapterId(chapter.chapterId)}
+                        className="absolute right-0 top-1/2 -translate-y-1/2 text-ink/55 hover:text-ink"
+                        aria-label={`Edit ${chapter.title}`}
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
+                    </header>
 
-                <div className="mx-auto max-w-[34rem]">
-                  {chapter.scenes.map((scene, sceneIndex) => (
-                    <section
-                      key={scene.sceneId}
-                      className="manuscript-scene font-serif text-[1.05rem] leading-[1.75] text-ink"
-                      aria-label={`${chapter.title}, scene ${sceneIndex + 1}`}
-                    >
-                      {sceneIndex > 0 ? (
-                        <div className="manuscript-scene-break" aria-hidden="true">
-                          * * *
-                        </div>
-                      ) : null}
-                      {proseParagraphs(scene.text).map((paragraph, paragraphIndex) => (
-                        <p key={`${scene.sceneId}-${paragraphIndex}`}>{paragraph}</p>
+                    <div className="mx-auto max-w-[34rem]">
+                      {chapter.scenes.map((scene, sceneIndex) => (
+                        <section
+                          key={scene.sceneId}
+                          className="manuscript-scene font-serif text-[1.05rem] leading-[1.75] text-ink"
+                          aria-label={`${chapter.title}, scene ${sceneIndex + 1}`}
+                        >
+                          {sceneIndex > 0 ? (
+                            <div className="manuscript-scene-break" aria-hidden="true">
+                              * * *
+                            </div>
+                          ) : null}
+                          {proseParagraphs(scene.text).map((paragraph, paragraphIndex) => (
+                            <p key={`${scene.sceneId}-${paragraphIndex}`}>{paragraph}</p>
+                          ))}
+                        </section>
                       ))}
-                    </section>
-                  ))}
-                </div>
+                    </div>
+                  </>
+                )}
               </article>
             ))
           )}

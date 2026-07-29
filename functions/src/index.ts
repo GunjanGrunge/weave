@@ -23,4 +23,5 @@ export { compareSnapshot } from "./handlers/compareSnapshot.js";
 export { restoreSnapshot } from "./handlers/restoreSnapshot.js";
 export { exportBook } from "./handlers/exportBook.js";
 export { getManuscript } from "./handlers/getManuscript.js";
+export { enhanceManuscriptChapter } from "./handlers/enhanceManuscriptChapter.js";
 export { deleteBookEndpoint as deleteBook } from "./handlers/deleteBook.js";

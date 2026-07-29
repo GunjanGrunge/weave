@@ -8,7 +8,7 @@ vi.mock("./api", () => ({
   authenticatedFetch: authenticatedFetchMock,
 }));
 
-import { fetchManuscript } from "./manuscript";
+import { enhanceManuscriptChapter, fetchManuscript, ManuscriptEditApiError } from "./manuscript";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status });
@@ -57,5 +57,55 @@ describe("manuscript API", () => {
     authenticatedFetchMock.mockResolvedValue(jsonResponse({ code: "not-found" }, 404));
 
     await expect(fetchManuscript("missing")).rejects.toThrow("This manuscript could not be found.");
+  });
+
+  it("enhances and saves a manuscript chapter", async () => {
+    const edit = {
+      chapterId: "chapter-1",
+      originalTitle: "Chapter 1",
+      draftTitle: "The Begining",
+      scenes: [
+        {
+          sceneId: "scene-1",
+          originalText: "The road began.",
+          draftText: "The road, it began.",
+        },
+      ],
+    };
+    const chapter = {
+      chapterId: "chapter-1",
+      title: "The Beginning",
+      scenes: [{ sceneId: "scene-1", text: "The road began." }],
+    };
+    authenticatedFetchMock.mockResolvedValue(jsonResponse({ chapter }));
+
+    await expect(enhanceManuscriptChapter("book-1", edit)).resolves.toEqual(chapter);
+    expect(authenticatedFetchMock).toHaveBeenCalledWith(
+      "/enhanceManuscriptChapter",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ bookId: "book-1", ...edit }),
+      }),
+    );
+  });
+
+  it("surfaces edit conflicts without replacing the local draft", async () => {
+    authenticatedFetchMock.mockResolvedValue(
+      jsonResponse({ message: "Reload before editing again." }, 409),
+    );
+
+    await expect(
+      enhanceManuscriptChapter("book-1", {
+        chapterId: "chapter-1",
+        originalTitle: "Chapter 1",
+        draftTitle: "Changed",
+        scenes: [],
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining<Partial<ManuscriptEditApiError>>({
+        status: 409,
+        message: "Reload before editing again.",
+      }),
+    );
   });
 });

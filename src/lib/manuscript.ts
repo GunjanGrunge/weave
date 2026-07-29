@@ -23,6 +23,33 @@ export type BookManuscript = {
   wordCount: number;
 };
 
+export type ManuscriptChapterEdit = {
+  chapterId: string;
+  originalTitle: string;
+  draftTitle: string;
+  scenes: Array<{
+    sceneId: string;
+    originalText: string;
+    draftText: string;
+  }>;
+};
+
+export type SavedManuscriptChapter = {
+  chapterId: string;
+  title: string;
+  scenes: Array<{ sceneId: string; text: string }>;
+};
+
+export class ManuscriptEditApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "ManuscriptEditApiError";
+  }
+}
+
 function isScene(value: unknown): value is ManuscriptScene {
   if (typeof value !== "object" || value === null) return false;
   const scene = value as Partial<ManuscriptScene>;
@@ -78,6 +105,54 @@ export async function fetchManuscript(bookId: string): Promise<BookManuscript> {
     throw new Error("The manuscript response was invalid.");
   }
   return body.manuscript;
+}
+
+function isSavedChapter(value: unknown): value is SavedManuscriptChapter {
+  if (typeof value !== "object" || value === null) return false;
+  const chapter = value as Partial<SavedManuscriptChapter>;
+  return (
+    typeof chapter.chapterId === "string" &&
+    typeof chapter.title === "string" &&
+    Array.isArray(chapter.scenes) &&
+    chapter.scenes.every(
+      (scene) =>
+        typeof scene === "object" &&
+        scene !== null &&
+        typeof scene.sceneId === "string" &&
+        typeof scene.text === "string",
+    )
+  );
+}
+
+export async function enhanceManuscriptChapter(
+  bookId: string,
+  edit: ManuscriptChapterEdit,
+): Promise<SavedManuscriptChapter> {
+  const response = await authenticatedFetch("/enhanceManuscriptChapter", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ bookId, ...edit }),
+  });
+  const body = (await response.json().catch(() => undefined)) as
+    | { chapter?: unknown; message?: unknown }
+    | undefined;
+
+  if (!response.ok) {
+    const fallback =
+      response.status === 409
+        ? "This chapter changed after you opened it. Reload and try again."
+        : response.status === 502
+          ? "WEAVE could not enhance this chapter. Your draft was not saved."
+          : "Could not save this chapter.";
+    throw new ManuscriptEditApiError(
+      typeof body?.message === "string" ? body.message : fallback,
+      response.status,
+    );
+  }
+  if (!isSavedChapter(body?.chapter)) {
+    throw new ManuscriptEditApiError("The saved chapter response was invalid.", response.status);
+  }
+  return body.chapter;
 }
 
 export function manuscriptQueryKey(bookId: string) {

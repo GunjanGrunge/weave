@@ -136,7 +136,7 @@ export async function createBookWithIntake(
     manuscriptRevision: 0,
     createdAt,
   };
-  const chapter: Chapter = { order: 0, nextSceneOrder: 0, createdAt };
+  const chapter: Chapter = { order: 0, title: "Chapter 1", nextSceneOrder: 0, createdAt };
   const vision: VisionDocument = {
     theme: answers.whatToWrite,
     premise: answers.roughPremise,
@@ -236,6 +236,7 @@ export async function createNextChapter(
 
     transaction.set(newChapterRef, {
       order: newOrder,
+      title: `Chapter ${newOrder + 1}`,
       nextSceneOrder: 0,
       createdAt,
     });

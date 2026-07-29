@@ -18,6 +18,12 @@ function firestore() {
   return getFirestore();
 }
 
+function chapterTitle(chapter: Chapter): string {
+  return typeof chapter.title === "string" && chapter.title.trim()
+    ? chapter.title.trim()
+    : `Chapter ${chapter.order + 1}`;
+}
+
 export type SceneDiff = {
   sceneId: string;
   status: "unchanged" | "added" | "removed" | "changed";
@@ -123,7 +129,7 @@ export async function readBookManuscript(bookId: string, uid: string): Promise<B
     chapters.push({
       chapterId: chapterDoc.id,
       order,
-      title: `Chapter ${order + 1}`,
+      title: chapterTitle({ ...chapter, order }),
       scenes,
     });
   }
@@ -346,20 +352,22 @@ export async function compareBookSnapshot(
     if (liveChap && !snapChap) {
       diffs.push({
         chapterId,
-        title: `Chapter ${liveChap.order + 1}`,
+        title: chapterTitle(liveChap),
         status: "added",
         scenes: sceneDiffs,
       });
     } else if (!liveChap && snapChap) {
       diffs.push({
         chapterId,
-        title: `Chapter ${snapChap.order + 1}`,
+        title: chapterTitle(snapChap),
         status: "removed",
         scenes: sceneDiffs,
       });
     } else if (liveChap && snapChap) {
       const metadataChanged =
-        liveChap.order !== snapChap.order || liveChap.summary !== snapChap.summary;
+        liveChap.order !== snapChap.order ||
+        chapterTitle(liveChap) !== chapterTitle(snapChap) ||
+        liveChap.summary !== snapChap.summary;
 
       const hasChangedScenes = sceneDiffs.some((s) => s.status !== "unchanged");
 
@@ -367,7 +375,7 @@ export async function compareBookSnapshot(
 
       diffs.push({
         chapterId,
-        title: `Chapter ${liveChap.order + 1}`,
+        title: chapterTitle(liveChap),
         status,
         scenes: sceneDiffs,
       });
@@ -550,7 +558,7 @@ export async function exportBookManuscript(
       throw new SnapshotError("resource-exhausted", "This book has too many chapters to export.");
     }
     const chapData = chapDoc.data() as Chapter;
-    const title = `Chapter ${chapData.order + 1}`;
+    const title = chapterTitle(chapData);
     if (format === "markdown") {
       lines.push(`## ${title}`);
       lines.push("");

@@ -17,7 +17,8 @@ long-book context, Muse guidance, manuscript preview, snapshots, export, and boo
 - Non-blocking retry path for opening suggestions through `/retryOpeningSuggestion`.
 - Book Chat with free-text, quick-detail, and draft-polish generation modes.
 - Inline scene review with regenerate, edit, accept, and chapter creation workflows.
-- Ordered manuscript preview at `/books/{bookId}/manuscript`, showing accepted prose only.
+- Ordered manuscript preview and AI-assisted chapter editing at `/books/{bookId}/manuscript`,
+  showing accepted prose only.
 - Chapter contents navigation, word/page estimates, print layout, Markdown export, and plain-text export.
 - Vision editing, narrative threads, style changes, Muse notes, and usage visibility.
 - Named snapshots with compare and coherent restore.
