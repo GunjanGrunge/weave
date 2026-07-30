@@ -60,7 +60,7 @@ export async function buildDeleteBookResponse(
 }
 
 export const deleteBookEndpoint = onRequest(
-  { cors: allowedOrigins(), region: "us-central1" },
+  { cors: allowedOrigins(), region: "us-central1", timeoutSeconds: 540 },
   async (request, response) => {
     try {
       const result = await buildDeleteBookResponse(request.headers.authorization, request.body);

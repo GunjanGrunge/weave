@@ -2,12 +2,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 type WriteCall = { path: string; data: unknown };
 
-const { setCalls, updateCalls, commitMock, serverTimestampMock } = vi.hoisted(() => ({
-  setCalls: [] as WriteCall[],
-  updateCalls: [] as WriteCall[],
-  commitMock: vi.fn(),
-  serverTimestampMock: vi.fn(() => "server-time"),
-}));
+const { setCalls, updateCalls, commitMock, deleteFilesMock, serverTimestampMock } = vi.hoisted(
+  () => ({
+    setCalls: [] as WriteCall[],
+    updateCalls: [] as WriteCall[],
+    commitMock: vi.fn(),
+    deleteFilesMock: vi.fn(async () => undefined),
+    serverTimestampMock: vi.fn(() => "server-time"),
+  }),
+);
 
 type StoredDoc = { id?: string; order: number } & Record<string, unknown>;
 
@@ -206,7 +209,7 @@ vi.mock("firebase-admin/app", () => ({
 vi.mock("firebase-admin/storage", () => ({
   getStorage: vi.fn(() => ({
     bucket: vi.fn(() => ({
-      deleteFiles: vi.fn(async () => undefined),
+      deleteFiles: deleteFilesMock,
     })),
   })),
 }));
@@ -1021,7 +1024,7 @@ describe("getPreviousChapterLastScenes", () => {
   it("returns previous chapter's last scenes, sorted ascending", async () => {
     // Seed previous chapter
     docStore["books/book-1/chapters/chapter-0"] = { order: 0 };
-    
+
     // Seed scenes
     scenesStore["books/book-1/chapters/chapter-0/scenes"] = [
       { order: 2, text: "third scene", modelUsed: "gemini", provider: "gemini" },
@@ -1077,6 +1080,7 @@ describe("retrieveRelevantFacts", () => {
 describe("deleteBook", () => {
   beforeEach(() => {
     docStore = {};
+    deleteFilesMock.mockClear();
   });
 
   it("successfully purges all book records and subcollections", async () => {
@@ -1085,7 +1089,10 @@ describe("deleteBook", () => {
     docStore["books/book-1/chapters/chapter-1/scenes/scene-1"] = { text: "Scene text", order: 0 };
     docStore["books/book-1/messages/message-1"] = { text: "Hello" };
     docStore["books/book-1/vision/main"] = { theme: "Adventure" };
-    docStore["books/book-1/facts/fact-1"] = { name: "Elena" };
+    docStore["books/book-1/facts/fact-1"] = {
+      name: "Elena",
+      embedding: [0.1, 0.2, 0.3],
+    };
     docStore["books/book-1/sessions/session-1"] = { status: "active" };
     docStore["books/book-1/generationRequests/request-1"] = { status: "completed" };
     docStore["books/book-1/system/openingSuggestion"] = { state: "ok" };
@@ -1093,7 +1100,9 @@ describe("deleteBook", () => {
     docStore["books/book-1/automation/task-1"] = { state: "completed" };
     docStore["books/book-1/snapshots/snap-1"] = { name: "Backup" };
     docStore["books/book-1/snapshots/snap-1/chapters/chapter-1"] = { order: 0 };
-    docStore["books/book-1/snapshots/snap-1/chapters/chapter-1/scenes/scene-1"] = { text: "Old scene" };
+    docStore["books/book-1/snapshots/snap-1/chapters/chapter-1/scenes/scene-1"] = {
+      text: "Old scene",
+    };
     docStore["intakeRequests/intake-1"] = { uid: "user-123", bookId: "book-1" };
 
     await deleteBook("book-1", "user-123");
@@ -1107,13 +1116,16 @@ describe("deleteBook", () => {
     expect(docStore["books/book-1/facts/fact-1"]).toBeUndefined();
     expect(docStore["books/book-1/snapshots/snap-1"]).toBeUndefined();
     expect(docStore["books/book-1/snapshots/snap-1/chapters/chapter-1"]).toBeUndefined();
-    expect(docStore["books/book-1/snapshots/snap-1/chapters/chapter-1/scenes/scene-1"]).toBeUndefined();
+    expect(
+      docStore["books/book-1/snapshots/snap-1/chapters/chapter-1/scenes/scene-1"],
+    ).toBeUndefined();
     expect(docStore["books/book-1/sessions/session-1"]).toBeUndefined();
     expect(docStore["books/book-1/generationRequests/request-1"]).toBeUndefined();
     expect(docStore["books/book-1/system/openingSuggestion"]).toBeUndefined();
     expect(docStore["books/book-1/usage/usage-1"]).toBeUndefined();
     expect(docStore["books/book-1/automation/task-1"]).toBeUndefined();
     expect(docStore["intakeRequests/intake-1"]).toBeUndefined();
+    expect(deleteFilesMock).toHaveBeenCalledWith({ prefix: "exports/book-1-" });
   });
 
   it("throws error if book does not exist", async () => {

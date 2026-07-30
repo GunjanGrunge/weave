@@ -36,6 +36,7 @@ const snapshot = {
 
 describe("BookTools", () => {
   beforeEach(() => {
+    sessionStorage.clear();
     compareSnapshotMock.mockReset().mockResolvedValue([
       {
         chapterId: "chapter-1",
@@ -103,13 +104,11 @@ describe("BookTools", () => {
     const onDeleted = vi.fn();
     render(<BookTools bookId="book-1" onDeleted={onDeleted} onRestored={vi.fn()} />);
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: /export and book actions/i }), {
-      button: 0,
-      ctrlKey: false,
-    });
-    fireEvent.click(await screen.findByRole("menuitem", { name: /delete book/i }));
+    fireEvent.click(screen.getByRole("button", { name: /delete this book/i }));
 
-    const deleteButton = screen.getByRole("button", { name: /^delete book$/i });
+    expect(screen.getByText(/all stored embeddings/i)).toBeInTheDocument();
+    expect(screen.getByText(/cannot be undone/i)).toBeInTheDocument();
+    const deleteButton = screen.getByRole("button", { name: /permanently delete/i });
     expect(deleteButton).toBeDisabled();
     fireEvent.change(screen.getByLabelText(/type delete to confirm/i), {
       target: { value: "DELETE" },
@@ -118,5 +117,6 @@ describe("BookTools", () => {
 
     await waitFor(() => expect(deleteBookMock).toHaveBeenCalledWith("book-1"));
     expect(onDeleted).toHaveBeenCalled();
+    expect(sessionStorage.getItem("weave.bookDeletedNotice")).toMatch(/permanently deleted/i);
   });
 });

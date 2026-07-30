@@ -1,8 +1,18 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { BookOpen, CalendarDays, MessageSquareText, Plus, RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  BookOpen,
+  CalendarDays,
+  CheckCircle2,
+  MessageSquareText,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
 
+import { DeleteBookButton } from "@/components/book/DeleteBookButton";
 import { SectionLabel } from "@/components/common/SectionLabel";
 import { Button } from "@/components/ui/button";
+import { clearBookDeletedNotice, consumeBookDeletedNotice } from "@/lib/book-deletion";
 import { formatBookDate, useBooks } from "@/lib/books";
 
 export const Route = createFileRoute("/books/")({
@@ -19,6 +29,12 @@ export function BooksPage() {
   const booksQuery = useBooks();
   const books = booksQuery.data;
   const hasBooks = books !== undefined;
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    const deletionNotice = consumeBookDeletedNotice();
+    if (deletionNotice) setNotice(deletionNotice);
+  }, []);
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
@@ -37,6 +53,16 @@ export function BooksPage() {
           </Link>
         </Button>
       </header>
+
+      {notice && (
+        <div
+          role="status"
+          className="mt-6 flex items-start gap-3 rounded-md border border-accent/30 bg-accent/5 px-4 py-3 text-sm"
+        >
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-accent" />
+          <span>{notice}</span>
+        </div>
+      )}
 
       {booksQuery.isPending && !hasBooks && <BooksLoading />}
 
@@ -79,34 +105,47 @@ export function BooksPage() {
       {hasBooks && books.length > 0 && (
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {books.map((book) => (
-            <Link
+            <article
               key={book.bookId}
-              to="/books/$bookId/chat"
-              params={{ bookId: book.bookId }}
-              className="group flex min-h-52 flex-col rounded-md border border-border bg-card p-5 transition-colors hover:border-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="group flex min-h-52 flex-col rounded-md border border-border bg-card p-5 transition-colors hover:border-accent/50"
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="grid size-11 shrink-0 place-items-center rounded-md bg-accent/10 text-accent">
                   <BookOpen className="size-5" />
                 </div>
-                <span className="rounded-sm border border-border px-2 py-1 font-mono text-[10px] uppercase text-muted-foreground">
-                  Ready to write
-                </span>
+                <DeleteBookButton
+                  bookId={book.bookId}
+                  bookTitle={book.title || "Untitled Book"}
+                  compact
+                  onDeleted={(message) => {
+                    clearBookDeletedNotice();
+                    setNotice(message);
+                    void booksQuery.refetch();
+                  }}
+                />
               </div>
-              <h2 className="mt-5 line-clamp-2 font-serif text-xl font-semibold leading-snug">
+              <Link
+                to="/books/$bookId/chat"
+                params={{ bookId: book.bookId }}
+                className="mt-5 line-clamp-2 font-serif text-xl font-semibold leading-snug hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
                 {book.title || "Untitled Book"}
-              </h2>
+              </Link>
               <div className="mt-auto flex items-end justify-between gap-3 pt-6">
                 <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                   <CalendarDays className="size-3.5" />
                   {formatBookDate(book.createdAt)}
                 </span>
-                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-accent">
+                <Link
+                  to="/books/$bookId/chat"
+                  params={{ bookId: book.bookId }}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
                   <MessageSquareText className="size-3.5" />
                   Open chat
-                </span>
+                </Link>
               </div>
-            </Link>
+            </article>
           ))}
         </div>
       )}

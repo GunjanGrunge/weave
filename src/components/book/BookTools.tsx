@@ -1,15 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  AlertTriangle,
-  Check,
-  Download,
-  FileText,
-  History,
-  Loader2,
-  RotateCcw,
-  Save,
-  Trash2,
-} from "lucide-react";
+import { Check, Download, FileText, History, Loader2, RotateCcw, Save } from "lucide-react";
 
 import {
   AlertDialog,
@@ -33,13 +23,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { DeleteBookButton } from "@/components/book/DeleteBookButton";
 import {
   compareSnapshot,
-  deleteBook,
   exportBook,
   listSnapshots,
   restoreSnapshot,
@@ -86,9 +75,6 @@ export function BookTools({
   const [snapshotState, setSnapshotState] = useState<OperationState>({ status: "idle" });
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [restoreConfirmation, setRestoreConfirmation] = useState("");
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteConfirmation, setDeleteConfirmation] = useState("");
-  const [deleteState, setDeleteState] = useState<OperationState>({ status: "idle" });
   const [exportState, setExportState] = useState<OperationState>({ status: "idle" });
 
   useEffect(() => {
@@ -180,21 +166,6 @@ export function BookTools({
     }
   }
 
-  async function confirmDelete() {
-    if (deleteConfirmation !== "DELETE" || deleteState.status === "loading") return;
-    setDeleteState({ status: "loading" });
-    try {
-      await deleteBook(bookId);
-      setDeleteOpen(false);
-      onDeleted();
-    } catch (error) {
-      setDeleteState({
-        status: "error",
-        message: errorMessage(error, "Could not delete this book."),
-      });
-    }
-  }
-
   return (
     <>
       <div className="flex items-center gap-2">
@@ -224,15 +195,9 @@ export function BookTools({
             <DropdownMenuItem onSelect={() => void runExport("plain-text")}>
               <FileText /> Export plain text
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onSelect={() => setDeleteOpen(true)}
-            >
-              <Trash2 /> Delete book
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <DeleteBookButton bookId={bookId} onDeleted={onDeleted} />
       </div>
 
       {exportState.status === "error" && (
@@ -398,56 +363,7 @@ export function BookTools({
               disabled={restoreConfirmation !== "RESTORE"}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              <AlertTriangle className="size-4" /> Restore version
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog
-        open={deleteOpen}
-        onOpenChange={(open) => {
-          setDeleteOpen(open);
-          if (!open) {
-            setDeleteConfirmation("");
-            setDeleteState({ status: "idle" });
-          }
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this book permanently?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This removes the manuscript and its writing history. Type DELETE to confirm.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <Input
-            value={deleteConfirmation}
-            onChange={(event) => setDeleteConfirmation(event.target.value)}
-            aria-label="Type DELETE to confirm"
-            autoComplete="off"
-          />
-          {deleteState.status === "error" && (
-            <p role="alert" className="text-sm text-destructive">
-              {deleteState.message}
-            </p>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(event) => {
-                event.preventDefault();
-                void confirmDelete();
-              }}
-              disabled={deleteConfirmation !== "DELETE" || deleteState.status === "loading"}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleteState.status === "loading" ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Trash2 className="size-4" />
-              )}
-              Delete book
+              <RotateCcw className="size-4" /> Restore version
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const { useBooksMock } = vi.hoisted(() => ({
+const { deleteBookMock, useBooksMock } = vi.hoisted(() => ({
+  deleteBookMock: vi.fn(),
   useBooksMock: vi.fn(),
 }));
 
@@ -28,10 +29,18 @@ vi.mock("@/lib/books", () => ({
   formatBookDate: () => "Jul 27, 2026",
 }));
 
+vi.mock("@/lib/book-management", () => ({
+  deleteBook: deleteBookMock,
+}));
+
 import { BooksPage } from "./books.index";
 
 describe("BooksPage", () => {
-  beforeEach(() => useBooksMock.mockReset());
+  beforeEach(() => {
+    sessionStorage.clear();
+    deleteBookMock.mockReset().mockResolvedValue(undefined);
+    useBooksMock.mockReset();
+  });
 
   it("renders persisted books with links to their real chat routes", () => {
     useBooksMock.mockReturnValue({
@@ -93,5 +102,40 @@ describe("BooksPage", () => {
       "href",
       "/books/book-cached/chat",
     );
+  });
+
+  it("permanently deletes a book from its card and shows completion", async () => {
+    const refetch = vi.fn().mockResolvedValue(undefined);
+    useBooksMock.mockReturnValue({
+      isPending: false,
+      isError: false,
+      isSuccess: true,
+      data: [
+        {
+          bookId: "book-1",
+          title: "The Floating Hotel",
+          style: { presetIds: ["warm"] },
+          createdAt: "2026-07-27T12:00:00.000Z",
+        },
+      ],
+      refetch,
+    });
+
+    render(<BooksPage />);
+    fireEvent.click(screen.getByRole("button", { name: /delete the floating hotel/i }));
+
+    expect(screen.getByText(/completely erased from weave/i)).toBeInTheDocument();
+    expect(screen.getByText(/all stored embeddings/i)).toBeInTheDocument();
+    const confirm = screen.getByRole("button", { name: /permanently delete/i });
+    expect(confirm).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText(/type delete to confirm/i), {
+      target: { value: "DELETE" },
+    });
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(deleteBookMock).toHaveBeenCalledWith("book-1"));
+    expect(refetch).toHaveBeenCalled();
+    expect(await screen.findByRole("status")).toHaveTextContent(/all associated data/i);
   });
 });
