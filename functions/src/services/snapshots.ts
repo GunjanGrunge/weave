@@ -424,6 +424,10 @@ export async function restoreBookSnapshot(
     ref: FirebaseFirestore.DocumentReference;
     data: FirebaseFirestore.DocumentData;
   }> = [];
+  const preservedCharacterCorrections: Array<{
+    ref: FirebaseFirestore.DocumentReference;
+    data: FirebaseFirestore.DocumentData;
+  }> = [];
 
   const liveChapters = await db.collection("books").doc(bookId).collection("chapters").get();
   for (const chap of liveChapters.docs) {
@@ -436,6 +440,8 @@ export async function restoreBookSnapshot(
 
   for (const collectionName of [
     "facts",
+    "memorySources",
+    "automation",
     "messages",
     "sessions",
     "generationRequests",
@@ -443,6 +449,47 @@ export async function restoreBookSnapshot(
   ] as const) {
     const liveDocs = await db.collection("books").doc(bookId).collection(collectionName).get();
     deletes.push(...liveDocs.docs.map((doc) => doc.ref));
+  }
+  const liveCharacters = await db.collection("books").doc(bookId).collection("characters").get();
+  for (const character of liveCharacters.docs) {
+    const data = character.data();
+    const overrides = data.authorOverrides as
+      | {
+          name?: string;
+          aliases?: string[];
+          summary?: string;
+          stableTraits?: Record<string, string>;
+          currentState?: Record<string, string>;
+        }
+      | undefined;
+    const lockedFields = Array.isArray(data.lockedFields) ? data.lockedFields : [];
+    const hasCorrections =
+      lockedFields.length > 0 ||
+      Boolean(overrides?.name || overrides?.summary || overrides?.aliases?.length) ||
+      Object.keys(overrides?.stableTraits ?? {}).length > 0 ||
+      Object.keys(overrides?.currentState ?? {}).length > 0;
+    if (!hasCorrections) {
+      deletes.push(character.ref);
+      continue;
+    }
+    preservedCharacterCorrections.push({
+      ref: character.ref,
+      data: {
+        ...data,
+        name: overrides?.name ?? data.name,
+        aliases: overrides?.aliases ?? data.aliases ?? [],
+        summary: overrides?.summary ?? data.summary ?? "",
+        stableTraits: overrides?.stableTraits ?? {},
+        currentState: overrides?.currentState ?? {},
+        timeline: [],
+        sources: [],
+        conflicts: [],
+        verification: "stale",
+        migrationState: "native",
+        version: (typeof data.version === "number" ? data.version : 0) + 1,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+    });
   }
 
   const visionRef = db.collection("books").doc(bookId).collection("vision").doc("main");
@@ -492,6 +539,7 @@ export async function restoreBookSnapshot(
   }
 
   const restorePaths = new Set(restores.map((restore) => restore.ref.path));
+  for (const correction of preservedCharacterCorrections) restores.push(correction);
   const uniqueDeletes = deletes.filter((ref) => !restorePaths.has(ref.path));
   const operationCount = uniqueDeletes.length + restores.length + 1;
   if (operationCount > MAX_ATOMIC_SNAPSHOT_WRITES) {
@@ -515,6 +563,7 @@ export async function restoreBookSnapshot(
     }
     transaction.update(bookRef, {
       manuscriptRevision: currentRev + 1,
+      storyBibleState: "rebuild-required",
       restoredAt: FieldValue.serverTimestamp(),
     });
   });

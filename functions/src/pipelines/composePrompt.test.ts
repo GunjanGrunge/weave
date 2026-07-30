@@ -199,6 +199,33 @@ describe("composePrompt", () => {
     expect(result?.prompt).toContain("Scene two text.");
   });
 
+  it("includes the canonical roster and prohibits unrequested named characters", async () => {
+    getBookMock.mockResolvedValue({
+      uid: "user-a",
+      title: "A Heist",
+      style: { presetIds: [] },
+      createdAt: "t",
+    });
+    getVisionDocumentMock.mockResolvedValue(baseVision);
+
+    const result = await composePrompt(
+      "book-1",
+      {
+        chapterId: "chapter-1",
+        priorScenesText: [],
+        canonicalRosterText: "- Mr. Bell | stable: age=72 | current: occupation=retired teacher",
+        storyBibleState: "current",
+      },
+      { mode: "free-text", description: "Bell enters the station." },
+    );
+
+    expect(result?.prompt).toContain("CANONICAL CHARACTER ROSTER");
+    expect(result?.prompt).toContain("age=72");
+    expect(result?.prompt).toContain("flashback");
+    expect(result?.prompt).toContain("Do not introduce a new named or recurring character");
+    expect(result?.prompt).toContain("Any character absent from this roster is noncanonical");
+  });
+
   it("returns undefined when the book or vision document does not exist", async () => {
     getBookMock.mockResolvedValue(undefined);
     getVisionDocumentMock.mockResolvedValue(baseVision);

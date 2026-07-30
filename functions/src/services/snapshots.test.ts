@@ -379,6 +379,26 @@ describe("Snapshots Service", () => {
       docStore["books/book-1"] = { manuscriptRevision: 1 };
       docStore["books/book-1/chapters/chapter-1"] = { order: 0 };
       docStore["books/book-1/facts/fact-1"] = { description: "Elena's scarf" };
+      docStore["books/book-1/characters/elena"] = { name: "Elena" };
+      docStore["books/book-1/characters/bell"] = {
+        name: "Mr. Bell",
+        aliases: ["Bell"],
+        summary: "Extracted summary",
+        stableTraits: { age: "35" },
+        currentState: { location: "station" },
+        timeline: [{ id: "old-event" }],
+        sources: [{ sceneId: "scene-1" }],
+        conflicts: [],
+        authorOverrides: {
+          summary: "The elderly witness.",
+          stableTraits: { age: "72" },
+          currentState: {},
+        },
+        lockedFields: ["stableTraits.age"],
+        version: 4,
+      };
+      docStore["books/book-1/memorySources/source-1"] = { sceneId: "scene-1" };
+      docStore["books/book-1/automation/entities-scene-1"] = { state: "completed" };
 
       // Snapshot state
       const snapBase = "books/book-1/snapshots/snap-restore";
@@ -396,6 +416,10 @@ describe("Snapshots Service", () => {
       expect(docStore["books/book-1/facts/fact-1"]).toBeUndefined();
       expect(docStore["books/book-1/chapters/chapter-1"]).toBeUndefined();
       expect(deletedPaths).toContain("books/book-1/facts/fact-1");
+      expect(deletedPaths).toContain("books/book-1/characters/elena");
+      expect(deletedPaths).not.toContain("books/book-1/characters/bell");
+      expect(deletedPaths).toContain("books/book-1/memorySources/source-1");
+      expect(deletedPaths).toContain("books/book-1/automation/entities-scene-1");
       expect(deletedPaths).toContain("books/book-1/chapters/chapter-1");
 
       // Restored content matches snapshot
@@ -409,10 +433,21 @@ describe("Snapshots Service", () => {
         order: 0,
         restoredFromSnapshot: "snap-restore",
       });
+      expect(docStore["books/book-1/characters/bell"]).toMatchObject({
+        name: "Mr. Bell",
+        summary: "The elderly witness.",
+        stableTraits: { age: "72" },
+        lockedFields: ["stableTraits.age"],
+        timeline: [],
+        sources: [],
+        verification: "stale",
+        version: 5,
+      });
 
       // manuscriptRevision is incremented
       expect(updateCalls["books/book-1"]).toEqual({
         manuscriptRevision: 2,
+        storyBibleState: "rebuild-required",
         restoredAt: "server-timestamp",
       });
     });

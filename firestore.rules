@@ -43,6 +43,11 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      match /characters/{characterId} {
+        allow read: if ownsBook(bookId);
+        allow write: if false;
+      }
+
       match /usage/{usageId} {
         allow read: if ownsBook(bookId);
         allow write: if false;

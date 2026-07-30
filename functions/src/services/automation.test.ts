@@ -29,6 +29,7 @@ vi.mock("firebase-admin/app", () => ({
 vi.mock("firebase-admin/firestore", () => ({
   FieldValue: {
     serverTimestamp: vi.fn(() => "server-time"),
+    delete: vi.fn(() => "deleted-field"),
   },
   getFirestore: vi.fn(() => ({
     collection,
@@ -42,6 +43,11 @@ vi.mock("firebase-admin/firestore", () => ({
           document: { path: string },
           data: Record<string, unknown>,
         ) => void;
+        set: (
+          document: { path: string },
+          data: Record<string, unknown>,
+          options?: { merge?: boolean },
+        ) => void;
       }) => Promise<boolean>,
     ) =>
       callback({
@@ -51,6 +57,12 @@ vi.mock("firebase-admin/firestore", () => ({
         }),
         create: (document, data) => {
           records.set(document.path, data);
+        },
+        set: (document, data, options) => {
+          records.set(
+            document.path,
+            options?.merge ? { ...(records.get(document.path) ?? {}), ...data } : data,
+          );
         },
       }),
   })),
@@ -90,5 +102,15 @@ describe("automation task claims", () => {
     expect(
       records.get("books/book-1/automation/entities-scene-1")?.failureReason,
     ).toHaveLength(500);
+  });
+
+  it("allows a failed task to be reclaimed", async () => {
+    await claimAutomationTask("book-1", "entities-scene-2");
+    await failAutomationTask("book-1", "entities-scene-2", "provider unavailable");
+
+    await expect(claimAutomationTask("book-1", "entities-scene-2")).resolves.toBe(true);
+    expect(records.get("books/book-1/automation/entities-scene-2")).toMatchObject({
+      state: "processing",
+    });
   });
 });

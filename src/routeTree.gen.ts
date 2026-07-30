@@ -16,6 +16,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as BooksIndexRouteImport } from './routes/books.index'
 import { Route as BooksNewRouteImport } from './routes/books.new'
 import { Route as BooksBookIdVisionRouteImport } from './routes/books.$bookId.vision'
+import { Route as BooksBookIdStoryBibleRouteImport } from './routes/books.$bookId.story-bible'
 import { Route as BooksBookIdManuscriptRouteImport } from './routes/books.$bookId.manuscript'
 import { Route as BooksBookIdChatRouteImport } from './routes/books.$bookId.chat'
 
@@ -54,6 +55,11 @@ const BooksBookIdVisionRoute = BooksBookIdVisionRouteImport.update({
   path: '/$bookId/vision',
   getParentRoute: () => BooksRoute,
 } as any)
+const BooksBookIdStoryBibleRoute = BooksBookIdStoryBibleRouteImport.update({
+  id: '/$bookId/story-bible',
+  path: '/$bookId/story-bible',
+  getParentRoute: () => BooksRoute,
+} as any)
 const BooksBookIdManuscriptRoute = BooksBookIdManuscriptRouteImport.update({
   id: '/$bookId/manuscript',
   path: '/$bookId/manuscript',
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/books/': typeof BooksIndexRoute
   '/books/$bookId/chat': typeof BooksBookIdChatRoute
   '/books/$bookId/manuscript': typeof BooksBookIdManuscriptRoute
+  '/books/$bookId/story-bible': typeof BooksBookIdStoryBibleRoute
   '/books/$bookId/vision': typeof BooksBookIdVisionRoute
 }
 export interface FileRoutesByTo {
@@ -84,6 +91,7 @@ export interface FileRoutesByTo {
   '/books': typeof BooksIndexRoute
   '/books/$bookId/chat': typeof BooksBookIdChatRoute
   '/books/$bookId/manuscript': typeof BooksBookIdManuscriptRoute
+  '/books/$bookId/story-bible': typeof BooksBookIdStoryBibleRoute
   '/books/$bookId/vision': typeof BooksBookIdVisionRoute
 }
 export interface FileRoutesById {
@@ -96,6 +104,7 @@ export interface FileRoutesById {
   '/books/': typeof BooksIndexRoute
   '/books/$bookId/chat': typeof BooksBookIdChatRoute
   '/books/$bookId/manuscript': typeof BooksBookIdManuscriptRoute
+  '/books/$bookId/story-bible': typeof BooksBookIdStoryBibleRoute
   '/books/$bookId/vision': typeof BooksBookIdVisionRoute
 }
 export interface FileRouteTypes {
@@ -109,6 +118,7 @@ export interface FileRouteTypes {
     | '/books/'
     | '/books/$bookId/chat'
     | '/books/$bookId/manuscript'
+    | '/books/$bookId/story-bible'
     | '/books/$bookId/vision'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/books'
     | '/books/$bookId/chat'
     | '/books/$bookId/manuscript'
+    | '/books/$bookId/story-bible'
     | '/books/$bookId/vision'
   id:
     | '__root__'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/books/'
     | '/books/$bookId/chat'
     | '/books/$bookId/manuscript'
+    | '/books/$bookId/story-bible'
     | '/books/$bookId/vision'
   fileRoutesById: FileRoutesById
 }
@@ -191,6 +203,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BooksBookIdVisionRouteImport
       parentRoute: typeof BooksRoute
     }
+    '/books/$bookId/story-bible': {
+      id: '/books/$bookId/story-bible'
+      path: '/$bookId/story-bible'
+      fullPath: '/books/$bookId/story-bible'
+      preLoaderRoute: typeof BooksBookIdStoryBibleRouteImport
+      parentRoute: typeof BooksRoute
+    }
     '/books/$bookId/manuscript': {
       id: '/books/$bookId/manuscript'
       path: '/$bookId/manuscript'
@@ -213,6 +232,7 @@ interface BooksRouteChildren {
   BooksIndexRoute: typeof BooksIndexRoute
   BooksBookIdChatRoute: typeof BooksBookIdChatRoute
   BooksBookIdManuscriptRoute: typeof BooksBookIdManuscriptRoute
+  BooksBookIdStoryBibleRoute: typeof BooksBookIdStoryBibleRoute
   BooksBookIdVisionRoute: typeof BooksBookIdVisionRoute
 }
 
@@ -221,6 +241,7 @@ const BooksRouteChildren: BooksRouteChildren = {
   BooksIndexRoute: BooksIndexRoute,
   BooksBookIdChatRoute: BooksBookIdChatRoute,
   BooksBookIdManuscriptRoute: BooksBookIdManuscriptRoute,
+  BooksBookIdStoryBibleRoute: BooksBookIdStoryBibleRoute,
   BooksBookIdVisionRoute: BooksBookIdVisionRoute,
 }
 

@@ -100,6 +100,15 @@ describe("BookTools", () => {
     );
   });
 
+  it("links to the book's Story Bible", () => {
+    render(<BookTools bookId="book-1" onDeleted={vi.fn()} onRestored={vi.fn()} />);
+
+    expect(screen.getByRole("link", { name: /story bible/i })).toHaveAttribute(
+      "href",
+      "/books/book-1/story-bible",
+    );
+  });
+
   it("deletes only after DELETE is typed and reports completion to the route", async () => {
     const onDeleted = vi.fn();
     render(<BookTools bookId="book-1" onDeleted={onDeleted} onRestored={vi.fn()} />);

@@ -13,6 +13,8 @@ import {
   recordUsageBestEffort,
   type AIProviderKeys,
 } from "../services/gemini.js";
+import { getCanonicalRoster } from "../services/storyBible.js";
+import type { StoryBibleMemoryState } from "../types/storyBible.js";
 import type { SceneInput } from "../types/sceneInput.js";
 
 /**
@@ -26,11 +28,26 @@ import type { SceneInput } from "../types/sceneInput.js";
 export type AssembledContext = {
   chapterId: string | undefined;
   priorScenesText: string[];
-  lastScenesText?: string[];            // Last 1-2 scenes of the previous chapter
-  priorChapterSummaries?: string[];     // One stored summary per prior chapter
-  relevantFactsText?: string[];         // Facts retrieved by findNearest
+  lastScenesText?: string[]; // Last 1-2 scenes of the previous chapter
+  priorChapterSummaries?: string[]; // One stored summary per prior chapter
+  relevantFactsText?: string[]; // Facts retrieved by findNearest
+  canonicalRosterText?: string; // Complete active Story Bible roster
+  storyBibleState?: StoryBibleMemoryState;
+  storyBibleRevision?: number;
   manuscriptRevision?: number;
 };
+
+function boundedStrings(values: string[], maxCharacters = 60_000): string[] {
+  const result: string[] = [];
+  let remaining = maxCharacters;
+  for (const value of values.slice().reverse()) {
+    if (remaining <= 0) break;
+    const bounded = value.slice(0, remaining);
+    result.unshift(bounded);
+    remaining -= bounded.length;
+  }
+  return result;
+}
 
 function getEmbeddingQueryText(input: SceneInput): string {
   if (input.mode === "free-text") {
@@ -55,9 +72,16 @@ export async function assembleContext(
 ): Promise<AssembledContext> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const before = await getBook(bookId);
+    const canonicalRoster = await getCanonicalRoster(bookId);
     const { chapterId, scenes } = await getActiveChapterScenes(bookId);
     const beforeRevision =
       typeof before?.manuscriptRevision === "number" ? before.manuscriptRevision : 0;
+    const beforeStoryBibleRevision =
+      typeof before?.storyBibleRevision === "number" ? before.storyBibleRevision : 0;
+    const canonicalRosterRevision =
+      typeof canonicalRoster.revision === "number"
+        ? canonicalRoster.revision
+        : beforeStoryBibleRevision;
 
     let lastScenesText: string[] = [];
     let priorChapterSummaries: string[] = [];
@@ -73,7 +97,10 @@ export async function assembleContext(
         }
       }
     } catch (err) {
-      console.error("Context assembly - chapter history retrieval failed, degrading gracefully:", err);
+      console.error(
+        "Context assembly - chapter history retrieval failed, degrading gracefully:",
+        err,
+      );
     }
 
     let relevantFactsText: string[] = [];
@@ -114,17 +141,26 @@ export async function assembleContext(
     const after = await getBook(bookId);
     const afterRevision =
       typeof after?.manuscriptRevision === "number" ? after.manuscriptRevision : 0;
-    if (beforeRevision === afterRevision) {
+    const afterStoryBibleRevision =
+      typeof after?.storyBibleRevision === "number" ? after.storyBibleRevision : 0;
+    if (
+      beforeRevision === afterRevision &&
+      beforeStoryBibleRevision === afterStoryBibleRevision &&
+      canonicalRosterRevision === afterStoryBibleRevision
+    ) {
       return {
         chapterId,
-        priorScenesText: scenes.map((scene) => scene.text),
-        lastScenesText,
-        priorChapterSummaries,
-        relevantFactsText,
+        priorScenesText: boundedStrings(scenes.map((scene) => scene.text)),
+        lastScenesText: boundedStrings(lastScenesText, 20_000),
+        priorChapterSummaries: boundedStrings(priorChapterSummaries, 20_000),
+        relevantFactsText: boundedStrings(relevantFactsText, 20_000),
+        canonicalRosterText: canonicalRoster.text,
+        storyBibleState: canonicalRoster.state,
+        storyBibleRevision: canonicalRosterRevision,
         manuscriptRevision: afterRevision,
       };
     }
   }
 
-  throw new Error("Manuscript changed repeatedly during context assembly.");
+  throw new Error("Manuscript or Story Bible changed repeatedly during context assembly.");
 }

@@ -113,6 +113,9 @@ jobs:
             retryOpeningSuggestion
             getVision
             updateVision
+            getStoryBible
+            updateStoryBibleCharacter
+            rebuildStoryBible
             getMessages
             generateScene
             saveGeneratedScene

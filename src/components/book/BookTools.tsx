@@ -1,5 +1,14 @@
 import { useEffect, useState } from "react";
-import { Check, Download, FileText, History, Loader2, RotateCcw, Save } from "lucide-react";
+import {
+  BookOpenCheck,
+  Check,
+  Download,
+  FileText,
+  History,
+  Loader2,
+  RotateCcw,
+  Save,
+} from "lucide-react";
 
 import {
   AlertDialog,
@@ -169,6 +178,12 @@ export function BookTools({
   return (
     <>
       <div className="flex items-center gap-2">
+        <Button type="button" variant="outline" size="sm" asChild>
+          <a href={`/books/${encodeURIComponent(bookId)}/story-bible`}>
+            <BookOpenCheck className="size-4" />
+            Story Bible
+          </a>
+        </Button>
         <Button type="button" variant="outline" size="sm" onClick={() => setSnapshotsOpen(true)}>
           <History className="size-4" />
           Versions

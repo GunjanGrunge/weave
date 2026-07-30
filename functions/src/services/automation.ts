@@ -17,7 +17,17 @@ export async function claimAutomationTask(bookId: string, taskId: string): Promi
   return firestore().runTransaction(async (transaction) => {
     const snapshot = await transaction.get(ref);
     if (snapshot.exists) {
-      return false;
+      if (snapshot.data()?.state !== "failed") return false;
+      transaction.set(
+        ref,
+        {
+          state: "processing",
+          failureReason: FieldValue.delete(),
+          createdAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      return true;
     }
     transaction.create(ref, {
       state: "processing",

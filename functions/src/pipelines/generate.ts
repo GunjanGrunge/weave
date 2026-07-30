@@ -7,6 +7,7 @@ import { composePrompt } from "./composePrompt.js";
 import { getBook } from "../services/books.js";
 import type { AIProviderKeys } from "../services/gemini.js";
 import { generateScene as generateSceneCall, reviseSceneDraft } from "../services/gemini.js";
+import { getCanonicalRoster } from "../services/storyBible.js";
 import {
   claimInitialGeneration,
   claimRegeneration,
@@ -162,7 +163,14 @@ export async function runGenerate(
     return { status: "ok", actionable: true, ...claim.result };
   }
 
-  const generated = await executeGeneration(bookId, input, apiKeys, "generate");
+  let generated: Awaited<ReturnType<typeof executeGeneration>>;
+  try {
+    generated = await executeGeneration(bookId, input, apiKeys, "generate");
+  } catch (error) {
+    console.error("generate/context: context assembly failed", { bookId, error });
+    await failInitialGeneration(bookId, operation.idempotencyKey, claim.attemptToken);
+    return { status: "failed" };
+  }
   if (!generated) {
     await failInitialGeneration(bookId, operation.idempotencyKey, claim.attemptToken);
     return { status: "failed" };
@@ -199,10 +207,22 @@ export async function runGenerate(
   }
 }
 
-function cachedContext(session: GenerationSession): AssembledContext {
+async function cachedContext(
+  bookId: string,
+  session: GenerationSession,
+): Promise<AssembledContext> {
+  const canonicalRoster = await getCanonicalRoster(bookId).catch(() => ({
+    text: session.assembledContext.canonicalRosterText ?? "",
+    state: session.assembledContext.storyBibleState ?? "stale",
+    revision: session.storyBibleRevision ?? session.assembledContext.storyBibleRevision ?? 0,
+    characterCount: 0,
+  }));
   return {
     chapterId: session.chapterId ?? undefined,
     priorScenesText: session.assembledContext.priorScenesText,
+    canonicalRosterText: canonicalRoster.text,
+    storyBibleState: canonicalRoster.state,
+    storyBibleRevision: canonicalRoster.revision,
     manuscriptRevision: session.manuscriptRevision,
   };
 }
@@ -229,17 +249,24 @@ export async function runRegenerate(
   }
   const currentManuscriptRevision =
     typeof book.manuscriptRevision === "number" ? book.manuscriptRevision : 0;
-  const reusableContext =
-    currentManuscriptRevision === claim.session.manuscriptRevision
-      ? cachedContext(claim.session)
-      : undefined;
-  const generated = await executeGeneration(
-    bookId,
-    claim.session.input,
-    apiKeys,
-    "regenerate",
-    reusableContext,
-  );
+  let generated: Awaited<ReturnType<typeof executeGeneration>>;
+  try {
+    const reusableContext =
+      currentManuscriptRevision === claim.session.manuscriptRevision
+        ? await cachedContext(bookId, claim.session)
+        : undefined;
+    generated = await executeGeneration(
+      bookId,
+      claim.session.input,
+      apiKeys,
+      "regenerate",
+      reusableContext,
+    );
+  } catch (error) {
+    console.error("regenerate/context: context assembly failed", { bookId, error });
+    await failRegeneration(bookId, sessionId, claim.attemptToken);
+    return { status: "failed" };
+  }
   if (!generated) {
     await failRegeneration(bookId, sessionId, claim.attemptToken);
     return { status: "failed" };

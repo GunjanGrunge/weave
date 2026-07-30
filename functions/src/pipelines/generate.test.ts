@@ -12,6 +12,7 @@ const {
   failInitialGenerationMock,
   failRegenerationMock,
   getBookMock,
+  getCanonicalRosterMock,
 } = vi.hoisted(() => ({
   assembleContextMock: vi.fn(),
   composePromptMock: vi.fn(),
@@ -24,6 +25,7 @@ const {
   failInitialGenerationMock: vi.fn(),
   failRegenerationMock: vi.fn(),
   getBookMock: vi.fn(),
+  getCanonicalRosterMock: vi.fn(),
 }));
 
 vi.mock("./assembleContext.js", () => ({ assembleContext: assembleContextMock }));
@@ -33,6 +35,9 @@ vi.mock("../services/gemini.js", () => ({
   reviseSceneDraft: reviseSceneDraftMock,
 }));
 vi.mock("../services/books.js", () => ({ getBook: getBookMock }));
+vi.mock("../services/storyBible.js", () => ({
+  getCanonicalRoster: getCanonicalRosterMock,
+}));
 vi.mock("../services/scenes.js", () => ({
   claimInitialGeneration: claimInitialGenerationMock,
   persistGeneratedCandidate: persistGeneratedCandidateMock,
@@ -81,6 +86,11 @@ describe("generation pipelines", () => {
     });
     persistGeneratedCandidateMock.mockResolvedValue(persisted);
     getBookMock.mockResolvedValue({ manuscriptRevision: 2 });
+    getCanonicalRosterMock.mockResolvedValue({
+      text: "- Mr. Bell | stable: age=72",
+      state: "current",
+      characterCount: 1,
+    });
   });
 
   it("runs a second editorial pass for Deep Write and persists its final prose", async () => {
@@ -224,7 +234,12 @@ describe("generation pipelines", () => {
     expect(assembleContextMock).not.toHaveBeenCalled();
     expect(composePromptMock).toHaveBeenCalledWith(
       "book-1",
-      expect.objectContaining({ priorScenesText: ["Cached scene."], manuscriptRevision: 2 }),
+      expect.objectContaining({
+        priorScenesText: ["Cached scene."],
+        canonicalRosterText: "- Mr. Bell | stable: age=72",
+        storyBibleState: "current",
+        manuscriptRevision: 2,
+      }),
       { mode: "free-text", description: "Original input" },
     );
     expect(generateSceneMock).toHaveBeenCalledTimes(1);
@@ -255,6 +270,43 @@ describe("generation pipelines", () => {
       { mode: "free-text", description: "Original input" },
       keys,
     );
+  });
+
+  it("uses cached canonical memory when the live roster read transiently fails", async () => {
+    claimRegenerationMock.mockResolvedValue({
+      status: "claimed",
+      attemptToken: "regen-token",
+      session: {
+        chapterId: "chapter-1",
+        input: { mode: "free-text", description: "Original input" },
+        assembledContext: {
+          priorScenesText: ["Cached scene."],
+          canonicalRosterText: "- Cached character",
+          storyBibleState: "stale",
+          storyBibleRevision: 0,
+        },
+        manuscriptRevision: 2,
+        candidate: { text: "Old", provider: "openai", model: "old-model" },
+        revision: 0,
+        status: "active",
+      },
+    });
+    getCanonicalRosterMock.mockRejectedValue(new Error("Story Bible unavailable"));
+
+    commitRegenerationMock.mockResolvedValue({ ...persisted, revision: 1 });
+    await expect(runRegenerate("book-1", "session-1", 0, "regen-123", keys)).resolves.toMatchObject({
+      status: "ok",
+      actionable: true,
+    });
+    expect(composePromptMock).toHaveBeenCalledWith(
+      "book-1",
+      expect.objectContaining({
+        canonicalRosterText: "- Cached character",
+        storyBibleState: "stale",
+      }),
+      expect.anything(),
+    );
+    expect(failRegenerationMock).not.toHaveBeenCalled();
   });
 
   it("preserves the current candidate when regeneration fails", async () => {

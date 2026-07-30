@@ -64,6 +64,27 @@
         }
       },
       {
+        "source": "/getStoryBible",
+        "function": {
+          "functionId": "getStoryBible",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/updateStoryBibleCharacter",
+        "function": {
+          "functionId": "updateStoryBibleCharacter",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/rebuildStoryBible",
+        "function": {
+          "functionId": "rebuildStoryBible",
+          "region": "us-central1"
+        }
+      },
+      {
         "source": "/getMessages",
         "function": {
           "functionId": "getMessages",

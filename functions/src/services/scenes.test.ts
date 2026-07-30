@@ -309,6 +309,35 @@ describe("scene persistence service", () => {
     ).toBe("Candidate.");
   });
 
+  it("rejects regenerated prose after a Story Bible correction supersedes its context", async () => {
+    db.docs.set("books/book-1", { manuscriptRevision: 0, storyBibleRevision: 2 });
+    db.docs.set("books/book-1/sessions/session-1", activeSession());
+    db.docs.set("books/book-1/messages/message-1", {});
+    await claimRegeneration("book-1", "session-1", "regen-123", 0);
+
+    await expect(
+      commitRegeneration({
+        bookId: "book-1",
+        sessionId: "session-1",
+        attemptToken: "attempt-token",
+        expectedRevision: 0,
+        assembledContext: {
+          chapterId: "chapter-1",
+          priorScenesText: [],
+          manuscriptRevision: 0,
+          storyBibleRevision: 1,
+        },
+        candidate: { text: "Stale character detail.", provider: "openai", model: "gpt-test" },
+      }),
+    ).rejects.toMatchObject({
+      code: "stale-revision",
+      message: "The Story Bible changed during regeneration.",
+    });
+    expect(
+      (db.docs.get("books/book-1/sessions/session-1")?.candidate as Stored).text,
+    ).toBe("Candidate.");
+  });
+
   it("returns canonical data for a stale autosave", async () => {
     db.docs.set(
       "books/book-1/sessions/session-1",

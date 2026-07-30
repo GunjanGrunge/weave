@@ -73,6 +73,24 @@ Still open:
 
 - [Story 4.5] Provision and verify PITR, scheduled managed exports, retention, and a restore drill before moving the story out of backlog.
 
+## Story Bible follow-up work (2026-07-31)
+
+- source_spec: none
+  summary: Add a conversational co-author mode for brainstorming, editorial pushback, and an explicit transition from discussion to scene drafting.
+  evidence: Split from Story Bible memory because conversational intent routing and dialogue UX are independently shippable after canonical memory exists.
+- source_spec: none
+  summary: Build a split writing workspace with Chat and a live manuscript preview side by side.
+  evidence: Split from Story Bible memory because workspace composition is an independent frontend deliverable that can consume the memory APIs later.
+- source_spec: none
+  summary: Add revision intelligence with manuscript diff detection, intentional-wording controls, proposed corrections, and selective acceptance.
+  evidence: Split from Story Bible memory because edit review and merge semantics require a separate versioned workflow even though accepted edits will update memory.
+- source_spec: none
+  summary: Add a proactive Muse guidance surface for pacing, tension, continuity, title, and next-scene suggestions.
+  evidence: Split from Story Bible memory because advisory generation and its dedicated UI are independently shippable once canonical context is available.
+- source_spec: `_bmad-output/implementation-artifacts/spec-story-bible-memory.md`
+  summary: Stop exposing semantic fact embedding vectors through direct owner Firestore reads.
+  evidence: Existing `facts` documents combine user-visible fact data with raw embeddings, and Firestore rules cannot project fields from readable documents.
+
 Release verification completed on 2026-07-29:
 
 - Firestore rules and the 768-dimensional vector index were deployed.

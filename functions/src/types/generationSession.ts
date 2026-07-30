@@ -1,4 +1,5 @@
 import type { SceneInput } from "./sceneInput.js";
+import type { StoryBibleMemoryState } from "./storyBible.js";
 
 export type SceneAttempt = {
   text: string;
@@ -35,8 +36,12 @@ export type GenerationSession = {
   input: SceneInput;
   assembledContext: {
     priorScenesText: string[];
+    canonicalRosterText?: string;
+    storyBibleState?: StoryBibleMemoryState;
+    storyBibleRevision?: number;
   };
   manuscriptRevision: number;
+  storyBibleRevision?: number;
   candidate: SceneAttempt;
   revision: number;
   previousAttempt?: SceneAttempt;

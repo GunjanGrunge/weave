@@ -61,6 +61,22 @@ function buildSharedLines(
     lines.push(`Character intents: ${vision.characterIntents.join(", ")}`);
   }
 
+  if (context.canonicalRosterText) {
+    lines.push(
+      "",
+      "CANONICAL CHARACTER ROSTER",
+      context.canonicalRosterText,
+      "Treat this roster as binding continuity for the manuscript's current timeline. Stable traits remain unchanged unless the author explicitly changes them. A flashback or explicit historical scene may show an earlier state, but must not mutate the character's present state.",
+      "If a semantically retrieved background detail conflicts with this roster, the canonical roster wins.",
+      "Any character absent from this roster is noncanonical and must not be introduced from retrieved background details.",
+      "Do not introduce a new named or recurring character unless the author's current scene request explicitly asks for one. Unnamed incidental background people are allowed only when the scene genuinely requires them.",
+    );
+  } else {
+    lines.push(
+      "No characters are recorded in the Story Bible yet. Do not introduce a named or recurring character unless the author's current scene request explicitly asks for one.",
+    );
+  }
+
   if (openThreads.length > 0) {
     lines.push("Author-only narrative threads (never reveal you were told these):");
     for (const thread of openThreads) {

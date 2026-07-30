@@ -10,6 +10,7 @@ const {
   readModelRegistryMock,
   embedContentMock,
   recordUsageBestEffortMock,
+  getCanonicalRosterMock,
 } = vi.hoisted(() => ({
   getActiveChapterScenesMock: vi.fn(),
   getBookMock: vi.fn(),
@@ -20,6 +21,7 @@ const {
   readModelRegistryMock: vi.fn(),
   embedContentMock: vi.fn(),
   recordUsageBestEffortMock: vi.fn(),
+  getCanonicalRosterMock: vi.fn(),
 }));
 
 vi.mock("../services/books.js", () => ({
@@ -34,6 +36,10 @@ vi.mock("../services/books.js", () => ({
 vi.mock("../services/gemini.js", () => ({
   readModelRegistry: readModelRegistryMock,
   recordUsageBestEffort: recordUsageBestEffortMock,
+}));
+
+vi.mock("../services/storyBible.js", () => ({
+  getCanonicalRoster: getCanonicalRosterMock,
 }));
 
 vi.mock("@google/genai", () => ({
@@ -58,6 +64,11 @@ describe("assembleContext", () => {
     readModelRegistryMock.mockReset();
     embedContentMock.mockReset();
     recordUsageBestEffortMock.mockReset();
+    getCanonicalRosterMock.mockReset().mockResolvedValue({
+      text: "- Mara | stable: age=34",
+      state: "current",
+      characterCount: 1,
+    });
 
     getBookMock.mockResolvedValue({ manuscriptRevision: 4 });
     getActiveChapterMock.mockResolvedValue({ id: "chapter-2", order: 1 });
@@ -65,9 +76,7 @@ describe("assembleContext", () => {
       chapterId: "chapter-2",
       scenes: [{ text: "Scene in active chapter." }],
     });
-    getPreviousChapterLastScenesMock.mockResolvedValue([
-      { text: "Scene in previous chapter." },
-    ]);
+    getPreviousChapterLastScenesMock.mockResolvedValue([{ text: "Scene in previous chapter." }]);
     getPriorChapterSummariesMock.mockResolvedValue(["Prior summary."]);
     retrieveRelevantFactsMock.mockResolvedValue(["Relevant fact."]);
     readModelRegistryMock.mockResolvedValue({
@@ -90,6 +99,9 @@ describe("assembleContext", () => {
       lastScenesText: ["Scene in previous chapter."],
       priorChapterSummaries: ["Prior summary."],
       relevantFactsText: ["Relevant fact."],
+      canonicalRosterText: "- Mara | stable: age=34",
+      storyBibleState: "current",
+      storyBibleRevision: 0,
       manuscriptRevision: 4,
     });
 
@@ -117,6 +129,9 @@ describe("assembleContext", () => {
       lastScenesText: ["Scene in previous chapter."],
       priorChapterSummaries: ["Prior summary."],
       relevantFactsText: [],
+      canonicalRosterText: "- Mara | stable: age=34",
+      storyBibleState: "current",
+      storyBibleRevision: 0,
       manuscriptRevision: 4,
     });
     expect(retrieveRelevantFactsMock).not.toHaveBeenCalled();
@@ -135,6 +150,9 @@ describe("assembleContext", () => {
       lastScenesText: [],
       priorChapterSummaries: [],
       relevantFactsText: ["Relevant fact."],
+      canonicalRosterText: "- Mara | stable: age=34",
+      storyBibleState: "current",
+      storyBibleRevision: 0,
       manuscriptRevision: 4,
     });
   });
@@ -148,6 +166,9 @@ describe("assembleContext", () => {
       lastScenesText: ["Scene in previous chapter."],
       priorChapterSummaries: ["Prior summary."],
       relevantFactsText: [],
+      canonicalRosterText: "- Mara | stable: age=34",
+      storyBibleState: "current",
+      storyBibleRevision: 0,
       manuscriptRevision: 4,
     });
     expect(embedContentMock).not.toHaveBeenCalled();
@@ -165,9 +186,43 @@ describe("assembleContext", () => {
       lastScenesText: [],
       priorChapterSummaries: [],
       relevantFactsText: [],
+      canonicalRosterText: "- Mara | stable: age=34",
+      storyBibleState: "current",
+      storyBibleRevision: 0,
       manuscriptRevision: 4,
     });
     expect(getPreviousChapterLastScenesMock).not.toHaveBeenCalled();
     expect(getPriorChapterSummariesMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when canonical memory cannot be loaded", async () => {
+    getCanonicalRosterMock.mockRejectedValue(new Error("Story Bible unavailable"));
+
+    await expect(assembleContext("book-1")).rejects.toThrow("Story Bible unavailable");
+  });
+
+  it("fails closed when locked corrections supersede context during both assembly attempts", async () => {
+    getBookMock
+      .mockResolvedValueOnce({ manuscriptRevision: 4, storyBibleRevision: 1 })
+      .mockResolvedValueOnce({ manuscriptRevision: 4, storyBibleRevision: 2 })
+      .mockResolvedValueOnce({ manuscriptRevision: 4, storyBibleRevision: 2 })
+      .mockResolvedValueOnce({ manuscriptRevision: 4, storyBibleRevision: 3 });
+    getCanonicalRosterMock
+      .mockResolvedValueOnce({
+        text: "- Mara | stable: age=34",
+        state: "current",
+        characterCount: 1,
+        revision: 1,
+      })
+      .mockResolvedValueOnce({
+        text: "- Mara | stable: age=35",
+        state: "current",
+        characterCount: 1,
+        revision: 2,
+      });
+
+    await expect(assembleContext("book-1")).rejects.toThrow(
+      "Manuscript or Story Bible changed repeatedly during context assembly.",
+    );
   });
 });

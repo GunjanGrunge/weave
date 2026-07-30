@@ -12,6 +12,18 @@ import type {
 } from "../types/generationSession.js";
 import type { SceneInput } from "../types/sceneInput.js";
 
+function boundedSessionText(values: string[], maxCharacters = 60_000): string[] {
+  const result: string[] = [];
+  let remaining = maxCharacters;
+  for (const value of values.slice().reverse()) {
+    if (remaining <= 0) break;
+    const bounded = value.slice(0, remaining);
+    result.unshift(bounded);
+    remaining -= bounded.length;
+  }
+  return result;
+}
+
 const LEASE_MS = 70_000;
 export type { CandidateResult } from "../types/generationSession.js";
 
@@ -148,6 +160,17 @@ export async function persistGeneratedCandidate(input: {
         "The manuscript changed while this scene was generated.",
       );
     }
+    const bookStoryBibleRevision =
+      typeof bookSnapshot.data()?.storyBibleRevision === "number"
+        ? (bookSnapshot.data()?.storyBibleRevision as number)
+        : 0;
+    const assembledStoryBibleRevision = input.assembledContext.storyBibleRevision ?? 0;
+    if (bookStoryBibleRevision !== assembledStoryBibleRevision) {
+      throw new SceneSessionError(
+        "stale-revision",
+        "The Story Bible changed while this scene was generated.",
+      );
+    }
 
     const nextOrder = lastMessage.empty
       ? 0
@@ -157,8 +180,14 @@ export async function persistGeneratedCandidate(input: {
       bookId: input.bookId,
       chapterId: input.assembledContext.chapterId ?? null,
       input: input.sceneInput,
-      assembledContext: { priorScenesText: input.assembledContext.priorScenesText },
+      assembledContext: {
+        priorScenesText: boundedSessionText(input.assembledContext.priorScenesText),
+        canonicalRosterText: input.assembledContext.canonicalRosterText?.slice(0, 32_000),
+        storyBibleState: input.assembledContext.storyBibleState,
+        storyBibleRevision: assembledStoryBibleRevision,
+      },
       manuscriptRevision: assembledRevision,
+      storyBibleRevision: assembledStoryBibleRevision,
       candidate: input.candidate,
       revision: 0,
       messageId: assistantMessageRef.id,
@@ -212,9 +241,7 @@ export async function failInitialGeneration(
 
   await firestore().runTransaction(async (transaction) => {
     const snapshot = await transaction.get(ref);
-    const request = snapshot.data() as
-      | { status?: string; attemptToken?: string }
-      | undefined;
+    const request = snapshot.data() as { status?: string; attemptToken?: string } | undefined;
     if (request?.status === "in-progress" && request.attemptToken === attemptToken) {
       transaction.set(
         ref,
@@ -245,11 +272,7 @@ export async function saveGeneratedCandidate(
       throw new SceneSessionError("accepted", "This scene has already been accepted.", canonical);
     }
     if (session.revision !== expectedRevision) {
-      throw new SceneSessionError(
-        "stale-revision",
-        "A newer saved version exists.",
-        canonical,
-      );
+      throw new SceneSessionError("stale-revision", "A newer saved version exists.", canonical);
     }
 
     const revision = session.revision + 1;
@@ -312,19 +335,13 @@ export async function claimRegeneration(
     }
 
     const operation = session.regenerateOperation;
-    if (
-      operation?.idempotencyKey === idempotencyKey &&
-      operation.status === "completed"
-    ) {
+    if (operation?.idempotencyKey === idempotencyKey && operation.status === "completed") {
       return { status: "completed", result: operation.result ?? canonical };
     }
     if (session.revision !== expectedRevision) {
       throw new SceneSessionError("stale-revision", "A newer candidate exists.", canonical);
     }
-    if (
-      operation?.status === "in-progress" &&
-      operation.leaseExpiresAt > now
-    ) {
+    if (operation?.status === "in-progress" && operation.leaseExpiresAt > now) {
       return { status: "in-progress" };
     }
 
@@ -394,19 +411,13 @@ export async function fenceTimedOutRegeneration(
     }
     const session = snapshot.data() as GenerationSession;
     const operation = session.regenerateOperation;
-    if (
-      operation?.idempotencyKey === idempotencyKey &&
-      operation.status === "completed"
-    ) {
+    if (operation?.idempotencyKey === idempotencyKey && operation.status === "completed") {
       return {
         status: "completed",
         result: operation.result ?? candidateResult(sessionId, session),
       };
     }
-    if (
-      operation?.idempotencyKey === idempotencyKey &&
-      operation.status === "in-progress"
-    ) {
+    if (operation?.idempotencyKey === idempotencyKey && operation.status === "in-progress") {
       transaction.update(sessionRef, {
         "regenerateOperation.attemptToken": randomUUID(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -459,13 +470,31 @@ export async function commitRegeneration(input: {
         canonical,
       );
     }
+    const currentStoryBibleRevision =
+      typeof bookSnapshot.data()?.storyBibleRevision === "number"
+        ? (bookSnapshot.data()?.storyBibleRevision as number)
+        : 0;
+    const assembledStoryBibleRevision = input.assembledContext.storyBibleRevision ?? 0;
+    if (currentStoryBibleRevision !== assembledStoryBibleRevision) {
+      throw new SceneSessionError(
+        "stale-revision",
+        "The Story Bible changed during regeneration.",
+        canonical,
+      );
+    }
 
     const revision = session.revision + 1;
     const updated: GenerationSession = {
       ...session,
       chapterId: input.assembledContext.chapterId ?? null,
-      assembledContext: { priorScenesText: input.assembledContext.priorScenesText },
+      assembledContext: {
+        priorScenesText: boundedSessionText(input.assembledContext.priorScenesText),
+        canonicalRosterText: input.assembledContext.canonicalRosterText?.slice(0, 32_000),
+        storyBibleState: input.assembledContext.storyBibleState,
+        storyBibleRevision: assembledStoryBibleRevision,
+      },
       manuscriptRevision: assembledRevision,
+      storyBibleRevision: assembledStoryBibleRevision,
       previousAttempt: session.candidate,
       candidate: input.candidate,
       revision,

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   BookOpen,
+  BookOpenCheck,
   Check,
   Loader2,
   MessageSquareText,
@@ -274,6 +275,12 @@ export function VisionPage({ bookId }: { bookId: string }) {
           <h1 className="mt-1 font-display text-4xl italic">{book.title}</h1>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+          <Button type="button" variant="outline" asChild>
+            <Link to="/books/$bookId/story-bible" params={{ bookId }}>
+              <BookOpenCheck className="size-4" />
+              Story Bible
+            </Link>
+          </Button>
           <Button type="button" variant="outline" asChild>
             <Link to="/books/$bookId/manuscript" params={{ bookId }}>
               <BookOpen className="size-4" />
