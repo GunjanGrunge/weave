@@ -10,7 +10,9 @@ import {
   Pencil,
   Printer,
   RefreshCw,
+  RotateCcw,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
 
@@ -72,9 +74,14 @@ function ChapterEditor({
   const [sceneDrafts, setSceneDrafts] = useState<Record<string, string>>(() =>
     Object.fromEntries(chapter.scenes.map((scene) => [scene.sceneId, scene.text])),
   );
+  const [removedSceneIds, setRemovedSceneIds] = useState<Set<string>>(() => new Set());
+  const [instructions, setInstructions] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const revisionInstructions = instructions.trim();
   const hasChanges =
+    revisionInstructions.length > 0 ||
+    removedSceneIds.size > 0 ||
     title.trim() !== chapter.title ||
     chapter.scenes.some((scene) => sceneDrafts[scene.sceneId] !== scene.text);
 
@@ -88,8 +95,23 @@ function ChapterEditor({
         chapterId: chapter.chapterId,
         originalTitle: chapter.title,
         draftTitle: title.trim(),
+        ...(revisionInstructions ? { instructions: revisionInstructions } : {}),
+        ...(removedSceneIds.size > 0
+          ? {
+              removedScenes: chapter.scenes
+                .filter((scene) => removedSceneIds.has(scene.sceneId))
+                .map((scene) => ({
+                  sceneId: scene.sceneId,
+                  originalText: scene.text,
+                })),
+            }
+          : {}),
         scenes: chapter.scenes
-          .filter((scene) => sceneDrafts[scene.sceneId] !== scene.text)
+          .filter(
+            (scene) =>
+              !removedSceneIds.has(scene.sceneId) &&
+              (revisionInstructions.length > 0 || sceneDrafts[scene.sceneId] !== scene.text),
+          )
           .map((scene) => ({
             sceneId: scene.sceneId,
             originalText: scene.text,
@@ -144,38 +166,102 @@ function ChapterEditor({
         onChange={(event) => setTitle(event.target.value)}
         maxLength={160}
         disabled={isSaving}
-        className="mt-2 h-11 w-full rounded-md border border-ink/15 bg-white px-3 font-serif text-lg text-ink outline-none focus:border-warm focus:ring-2 focus:ring-warm/20"
+        className="mt-2 h-11 w-full rounded-md border border-border bg-card px-3 font-serif text-lg text-card-foreground outline-none focus:border-warm focus:ring-2 focus:ring-warm/20"
       />
 
+      <div className="mt-7 border-y border-ink/10 py-5">
+        <label className="block text-xs font-medium text-ink/65" htmlFor="revision-instructions">
+          Revision instructions
+        </label>
+        <textarea
+          id="revision-instructions"
+          value={instructions}
+          onChange={(event) => setInstructions(event.target.value)}
+          maxLength={4_000}
+          disabled={isSaving}
+          placeholder="Move the setting to a fictional country, use culturally neutral names, and change Arin's occupation to software engineer."
+          className="mt-2 min-h-28 w-full resize-y rounded-md border border-warm/40 bg-card px-4 py-3 text-sm leading-6 text-card-foreground outline-none placeholder:text-muted-foreground focus:border-warm focus:ring-2 focus:ring-warm/20"
+        />
+      </div>
+
       <div className="mt-7 space-y-6">
-        {chapter.scenes.map((scene, index) => (
-          <div key={scene.sceneId}>
-            {index > 0 ? (
+        {chapter.scenes.map((scene, index) => {
+          if (removedSceneIds.has(scene.sceneId)) {
+            return (
               <div
-                className="mb-6 text-center text-xs tracking-[0.35rem] text-ink/45"
-                aria-hidden="true"
+                key={scene.sceneId}
+                role="status"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3"
               >
-                * * *
+                <span className="text-sm text-destructive">Scene {index + 1} will be removed.</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setRemovedSceneIds((current) => {
+                      const next = new Set(current);
+                      next.delete(scene.sceneId);
+                      return next;
+                    })
+                  }
+                  disabled={isSaving}
+                >
+                  <RotateCcw className="size-4" />
+                  Undo
+                </Button>
               </div>
-            ) : null}
-            <label className="sr-only" htmlFor={`scene-${scene.sceneId}`}>
-              {chapter.title} text {index + 1}
-            </label>
-            <textarea
-              id={`scene-${scene.sceneId}`}
-              value={sceneDrafts[scene.sceneId] ?? ""}
-              onChange={(event) =>
-                setSceneDrafts((current) => ({
-                  ...current,
-                  [scene.sceneId]: event.target.value,
-                }))
-              }
-              maxLength={60_000}
-              disabled={isSaving}
-              className="min-h-48 w-full resize-y rounded-md border border-ink/15 bg-white px-4 py-3 font-serif text-[1.02rem] leading-7 text-ink outline-none focus:border-warm focus:ring-2 focus:ring-warm/20"
-            />
-          </div>
-        ))}
+            );
+          }
+
+          return (
+            <div key={scene.sceneId}>
+              {index > 0 ? (
+                <div
+                  className="mb-6 text-center text-xs tracking-[0.35rem] text-ink/45"
+                  aria-hidden="true"
+                >
+                  * * *
+                </div>
+              ) : null}
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label
+                  className="text-xs font-medium text-ink/65"
+                  htmlFor={`scene-${scene.sceneId}`}
+                >
+                  Scene {index + 1} prose
+                </label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  aria-label={`Remove scene ${index + 1}`}
+                  onClick={() =>
+                    setRemovedSceneIds((current) => new Set(current).add(scene.sceneId))
+                  }
+                  disabled={isSaving}
+                >
+                  <Trash2 className="size-4" />
+                  Remove
+                </Button>
+              </div>
+              <textarea
+                id={`scene-${scene.sceneId}`}
+                value={sceneDrafts[scene.sceneId] ?? ""}
+                onChange={(event) =>
+                  setSceneDrafts((current) => ({
+                    ...current,
+                    [scene.sceneId]: event.target.value,
+                  }))
+                }
+                maxLength={60_000}
+                disabled={isSaving}
+                className="min-h-48 w-full resize-y rounded-md border border-border bg-card px-4 py-3 font-serif text-[1.02rem] leading-7 text-card-foreground outline-none focus:border-warm focus:ring-2 focus:ring-warm/20"
+              />
+            </div>
+          );
+        })}
       </div>
 
       {error ? (

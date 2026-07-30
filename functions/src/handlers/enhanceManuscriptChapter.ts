@@ -15,6 +15,7 @@ import {
 } from "../services/manuscriptEditor.js";
 
 const MAX_TITLE_LENGTH = 160;
+const MAX_INSTRUCTIONS_LENGTH = 4_000;
 const MAX_SCENE_LENGTH = 60_000;
 const MAX_TOTAL_DRAFT_LENGTH = 120_000;
 const MAX_EDITED_SCENES = 50;
@@ -50,6 +51,10 @@ function parseRequest(body: unknown): { bookId: string; edit: ManuscriptChapterE
   const chapterId = requiredString(body.chapterId, "chapterId", 200, true);
   const originalTitle = requiredString(body.originalTitle, "originalTitle", MAX_TITLE_LENGTH, true);
   const draftTitle = requiredString(body.draftTitle, "draftTitle", MAX_TITLE_LENGTH, true);
+  let instructions: string | undefined;
+  if (body.instructions !== undefined) {
+    instructions = requiredString(body.instructions, "instructions", MAX_INSTRUCTIONS_LENGTH, true);
+  }
   if (!Array.isArray(body.scenes) || body.scenes.length > MAX_EDITED_SCENES) {
     throw new ManuscriptEditError(
       "invalid-argument",
@@ -58,7 +63,7 @@ function parseRequest(body: unknown): { bookId: string; edit: ManuscriptChapterE
   }
 
   const sceneIds = new Set<string>();
-  let totalDraftLength = draftTitle.length;
+  let totalDraftLength = draftTitle.length + (instructions?.length ?? 0);
   const scenes = body.scenes.map((value, index) => {
     if (!isRecord(value)) {
       throw new ManuscriptEditError("invalid-argument", `scenes[${index}] must be an object.`);
@@ -81,6 +86,38 @@ function parseRequest(body: unknown): { bookId: string; edit: ManuscriptChapterE
     totalDraftLength += draftText.length;
     return { sceneId, originalText, draftText };
   });
+  const removedScenesInput = body.removedScenes ?? [];
+  if (!Array.isArray(removedScenesInput)) {
+    throw new ManuscriptEditError("invalid-argument", "removedScenes must be an array.");
+  }
+  const removedScenes = removedScenesInput.map((value, index) => {
+    if (!isRecord(value)) {
+      throw new ManuscriptEditError(
+        "invalid-argument",
+        `removedScenes[${index}] must be an object.`,
+      );
+    }
+    const sceneId = requiredString(value.sceneId, `removedScenes[${index}].sceneId`, 200, true);
+    if (sceneIds.has(sceneId)) {
+      throw new ManuscriptEditError(
+        "invalid-argument",
+        "Edited and removed scene ids must be unique.",
+      );
+    }
+    sceneIds.add(sceneId);
+    const originalText = requiredString(
+      value.originalText,
+      `removedScenes[${index}].originalText`,
+      MAX_SCENE_LENGTH,
+    );
+    return { sceneId, originalText };
+  });
+  if (scenes.length + removedScenes.length > MAX_EDITED_SCENES) {
+    throw new ManuscriptEditError(
+      "invalid-argument",
+      `The edit may contain at most ${MAX_EDITED_SCENES} scenes.`,
+    );
+  }
 
   if (totalDraftLength > MAX_TOTAL_DRAFT_LENGTH) {
     throw new ManuscriptEditError(
@@ -90,7 +127,14 @@ function parseRequest(body: unknown): { bookId: string; edit: ManuscriptChapterE
   }
   return {
     bookId,
-    edit: { chapterId, originalTitle, draftTitle, scenes },
+    edit: {
+      chapterId,
+      originalTitle,
+      draftTitle,
+      ...(instructions ? { instructions } : {}),
+      ...(removedScenes.length > 0 ? { removedScenes } : {}),
+      scenes,
+    },
   };
 }
 
@@ -110,7 +154,14 @@ export async function buildEnhanceManuscriptResponse(
 
     const prepared = await prepareChapterEdit(bookId, edit);
     const vision = await getVisionDocument(bookId);
-    const enhanced = await enhanceChapterEdit(bookId, prepared, book.style, apiKeys, vision);
+    const enhanced =
+      prepared.titleDraft || prepared.scenes.length > 0
+        ? await enhanceChapterEdit(bookId, prepared, book.style, apiKeys, vision)
+        : {
+            scenes: [],
+            provider: "openai" as const,
+            model: "deterministic-scene-removal",
+          };
     const chapter = await commitChapterEdit(bookId, edit, enhanced);
     return { statusCode: 200, body: { chapter } };
   } catch (error) {

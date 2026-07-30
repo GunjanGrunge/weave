@@ -140,7 +140,7 @@ describe("ManuscriptPage", () => {
     fireEvent.change(screen.getByLabelText("Chapter title"), {
       target: { value: "The Begining of the King" },
     });
-    fireEvent.change(screen.getByLabelText("Chapter 1 text 1"), {
+    fireEvent.change(screen.getByLabelText("Scene 1 prose"), {
       target: { value: "The road began beneath a quiet moon." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Enhance & save" }));
@@ -164,6 +164,98 @@ describe("ManuscriptPage", () => {
     });
   });
 
+  it("applies revision instructions to the chapter without saving them as scene prose", async () => {
+    useManuscriptMock.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: loadedManuscript,
+      refetch: refetchMock,
+    });
+    enhanceChapterMock.mockResolvedValue({
+      chapterId: "chapter-1",
+      title: "Chapter 1",
+      scenes: loadedManuscript.chapters[0].scenes,
+    });
+
+    render(<ManuscriptPage bookId="book-1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit", exact: true }));
+    fireEvent.change(screen.getByLabelText("Revision instructions"), {
+      target: {
+        value:
+          "Use a fictional country and culturally neutral names. Make Arin a software engineer.",
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Enhance & save" }));
+
+    await waitFor(() =>
+      expect(enhanceChapterMock).toHaveBeenCalledWith("book-1", {
+        chapterId: "chapter-1",
+        originalTitle: "Chapter 1",
+        draftTitle: "Chapter 1",
+        instructions:
+          "Use a fictional country and culturally neutral names. Make Arin a software engineer.",
+        scenes: [
+          {
+            sceneId: "scene-1",
+            originalText: "The road began under a quiet moon.",
+            draftText: "The road began under a quiet moon.",
+          },
+          {
+            sceneId: "scene-2",
+            originalText: "Mara kept walking.",
+            draftText: "Mara kept walking.",
+          },
+        ],
+      }),
+    );
+  });
+
+  it("stages a scene removal with undo and submits it separately from prose", async () => {
+    useManuscriptMock.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: loadedManuscript,
+      refetch: refetchMock,
+    });
+    enhanceChapterMock.mockResolvedValue({
+      chapterId: "chapter-1",
+      title: "Chapter 1",
+      scenes: [],
+    });
+
+    render(<ManuscriptPage bookId="book-1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit", exact: true }));
+
+    const sceneField = screen.getByLabelText("Scene 2 prose");
+    expect(sceneField).toHaveClass("bg-card", "text-card-foreground");
+    expect(sceneField).not.toHaveClass("bg-white");
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove scene 2" }));
+    expect(screen.queryByLabelText("Scene 2 prose")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Scene 2 will be removed");
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getByLabelText("Scene 2 prose")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove scene 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Enhance & save" }));
+
+    await waitFor(() =>
+      expect(enhanceChapterMock).toHaveBeenCalledWith("book-1", {
+        chapterId: "chapter-1",
+        originalTitle: "Chapter 1",
+        draftTitle: "Chapter 1",
+        removedScenes: [
+          {
+            sceneId: "scene-2",
+            originalText: "Mara kept walking.",
+          },
+        ],
+        scenes: [],
+      }),
+    );
+  });
+
   it("keeps an unsaved draft visible when enhancement fails", async () => {
     useManuscriptMock.mockReturnValue({
       isPending: false,
@@ -175,7 +267,7 @@ describe("ManuscriptPage", () => {
 
     render(<ManuscriptPage bookId="book-1" />);
     fireEvent.click(screen.getByRole("button", { name: "Edit", exact: true }));
-    fireEvent.change(screen.getByLabelText("Chapter 1 text 1"), {
+    fireEvent.change(screen.getByLabelText("Scene 1 prose"), {
       target: { value: "My unsaved revision." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Enhance & save" }));

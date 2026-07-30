@@ -27,6 +27,11 @@ export type ManuscriptChapterEdit = {
   chapterId: string;
   originalTitle: string;
   draftTitle: string;
+  instructions?: string;
+  removedScenes?: Array<{
+    sceneId: string;
+    originalText: string;
+  }>;
   scenes: Array<{
     sceneId: string;
     originalText: string;

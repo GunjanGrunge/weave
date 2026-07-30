@@ -46,6 +46,7 @@ vi.mock("firebase-admin/firestore", () => ({
           data: () => Record<string, unknown> | undefined;
         }>;
         update: (ref: ReturnType<typeof docRef>, patch: Record<string, unknown>) => void;
+        delete: (ref: ReturnType<typeof docRef>) => void;
       }) => Promise<unknown>,
     ) =>
       callback({
@@ -55,6 +56,9 @@ vi.mock("firebase-admin/firestore", () => ({
         }),
         update: (ref, patch) => {
           docs.set(ref.path, { ...docs.get(ref.path), ...patch });
+        },
+        delete: (ref) => {
+          docs.delete(ref.path);
         },
       }),
   })),
@@ -179,6 +183,53 @@ describe("manuscript editor service", () => {
     );
   });
 
+  it("keeps revision instructions separate from prose and applies them to every scene", async () => {
+    const instructedRequest: ManuscriptChapterEdit = {
+      ...request,
+      draftTitle: request.originalTitle,
+      instructions:
+        "Use a fictional country and culturally neutral names. Make the protagonist a software engineer.",
+      scenes: request.scenes.map((scene) => ({ ...scene, draftText: scene.originalText })),
+    };
+    const prepared = await prepareChapterEdit("book-1", instructedRequest);
+    expect(prepared).toMatchObject({
+      instructions: instructedRequest.instructions,
+      scenes: instructedRequest.scenes,
+    });
+    callWithFallbackMock.mockResolvedValue({
+      text: JSON.stringify({
+        title: "Chapter 1",
+        scenes: [
+          { sceneId: "scene-1", text: "He set his laptop beside his loupe." },
+          { sceneId: "scene-2", text: "The fictional city settled into evening." },
+        ],
+      }),
+      provider: "openai",
+      model: "gpt-test",
+      inputTokens: 40,
+      outputTokens: 24,
+    });
+
+    await enhanceChapterEdit(
+      "book-1",
+      prepared,
+      { presetIds: ["warm-character-driven"] },
+      { openai: "key", gemini: "key" },
+    );
+
+    const prompt = callWithFallbackMock.mock.calls[0]?.[2] as string;
+    expect(prompt).toContain("AUTHOR REVISION INSTRUCTIONS:");
+    expect(prompt).toContain(instructedRequest.instructions);
+    expect(prompt).toContain("never copy or paraphrase the instructions into the output");
+    expect(JSON.parse(prompt.split("DRAFT:\n")[1]!)).toEqual({
+      title: null,
+      scenes: instructedRequest.scenes.map(({ sceneId, draftText }) => ({
+        sceneId,
+        text: draftText,
+      })),
+    });
+  });
+
   it("rejects incomplete model output", async () => {
     const prepared = await prepareChapterEdit("book-1", request);
     callWithFallbackMock.mockResolvedValue({
@@ -190,13 +241,42 @@ describe("manuscript editor service", () => {
     });
 
     await expect(
-      enhanceChapterEdit(
-        "book-1",
-        prepared,
-        { presetIds: [] },
-        { openai: "key", gemini: "key" },
-      ),
+      enhanceChapterEdit("book-1", prepared, { presetIds: [] }, { openai: "key", gemini: "key" }),
     ).rejects.toBeInstanceOf(ManuscriptEditError);
+  });
+
+  it("prepares and atomically deletes a scene without changing the remaining prose", async () => {
+    const removalRequest: ManuscriptChapterEdit = {
+      chapterId: "chapter-1",
+      originalTitle: "Chapter 1",
+      draftTitle: "Chapter 1",
+      scenes: [],
+      removedScenes: [
+        {
+          sceneId: "scene-2",
+          originalText: "The room was quiet.",
+        },
+      ],
+    };
+    const prepared = await prepareChapterEdit("book-1", removalRequest);
+    expect(prepared).toEqual({
+      chapterId: "chapter-1",
+      originalTitle: "Chapter 1",
+      removedScenes: removalRequest.removedScenes,
+      scenes: [],
+    });
+
+    await commitChapterEdit("book-1", removalRequest, {
+      scenes: [],
+      provider: "openai",
+      model: "deterministic-scene-removal",
+    });
+
+    expect(docs.has("books/book-1/chapters/chapter-1/scenes/scene-2")).toBe(false);
+    expect(docs.get("books/book-1/chapters/chapter-1/scenes/scene-1")).toMatchObject({
+      text: "He laid down his loupe.",
+    });
+    expect(docs.get("books/book-1")).toMatchObject({ manuscriptRevision: 4 });
   });
 
   it("atomically saves enhanced fields and advances manuscript revision", async () => {

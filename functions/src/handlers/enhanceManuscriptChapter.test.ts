@@ -51,6 +51,7 @@ const requestBody = {
   chapterId: "chapter-1",
   originalTitle: "Chapter 1",
   draftTitle: "The Begining of the King",
+  instructions: "Move the story to a fictional country.",
   scenes: [
     {
       sceneId: "scene-1",
@@ -109,7 +110,10 @@ describe("buildEnhanceManuscriptResponse", () => {
     expect(assertOwnershipMock).toHaveBeenCalledWith("user-a", "user-a");
     expect(prepareChapterEditMock).toHaveBeenCalledWith(
       "book-1",
-      expect.objectContaining({ chapterId: "chapter-1" }),
+      expect.objectContaining({
+        chapterId: "chapter-1",
+        instructions: "Move the story to a fictional country.",
+      }),
     );
     expect(enhanceChapterEditMock).toHaveBeenCalledWith(
       "book-1",
@@ -153,6 +157,13 @@ describe("buildEnhanceManuscriptResponse", () => {
     await expect(
       buildEnhanceManuscriptResponse(
         "Bearer valid",
+        { ...requestBody, instructions: "x".repeat(4_001) },
+        keys,
+      ),
+    ).resolves.toMatchObject({ statusCode: 400 });
+    await expect(
+      buildEnhanceManuscriptResponse(
+        "Bearer valid",
         {
           ...requestBody,
           scenes: [
@@ -183,6 +194,50 @@ describe("buildEnhanceManuscriptResponse", () => {
     });
     expect(enhanceChapterEditMock).not.toHaveBeenCalled();
     expect(commitChapterEditMock).not.toHaveBeenCalled();
+  });
+
+  it("commits a removal-only edit without calling a model", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+    getBookMock.mockResolvedValue({ uid: "user-a", style: { presetIds: [] } });
+    const removal = {
+      sceneId: "scene-1",
+      originalText: "He laid down his loupe.",
+    };
+    prepareChapterEditMock.mockResolvedValue({
+      chapterId: "chapter-1",
+      originalTitle: "Chapter 1",
+      removedScenes: [removal],
+      scenes: [],
+    });
+    commitChapterEditMock.mockResolvedValue({
+      chapterId: "chapter-1",
+      title: "Chapter 1",
+      scenes: [],
+    });
+
+    await expect(
+      buildEnhanceManuscriptResponse(
+        "Bearer valid",
+        {
+          ...requestBody,
+          draftTitle: "Chapter 1",
+          instructions: undefined,
+          scenes: [],
+          removedScenes: [removal],
+        },
+        keys,
+      ),
+    ).resolves.toMatchObject({ statusCode: 200 });
+
+    expect(enhanceChapterEditMock).not.toHaveBeenCalled();
+    expect(commitChapterEditMock).toHaveBeenCalledWith(
+      "book-1",
+      expect.objectContaining({ removedScenes: [removal] }),
+      expect.objectContaining({
+        scenes: [],
+        model: "deterministic-scene-removal",
+      }),
+    );
   });
 
   it("keeps the original manuscript when enhancement fails", async () => {
