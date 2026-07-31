@@ -12,6 +12,7 @@ const {
   failInitialGenerationMock,
   failRegenerationMock,
   getBookMock,
+  getMessagesMock,
   getCanonicalRosterMock,
 } = vi.hoisted(() => ({
   assembleContextMock: vi.fn(),
@@ -25,6 +26,7 @@ const {
   failInitialGenerationMock: vi.fn(),
   failRegenerationMock: vi.fn(),
   getBookMock: vi.fn(),
+  getMessagesMock: vi.fn(),
   getCanonicalRosterMock: vi.fn(),
 }));
 
@@ -34,7 +36,7 @@ vi.mock("../services/gemini.js", () => ({
   generateScene: generateSceneMock,
   reviseSceneDraft: reviseSceneDraftMock,
 }));
-vi.mock("../services/books.js", () => ({ getBook: getBookMock }));
+vi.mock("../services/books.js", () => ({ getBook: getBookMock, getMessages: getMessagesMock }));
 vi.mock("../services/storyBible.js", () => ({
   getCanonicalRoster: getCanonicalRosterMock,
 }));
@@ -86,6 +88,7 @@ describe("generation pipelines", () => {
     });
     persistGeneratedCandidateMock.mockResolvedValue(persisted);
     getBookMock.mockResolvedValue({ manuscriptRevision: 2 });
+    getMessagesMock.mockResolvedValue([]);
     getCanonicalRosterMock.mockResolvedValue({
       text: "- Mr. Bell | stable: age=72",
       state: "current",
@@ -168,6 +171,26 @@ describe("generation pipelines", () => {
     );
     expect(generateSceneMock).toHaveBeenCalledTimes(1);
     expect(generateSceneMock).toHaveBeenCalledWith("book-1", "live prompt", keys, "generate");
+  });
+
+  it("carries the agreed Muse conversation into a short drafting request", async () => {
+    getMessagesMock.mockResolvedValue([
+      { type: "user", text: "Lucan Marek is at a farewell party.", order: 1 },
+      {
+        type: "structural_note",
+        text: "Ready to stitch: begin with Lucan taking in the apartment party.",
+        order: 2,
+      },
+    ]);
+
+    await runGenerate("book-1", { mode: "free-text", description: "Yes, draft it." }, keys);
+
+    expect(composePromptMock).toHaveBeenCalledWith(
+      "book-1",
+      context,
+      { mode: "free-text", description: "Yes, draft it." },
+      expect.stringContaining("Lucan Marek"),
+    );
   });
 
   it("does not run a second model call for in-progress or completed replays", async () => {

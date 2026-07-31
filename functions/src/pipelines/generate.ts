@@ -4,7 +4,7 @@ import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 
 import { assembleContext, type AssembledContext } from "./assembleContext.js";
 import { composePrompt } from "./composePrompt.js";
-import { getBook } from "../services/books.js";
+import { getBook, getMessages } from "../services/books.js";
 import type { AIProviderKeys } from "../services/gemini.js";
 import { generateScene as generateSceneCall, reviseSceneDraft } from "../services/gemini.js";
 import { getCanonicalRoster } from "../services/storyBible.js";
@@ -49,6 +49,16 @@ const GenerateState = Annotation.Root({
 
 type GenerateStateValue = typeof GenerateState.State;
 
+function recentPlanningConversation(
+  messages: Awaited<ReturnType<typeof getMessages>>,
+): string {
+  const turns = messages
+    .filter((message) => message.type === "user" || message.type === "structural_note")
+    .slice(-24)
+    .map((message) => `${message.type === "user" ? "AUTHOR" : "MUSE"}: ${message.text.slice(0, 1_200)}`);
+  return turns.join("\n").slice(-20_000);
+}
+
 async function assembleNode(state: GenerateStateValue): Promise<Partial<GenerateStateValue>> {
   if (state.assembledContext) {
     return {};
@@ -62,7 +72,10 @@ async function composeNode(state: GenerateStateValue): Promise<Partial<GenerateS
   if (!state.assembledContext) {
     return { status: "failed" };
   }
-  const composed = await composePrompt(state.bookId, state.assembledContext, state.input);
+  const planningConversation = recentPlanningConversation(await getMessages(state.bookId));
+  const composed = planningConversation
+    ? await composePrompt(state.bookId, state.assembledContext, state.input, planningConversation)
+    : await composePrompt(state.bookId, state.assembledContext, state.input);
   if (!composed) {
     console.error("generate/composePrompt: missing book or vision", {
       bookId: state.bookId,

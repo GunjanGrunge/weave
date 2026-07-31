@@ -42,6 +42,7 @@ function buildSharedLines(
   vision: VisionDocument,
   context: AssembledContext,
   inputMode: SceneInput["mode"],
+  planningConversation?: string,
 ): string[] {
   const styleInstruction = composeStyleInstruction(book.style);
   const openThreads = vision.threads.filter((thread) => thread.status === "open");
@@ -108,6 +109,14 @@ function buildSharedLines(
     for (const fact of context.relevantFactsText) {
       lines.push(`- ${fact}`);
     }
+  }
+
+  if (planningConversation) {
+    lines.push(
+      "AUTHOR-MUSE PLANNING CONVERSATION",
+      planningConversation,
+      "Treat the most recently agreed immediate beat in this conversation as binding. A short current request such as 'yes, draft it' refers to that agreed beat; do not invent an unrelated opening, character, setting, or conflict.",
+    );
   }
 
   return lines;
@@ -181,6 +190,7 @@ export async function composePrompt(
   bookId: string,
   context: AssembledContext,
   input: SceneInput,
+  planningConversation?: string,
 ): Promise<ComposedPrompt> {
   const book = await getBook(bookId);
   const vision = await getVisionDocument(bookId);
@@ -188,7 +198,7 @@ export async function composePrompt(
     return undefined;
   }
 
-  const lines = buildSharedLines(book, vision, context, input.mode);
+  const lines = buildSharedLines(book, vision, context, input.mode, planningConversation);
   appendInputLines(lines, input);
 
   return { prompt: lines.join("\n"), style: book.style };
