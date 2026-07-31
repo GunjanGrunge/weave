@@ -50,6 +50,13 @@
         }
       },
       {
+        "source": "/consultMuse",
+        "function": {
+          "functionId": "consultMuse",
+          "region": "us-central1"
+        }
+      },
+      {
         "source": "/getVision",
         "function": {
           "functionId": "getVision",

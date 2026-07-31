@@ -111,6 +111,7 @@ jobs:
             createBook
             createChapter
             retryOpeningSuggestion
+            consultMuse
             getVision
             updateVision
             getStoryBible
