@@ -109,7 +109,7 @@ describe("composePrompt", () => {
     expect(result?.prompt).toContain("LITERARY WRITING CHARTER");
     expect(result?.prompt).toContain("Primary genre (60%): Fantasy");
     expect(result?.prompt).toContain("Secondary 1 genre (25%): Romance");
-    expect(result?.prompt).toContain("approximately 1,500-2,500 words");
+    expect(result?.prompt).toContain("approximately 700-1,000 words");
     expect(result?.prompt).toContain("privately identify the scene purpose");
     expect(result?.prompt).toContain("silently revise it");
     expect(result?.prompt).toContain("Let trust change through action, not confession.");

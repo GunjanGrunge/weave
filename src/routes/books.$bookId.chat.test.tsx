@@ -77,7 +77,7 @@ describe("ChatPage", () => {
     );
   });
 
-  it("only generates a scene after the writer explicitly selects Draft a scene", async () => {
+  it("only generates a stitch after the writer explicitly selects Draft next stitch", async () => {
     authenticatedFetchMock.mockResolvedValueOnce(response({ messages: [] })).mockResolvedValueOnce(
       response({
         sessionId: "session-1",
@@ -91,8 +91,8 @@ describe("ChatPage", () => {
       }),
     );
     render(<ChatPage bookId="book-1" />);
-    await screen.findByRole("button", { name: "Draft a scene" });
-    fireEvent.click(screen.getByRole("button", { name: "Draft a scene" }));
+    await screen.findByRole("button", { name: "Draft next stitch" });
+    fireEvent.click(screen.getByRole("button", { name: "Draft next stitch" }));
     fireEvent.change(screen.getByLabelText(/scene description/i), {
       target: { value: "Eric finds a clue in the car." },
     });

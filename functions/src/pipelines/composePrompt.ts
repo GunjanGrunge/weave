@@ -21,11 +21,11 @@ const LITERARY_WRITING_CHARTER = [
 
 const LENGTH_INSTRUCTIONS = {
   concise:
-    "Scene depth: concise. Aim for approximately 300-600 words while still delivering a complete dramatic beat.",
+    "Stitch depth: compact. Write one focused dramatic beat of approximately 120-250 words: usually one or two polished paragraphs, with a clear emotional or narrative movement. Do not resolve the whole scene or chapter.",
   standard:
-    "Scene depth: standard. Aim for approximately 800-1,500 words with developed action, setting, interiority, and an earned turn.",
+    "Stitch depth: developed. Write approximately 300-600 words that advances one moment of action, tension, or discovery. Do not resolve the whole scene or chapter.",
   immersive:
-    "Scene depth: immersive. Aim for approximately 1,500-2,500 words with sustained dramatic development; do not pad or repeat.",
+    "Stitch depth: extended. Write approximately 700-1,000 words for one sustained dramatic beat with an earned turn. Do not resolve the whole chapter.",
 } as const;
 
 const SUBTLETY_INSTRUCTIONS: Record<ThreadSubtlety, string> = {
@@ -118,7 +118,7 @@ function appendInputLines(lines: string[], input: SceneInput): void {
   if (input.mode !== "polish") {
     lines.push(
       "",
-      "SCENE EXECUTION",
+      "WEAVE STITCH EXECUTION",
       LENGTH_INSTRUCTIONS[sceneLength],
       "Before drafting, privately identify the scene purpose, viewpoint desire, resistance, conflict, emotional turn, genre obligations, continuity constraints, sensory anchors, and ending consequence. Do not output this plan.",
     );

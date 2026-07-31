@@ -122,7 +122,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [description, setDescription] = useState("");
   const [inputMode, setInputMode] = useState<InputMode>("conversation");
-  const [sceneLength, setSceneLength] = useState<SceneLength>("standard");
+  const [sceneLength, setSceneLength] = useState<SceneLength>("concise");
   const [deepWrite, setDeepWrite] = useState(false);
   const [sceneDirection, setSceneDirection] = useState("");
   const [structuredFields, setStructuredFields] = useState<StructuredFields>({
@@ -146,7 +146,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
     routeVersionRef.current += 1;
     setDescription("");
     setInputMode("conversation");
-    setSceneLength("standard");
+    setSceneLength("concise");
     setDeepWrite(false);
     setSceneDirection("");
     setStructuredFields({ sceneGoal: "", mood: "", povCharacter: "", setting: "" });
@@ -645,7 +645,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
                 : "border-border bg-card hover:border-accent/50"
             }`}
           >
-            Draft a scene
+            Draft next stitch
           </button>
           <button
             type="button"
@@ -688,7 +688,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
             ) : (
               <BookOpen className="size-3" />
             )}
-            New chapter
+            Begin next chapter
           </button>
           <UsageIndicator bookId={bookId} />
         </div>
@@ -698,7 +698,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
         <div className="mt-2 flex flex-wrap items-center gap-3 border-y border-border py-2">
           <div
             className="flex overflow-hidden rounded-md border border-border"
-            aria-label="Scene depth"
+            aria-label="Stitch depth"
           >
             {(
               [

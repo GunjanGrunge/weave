@@ -69,7 +69,7 @@ describe("buildConsultMuseResponse", () => {
     expect(generateSceneMock).toHaveBeenCalledWith(
       "book-1",
       expect.stringMatching(
-        /Do not draft manuscript prose[\s\S]*RECENT CONVERSATION:[\s\S]*Eric is afraid/,
+        /one small stitch at a time[\s\S]*Do not draft manuscript prose[\s\S]*RECENT CONVERSATION:[\s\S]*Eric is afraid/,
       ),
       keys,
       "museConversation",
