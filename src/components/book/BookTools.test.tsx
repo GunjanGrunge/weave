@@ -36,6 +36,7 @@ const snapshot = {
 
 describe("BookTools", () => {
   beforeEach(() => {
+    window.history.replaceState({}, "", "/");
     sessionStorage.clear();
     compareSnapshotMock.mockReset().mockResolvedValue([
       {
@@ -51,6 +52,15 @@ describe("BookTools", () => {
     restoreSnapshotMock.mockReset().mockResolvedValue(undefined);
     saveSnapshotMock.mockReset().mockResolvedValue("snapshot-2");
     vi.spyOn(window, "open").mockImplementation(() => null);
+  });
+
+  it("opens versions when reached from the sidebar deep link", async () => {
+    window.history.replaceState({}, "", "/books/book-1/manuscript?panel=versions");
+
+    render(<BookTools bookId="book-1" onDeleted={vi.fn()} onRestored={vi.fn()} />);
+
+    expect(await screen.findByRole("dialog", { name: /book versions/i })).toBeInTheDocument();
+    expect(listSnapshotsMock).toHaveBeenCalledWith("book-1");
   });
 
   it("lists, saves, compares, and restores snapshots after typed confirmation", async () => {

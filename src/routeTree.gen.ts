@@ -18,6 +18,7 @@ import { Route as BooksNewRouteImport } from './routes/books.new'
 import { Route as BooksBookIdVisionRouteImport } from './routes/books.$bookId.vision'
 import { Route as BooksBookIdStoryBibleRouteImport } from './routes/books.$bookId.story-bible'
 import { Route as BooksBookIdManuscriptRouteImport } from './routes/books.$bookId.manuscript'
+import { Route as BooksBookIdInsightsRouteImport } from './routes/books.$bookId.insights'
 import { Route as BooksBookIdChatRouteImport } from './routes/books.$bookId.chat'
 
 const SettingsRoute = SettingsRouteImport.update({
@@ -65,6 +66,11 @@ const BooksBookIdManuscriptRoute = BooksBookIdManuscriptRouteImport.update({
   path: '/$bookId/manuscript',
   getParentRoute: () => BooksRoute,
 } as any)
+const BooksBookIdInsightsRoute = BooksBookIdInsightsRouteImport.update({
+  id: '/$bookId/insights',
+  path: '/$bookId/insights',
+  getParentRoute: () => BooksRoute,
+} as any)
 const BooksBookIdChatRoute = BooksBookIdChatRouteImport.update({
   id: '/$bookId/chat',
   path: '/$bookId/chat',
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/books/new': typeof BooksNewRoute
   '/books/': typeof BooksIndexRoute
   '/books/$bookId/chat': typeof BooksBookIdChatRoute
+  '/books/$bookId/insights': typeof BooksBookIdInsightsRoute
   '/books/$bookId/manuscript': typeof BooksBookIdManuscriptRoute
   '/books/$bookId/story-bible': typeof BooksBookIdStoryBibleRoute
   '/books/$bookId/vision': typeof BooksBookIdVisionRoute
@@ -90,6 +97,7 @@ export interface FileRoutesByTo {
   '/books/new': typeof BooksNewRoute
   '/books': typeof BooksIndexRoute
   '/books/$bookId/chat': typeof BooksBookIdChatRoute
+  '/books/$bookId/insights': typeof BooksBookIdInsightsRoute
   '/books/$bookId/manuscript': typeof BooksBookIdManuscriptRoute
   '/books/$bookId/story-bible': typeof BooksBookIdStoryBibleRoute
   '/books/$bookId/vision': typeof BooksBookIdVisionRoute
@@ -103,6 +111,7 @@ export interface FileRoutesById {
   '/books/new': typeof BooksNewRoute
   '/books/': typeof BooksIndexRoute
   '/books/$bookId/chat': typeof BooksBookIdChatRoute
+  '/books/$bookId/insights': typeof BooksBookIdInsightsRoute
   '/books/$bookId/manuscript': typeof BooksBookIdManuscriptRoute
   '/books/$bookId/story-bible': typeof BooksBookIdStoryBibleRoute
   '/books/$bookId/vision': typeof BooksBookIdVisionRoute
@@ -117,6 +126,7 @@ export interface FileRouteTypes {
     | '/books/new'
     | '/books/'
     | '/books/$bookId/chat'
+    | '/books/$bookId/insights'
     | '/books/$bookId/manuscript'
     | '/books/$bookId/story-bible'
     | '/books/$bookId/vision'
@@ -128,6 +138,7 @@ export interface FileRouteTypes {
     | '/books/new'
     | '/books'
     | '/books/$bookId/chat'
+    | '/books/$bookId/insights'
     | '/books/$bookId/manuscript'
     | '/books/$bookId/story-bible'
     | '/books/$bookId/vision'
@@ -140,6 +151,7 @@ export interface FileRouteTypes {
     | '/books/new'
     | '/books/'
     | '/books/$bookId/chat'
+    | '/books/$bookId/insights'
     | '/books/$bookId/manuscript'
     | '/books/$bookId/story-bible'
     | '/books/$bookId/vision'
@@ -217,6 +229,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BooksBookIdManuscriptRouteImport
       parentRoute: typeof BooksRoute
     }
+    '/books/$bookId/insights': {
+      id: '/books/$bookId/insights'
+      path: '/$bookId/insights'
+      fullPath: '/books/$bookId/insights'
+      preLoaderRoute: typeof BooksBookIdInsightsRouteImport
+      parentRoute: typeof BooksRoute
+    }
     '/books/$bookId/chat': {
       id: '/books/$bookId/chat'
       path: '/$bookId/chat'
@@ -231,6 +250,7 @@ interface BooksRouteChildren {
   BooksNewRoute: typeof BooksNewRoute
   BooksIndexRoute: typeof BooksIndexRoute
   BooksBookIdChatRoute: typeof BooksBookIdChatRoute
+  BooksBookIdInsightsRoute: typeof BooksBookIdInsightsRoute
   BooksBookIdManuscriptRoute: typeof BooksBookIdManuscriptRoute
   BooksBookIdStoryBibleRoute: typeof BooksBookIdStoryBibleRoute
   BooksBookIdVisionRoute: typeof BooksBookIdVisionRoute
@@ -240,6 +260,7 @@ const BooksRouteChildren: BooksRouteChildren = {
   BooksNewRoute: BooksNewRoute,
   BooksIndexRoute: BooksIndexRoute,
   BooksBookIdChatRoute: BooksBookIdChatRoute,
+  BooksBookIdInsightsRoute: BooksBookIdInsightsRoute,
   BooksBookIdManuscriptRoute: BooksBookIdManuscriptRoute,
   BooksBookIdStoryBibleRoute: BooksBookIdStoryBibleRoute,
   BooksBookIdVisionRoute: BooksBookIdVisionRoute,

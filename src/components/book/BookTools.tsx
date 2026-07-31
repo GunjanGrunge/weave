@@ -109,6 +109,25 @@ export function BookTools({
     };
   }, [bookId, snapshotsOpen]);
 
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("panel") === "versions") {
+      setSnapshotsOpen(true);
+    }
+  }, [bookId]);
+
+  function setSnapshotsVisibility(open: boolean) {
+    setSnapshotsOpen(open);
+    if (!open && new URLSearchParams(window.location.search).get("panel") === "versions") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("panel");
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${url.pathname}${url.search}${url.hash}`,
+      );
+    }
+  }
+
   async function createSnapshot() {
     const name = snapshotName.trim();
     if (!name || snapshotState.status === "loading") return;
@@ -221,7 +240,7 @@ export function BookTools({
         </p>
       )}
 
-      <Dialog open={snapshotsOpen} onOpenChange={setSnapshotsOpen}>
+      <Dialog open={snapshotsOpen} onOpenChange={setSnapshotsVisibility}>
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Book versions</DialogTitle>

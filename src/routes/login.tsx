@@ -158,49 +158,56 @@ function LoginRoute() {
   const navigate = useNavigate();
 
   return (
-    <main className="isolate flex min-h-svh bg-background text-foreground">
-      <section className="hidden min-h-svh w-[42%] shrink-0 flex-col justify-between border-r border-border bg-sidebar p-8 lg:flex">
-        <div className="flex items-center gap-2.5">
+    <main className="isolate min-h-svh bg-background text-foreground lg:grid lg:grid-cols-[minmax(0,1.15fr)_minmax(30rem,0.85fr)]">
+      <section
+        className="relative hidden min-h-svh overflow-hidden border-r border-border bg-cover bg-center lg:flex lg:flex-col lg:justify-between lg:p-9"
+        style={{ backgroundImage: "url('/weave-writer-workspace.webp')" }}
+      >
+        <div className="absolute inset-0 bg-black/55" />
+        <div className="relative z-10 flex items-center gap-2.5 text-white">
           <span className="grid size-9 place-items-center rounded-md bg-accent font-display text-xl italic text-accent-foreground">
             W
           </span>
           <span className="text-sm font-semibold tracking-tight">WEAVE</span>
         </div>
 
-        <div className="max-w-md">
-          <div className="mb-5 inline-flex items-center gap-2 rounded-md border border-border bg-background/50 px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        <div className="relative z-10 max-w-xl text-white">
+          <div className="mb-5 inline-flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-white/70">
             <ShieldCheck className="size-3.5 text-accent" />
             Private workspace
           </div>
-          <h1 className="font-display text-5xl italic leading-tight text-foreground">
-            Your manuscript stays with your account.
+          <h1 className="max-w-lg font-display text-6xl italic leading-[1.05]">
+            Shape the story only you can tell.
           </h1>
-          <p className="mt-4 max-w-sm font-serif text-base leading-7 text-muted-foreground">
-            Sign in with the writer account created for this workspace.
+          <p className="mt-5 max-w-md font-serif text-lg leading-8 text-white/75">
+            Return to your manuscript, your characters, and the thread of your next chapter.
           </p>
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
-          {["Draft", "Shape", "Publish"].map((label) => (
-            <div key={label} className="rounded-md border border-border bg-background/45 px-3 py-2">
-              <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                {label}
-              </div>
-            </div>
-          ))}
+        <div className="relative z-10 flex items-center gap-3 text-white/65">
+          <span className="h-px w-10 bg-accent" />
+          <span className="font-mono text-[10px] uppercase tracking-[0.16em]">
+            Draft · Refine · Remember
+          </span>
         </div>
       </section>
 
-      <section className="flex min-h-svh flex-1 items-center justify-center px-5 py-10 sm:px-8">
-        <div className="w-full max-w-md">
-          <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <span className="grid size-9 place-items-center rounded-md bg-accent font-display text-xl italic text-accent-foreground">
-              W
-            </span>
-            <span className="text-sm font-semibold tracking-tight">WEAVE</span>
-          </div>
+      <section
+        className="relative flex h-52 items-end overflow-hidden bg-cover bg-center p-5 lg:hidden"
+        style={{ backgroundImage: "url('/weave-writer-workspace.webp')" }}
+      >
+        <div className="absolute inset-0 bg-black/55" />
+        <div className="relative z-10 flex items-center gap-2.5 text-white">
+          <span className="grid size-9 place-items-center rounded-md bg-accent font-display text-xl italic text-accent-foreground">
+            W
+          </span>
+          <span className="text-sm font-semibold tracking-tight">WEAVE</span>
+        </div>
+      </section>
 
-          <div className="rounded-lg border border-border bg-card p-6 shadow-sm sm:p-8">
+      <section className="flex min-h-[calc(100svh-13rem)] items-center justify-center px-5 py-10 sm:px-8 lg:min-h-svh">
+        <div className="w-full max-w-md">
+          <div className="border-y border-border py-8 sm:px-2">
             <div className="mb-7">
               <div className="mb-4 flex size-10 items-center justify-center rounded-md bg-accent/10 text-accent">
                 <BookOpenCheck className="size-5" />
@@ -209,10 +216,10 @@ function LoginRoute() {
                 Writer sign in
               </p>
               <h2 className="mt-2 font-display text-3xl italic leading-tight text-foreground">
-                Open your workspace.
+                Welcome back.
               </h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Use one of the private email/password accounts provisioned in Firebase Auth.
+                Sign in to continue writing in your private workspace.
               </p>
             </div>
 
