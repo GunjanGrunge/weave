@@ -3,7 +3,12 @@ import { onRequest } from "firebase-functions/v2/https";
 import { allowedOrigins } from "../config/cors.js";
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "../config/secrets.js";
 import { verifyIdToken, assertOwnership, AuthError } from "../services/auth.js";
-import { getBook, getVisionDocument, appendMuseConversation } from "../services/books.js";
+import {
+  getBook,
+  getVisionDocument,
+  getMessages,
+  appendMuseConversation,
+} from "../services/books.js";
 import { generateScene, type AIProviderKeys } from "../services/gemini.js";
 import { getCanonicalRoster } from "../services/storyBible.js";
 
@@ -41,6 +46,7 @@ function buildMusePrompt(input: {
   message: string;
   vision: Awaited<ReturnType<typeof getVisionDocument>>;
   roster: string;
+  recentConversation: string;
 }): string {
   return [
     "You are WEAVE's Muse: a seasoned novelist and developmental editor in a working conversation with an author.",
@@ -51,7 +57,12 @@ function buildMusePrompt(input: {
     "Keep the response below 180 words.",
     "",
     `CURRENT VISION:\nTheme: ${input.vision?.theme || "not set"}\nPremise: ${input.vision?.premise || "not set"}`,
-    input.roster ? `\nSTORY BIBLE:\n${input.roster}` : "\nSTORY BIBLE: No established characters yet.",
+    input.roster
+      ? `\nSTORY BIBLE:\n${input.roster}`
+      : "\nSTORY BIBLE: No established characters yet.",
+    input.recentConversation
+      ? `\nRECENT CONVERSATION:\n${input.recentConversation}`
+      : "\nRECENT CONVERSATION: This is the first exchange.",
     `\nWRITER: ${input.message}`,
   ].join("\n");
 }
@@ -67,20 +78,36 @@ export async function buildConsultMuseResponse(
     if (!request) {
       return {
         statusCode: 400,
-        body: { code: "invalid-argument", message: "Include a bookId and a message up to 4,000 characters." },
+        body: {
+          code: "invalid-argument",
+          message: "Include a bookId and a message up to 4,000 characters.",
+        },
       };
     }
     const book = await getBook(request.bookId);
     if (!book) return { statusCode: 404, body: { code: "not-found", message: "Book not found." } };
     assertOwnership(decoded.uid, book.uid);
 
-    const [vision, roster] = await Promise.all([
+    const [vision, roster, messages] = await Promise.all([
       getVisionDocument(request.bookId),
       getCanonicalRoster(request.bookId).catch(() => ({ text: "" })),
+      getMessages(request.bookId),
     ]);
+    const recentConversation = messages
+      .slice(-12)
+      .map(
+        (message) =>
+          `${message.type === "user" ? "WRITER" : "MUSE"}: ${message.text.slice(0, 800)}`,
+      )
+      .join("\n");
     const generated = await generateScene(
       request.bookId,
-      buildMusePrompt({ message: request.message, vision, roster: roster.text }),
+      buildMusePrompt({
+        message: request.message,
+        vision,
+        roster: roster.text,
+        recentConversation,
+      }),
       apiKeys,
       "museConversation",
     );
@@ -91,12 +118,20 @@ export async function buildConsultMuseResponse(
       return { statusCode: 401, body: { code: error.code, message: error.message } };
     }
     console.error("consultMuse failed", error);
-    return { statusCode: 502, body: { code: "muse-unavailable", message: "The Muse is unavailable right now." } };
+    return {
+      statusCode: 502,
+      body: { code: "muse-unavailable", message: "The Muse is unavailable right now." },
+    };
   }
 }
 
 export const consultMuse = onRequest(
-  { cors: allowedOrigins(), region: "us-central1", timeoutSeconds: 120, secrets: [GOOGLE_API_KEY, OPENAI_API_KEY] },
+  {
+    cors: allowedOrigins(),
+    region: "us-central1",
+    timeoutSeconds: 120,
+    secrets: [GOOGLE_API_KEY, OPENAI_API_KEY],
+  },
   async (request, response) => {
     const result = await buildConsultMuseResponse(request.headers.authorization, request.body, {
       gemini: GOOGLE_API_KEY.value(),
