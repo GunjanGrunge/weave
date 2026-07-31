@@ -4,6 +4,7 @@ export { listBooks } from "./handlers/listBooks.js";
 export { createBook } from "./handlers/createBook.js";
 export { createChapter } from "./handlers/createChapter.js";
 export { retryOpeningSuggestion } from "./handlers/retryOpeningSuggestion.js";
+export { consultMuse } from "./handlers/consultMuse.js";
 export { getVision } from "./handlers/getVision.js";
 export { updateVision } from "./handlers/updateVision.js";
 export { getStoryBible } from "./handlers/getStoryBible.js";

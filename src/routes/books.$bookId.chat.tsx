@@ -35,7 +35,7 @@ type LoadState =
 
 type GenerationState = { status: "idle" | "loading" } | { status: "error"; message: string };
 
-type InputMode = "free-text" | "structured" | "polish";
+type InputMode = "conversation" | "free-text" | "structured" | "polish";
 type SceneLength = "concise" | "standard" | "immersive";
 
 // Mirrors the server's per-field cap (functions/src/handlers/generateScene.ts)
@@ -121,7 +121,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
   const chapterRequestRef = useRef<string | null>(null);
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [description, setDescription] = useState("");
-  const [inputMode, setInputMode] = useState<InputMode>("free-text");
+  const [inputMode, setInputMode] = useState<InputMode>("conversation");
   const [sceneLength, setSceneLength] = useState<SceneLength>("standard");
   const [deepWrite, setDeepWrite] = useState(false);
   const [sceneDirection, setSceneDirection] = useState("");
@@ -145,7 +145,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
     activeBookIdRef.current = bookId;
     routeVersionRef.current += 1;
     setDescription("");
-    setInputMode("free-text");
+    setInputMode("conversation");
     setSceneLength("standard");
     setDeepWrite(false);
     setSceneDirection("");
@@ -234,6 +234,60 @@ export function ChatPage({ bookId }: { bookId: string }) {
     }
 
     const trimmedDescription = description.trim();
+    if (inputMode === "conversation") {
+      if (!trimmedDescription) {
+        setValidationError("Tell the Muse what you are considering.");
+        return;
+      }
+      setValidationError(null);
+      setGenerationState({ status: "loading" });
+      const requestBookId = bookId;
+      const requestRouteVersion = routeVersionRef.current;
+      try {
+        const response = await authenticatedFetch("/consultMuse", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bookId, message: trimmedDescription }),
+        });
+        const result = (await response.json().catch(() => undefined)) as
+          | { text?: unknown }
+          | undefined;
+        if (!response.ok || typeof result?.text !== "string") {
+          throw new Error("Muse conversation failed.");
+        }
+        if (
+          activeBookIdRef.current !== requestBookId ||
+          routeVersionRef.current !== requestRouteVersion
+        ) {
+          return;
+        }
+        setLoadState((current) => {
+          const priorMessages = current.status === "ready" ? current.messages : [];
+          const nextOrder = priorMessages.length;
+          return {
+            status: "ready",
+            messages: [
+              ...priorMessages,
+              { type: "user", text: trimmedDescription, order: nextOrder },
+              { type: "structural_note", text: result.text, order: nextOrder + 1 },
+            ],
+          };
+        });
+        setDescription("");
+        setGenerationState({ status: "idle" });
+      } catch {
+        if (
+          activeBookIdRef.current === requestBookId &&
+          routeVersionRef.current === requestRouteVersion
+        ) {
+          setGenerationState({
+            status: "error",
+            message: "The Muse could not respond. Your thought is still here.",
+          });
+        }
+      }
+      return;
+    }
     const hasStructuredValue = STRUCTURED_FIELD_LABELS.some(({ key }) =>
       structuredFields[key].trim(),
     );
@@ -497,8 +551,8 @@ export function ChatPage({ bookId }: { bookId: string }) {
 
       <div className="mt-6 flex-1 space-y-4 overflow-y-auto pr-2" data-testid="message-list">
         {messages.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-border p-6 text-sm text-muted-foreground">
-            No messages yet. Describe a scene to begin.
+          <div className="rounded-md border border-dashed border-border p-6 text-sm text-muted-foreground">
+            Start by talking through the book. Drafting is always an explicit next step.
           </div>
         )}
         {messages.map((message, index) => (
@@ -528,7 +582,8 @@ export function ChatPage({ bookId }: { bookId: string }) {
         ))}
         {isLoading && (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> Writing your scene…
+            <Loader2 className="size-4 animate-spin" />
+            {inputMode === "conversation" ? "The Muse is considering it…" : "Writing your scene…"}
           </p>
         )}
       </div>
@@ -568,6 +623,19 @@ export function ChatPage({ bookId }: { bookId: string }) {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
+            onClick={() => switchInputMode("conversation")}
+            aria-pressed={inputMode === "conversation"}
+            disabled={isLoading}
+            className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+              inputMode === "conversation"
+                ? "border-accent bg-accent text-accent-foreground"
+                : "border-border bg-card hover:border-accent/50"
+            }`}
+          >
+            Talk with Muse
+          </button>
+          <button
+            type="button"
             onClick={() => switchInputMode("free-text")}
             aria-pressed={inputMode === "free-text"}
             disabled={isLoading}
@@ -577,7 +645,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
                 : "border-border bg-card hover:border-accent/50"
             }`}
           >
-            Describe it
+            Draft a scene
           </button>
           <button
             type="button"
@@ -626,7 +694,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
         </div>
       </div>
 
-      {inputMode !== "polish" && (
+      {inputMode !== "polish" && inputMode !== "conversation" && (
         <div className="mt-2 flex flex-wrap items-center gap-3 border-y border-border py-2">
           <div
             className="flex overflow-hidden rounded-md border border-border"
@@ -681,14 +749,19 @@ export function ChatPage({ bookId }: { bookId: string }) {
         </div>
       )}
 
-      {inputMode === "free-text" ? (
-        <div className="mt-2 flex items-end gap-2 rounded-2xl border border-border bg-card p-2 pl-4 focus-within:border-accent/40">
+      {inputMode === "conversation" || inputMode === "free-text" ? (
+        <div className="mt-2 flex items-end gap-2 rounded-md border border-border bg-card p-2 pl-4 focus-within:border-accent/40">
           <textarea
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             aria-label="Scene description"
             rows={2}
             disabled={isLoading}
+            placeholder={
+              inputMode === "conversation"
+                ? "Talk through an idea, a concern, or a turn in the story…"
+                : "Describe the next single scene you want drafted…"
+            }
             className="flex-1 resize-none bg-transparent text-sm outline-none disabled:opacity-50"
           />
           <button

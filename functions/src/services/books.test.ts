@@ -331,7 +331,7 @@ describe("createBookWithIntake", () => {
     serverTimestampMock.mockClear();
   });
 
-  it("creates exactly one Book, Chapter, Vision doc, and intake message set in one batch", async () => {
+  it("creates exactly one Book, Chapter, Vision doc, and a quiet conversation welcome in one batch", async () => {
     const result = await createBookWithIntake("user-a", {
       premiseAnswers: {
         whatToWrite: "A locked-room mystery in a floating hotel",
@@ -356,9 +356,10 @@ describe("createBookWithIntake", () => {
     expect(bookWrites).toHaveLength(1);
     expect(chapterWrites).toHaveLength(1);
     expect(visionWrites).toHaveLength(1);
-    expect(messageWrites).toHaveLength(8);
+    expect(messageWrites).toHaveLength(1);
     expect(bookWrites[0]?.data).toMatchObject({
       uid: "user-a",
+      title: "Untitled Book",
       style: { presetIds: ["sparse-cinematic", "fast-paced-thriller"] },
       styleRevision: 0,
     });
@@ -398,7 +399,7 @@ describe("createBookWithIntake", () => {
     expect(JSON.stringify(vision)).not.toContain("undefined");
   });
 
-  it("persists ordered system/user intake messages with the required type discriminators", async () => {
+  it("persists a single welcome message instead of a scripted intake", async () => {
     await createBookWithIntake("user-a", {
       premiseAnswers: { whatToWrite: "A novella" },
       style: {
@@ -412,21 +413,10 @@ describe("createBookWithIntake", () => {
       .map((call) => call.data as { type: string; text: string; order: number })
       .sort((a, b) => a.order - b.order);
 
-    expect(messages.map((message) => message.order)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
-    expect(messages.map((message) => message.type)).toEqual([
-      "system",
-      "user",
-      "system",
-      "user",
-      "system",
-      "user",
-      "system",
-      "user",
-    ]);
-    expect(messages[1]?.text).toBe("A novella");
-    expect(messages[3]?.text).toBe("(skipped)");
-    expect(messages[7]?.text).toContain("Warm & Character-Driven");
-    expect(messages[7]?.text).toContain("Quiet, reflective prose.");
+    expect(messages.map((message) => message.order)).toEqual([0]);
+    expect(messages.map((message) => message.type)).toEqual(["system"]);
+    expect(messages[0]?.text).toMatch(/talk through the book/i);
+    expect(messages[0]?.text).toMatch(/until you request a scene/i);
   });
 
   it("stores a pure custom instruction with no preset, without forcing the default preset", async () => {

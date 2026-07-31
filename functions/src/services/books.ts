@@ -9,7 +9,6 @@ import type { Scene } from "../types/scene.js";
 import type { VisionDocument } from "../types/vision.js";
 import type { GenreProfile, VoiceProfile } from "../types/vision.js";
 import {
-  getStyleCatalog,
   normalizeStoredStyle as normalizeCanonicalStoredStyle,
   parseStyleInput,
 } from "./styles.js";
@@ -18,9 +17,6 @@ import {
   normalizeVisionWritingProfiles,
   normalizeVoiceProfile,
 } from "./writingProfiles.js";
-
-const STYLE_CATALOG = getStyleCatalog();
-const STYLE_PRESETS = STYLE_CATALOG.presets;
 
 export type PremiseAnswers = {
   whatToWrite?: string;
@@ -35,12 +31,6 @@ export type CreateBookInput = {
   voiceProfile?: VoiceProfile;
   idempotencyKey?: string;
 };
-
-const intakePrompts = [
-  { key: "whatToWrite", text: "What do you want to write?" },
-  { key: "mainCharacter", text: "Who is the main character?" },
-  { key: "roughPremise", text: "What is the rough premise?" },
-] as const;
 
 function firestore() {
   if (getApps().length === 0) {
@@ -61,52 +51,20 @@ function normalizeStoredStyle(value: unknown): Style {
   return normalizeCanonicalStoredStyle(value);
 }
 
-function styleSummary(style: Style): string {
-  const labels = style.presetIds.map(
-    (id) => STYLE_PRESETS.find((preset) => preset.id === id)?.label ?? id,
-  );
-  const presetText = labels.length > 0 ? labels.join(" + ") : "Default style";
-  return style.customInstruction
-    ? `${presetText}. Custom instruction: ${style.customInstruction}`
-    : presetText;
-}
-
 function buildMessages(
-  answers: Required<PremiseAnswers>,
-  style: Style,
+  _answers: Required<PremiseAnswers>,
+  _style: Style,
   createdAt: unknown,
 ): ChatMessage[] {
-  const messages: ChatMessage[] = [];
-
-  for (const prompt of intakePrompts) {
-    messages.push({
+  return [
+    {
       type: "system",
-      text: prompt.text,
-      order: messages.length,
+      text:
+        "This is a new writing room. Talk through the book with the Muse; nothing joins the manuscript until you request a scene and accept it.",
+      order: 0,
       createdAt,
-    });
-    messages.push({
-      type: "user",
-      text: answers[prompt.key] || "(skipped)",
-      order: messages.length,
-      createdAt,
-    });
-  }
-
-  messages.push({
-    type: "system",
-    text: "Choose a starting style.",
-    order: messages.length,
-    createdAt,
-  });
-  messages.push({
-    type: "user",
-    text: styleSummary(style),
-    order: messages.length,
-    createdAt,
-  });
-
-  return messages;
+    },
+  ];
 }
 
 export async function createBookWithIntake(
@@ -138,7 +96,9 @@ export async function createBookWithIntake(
 
   const book: Book = {
     uid,
-    title: answers.whatToWrite || "Untitled Book",
+    // A raw first thought is not a book title. Keep a clean draft title until
+    // the writer names the work deliberately in the workspace.
+    title: "Untitled Book",
     style,
     styleRevision: 0,
     manuscriptRevision: 0,
@@ -508,6 +468,38 @@ export async function appendChatMessage(
   });
 
   return message;
+}
+
+export async function appendMuseConversation(
+  bookId: string,
+  writerMessage: string,
+  museReply: string,
+): Promise<{ writer: ChatMessage; muse: ChatMessage }> {
+  const db = firestore();
+  const messages = db.collection("books").doc(bookId).collection("messages");
+  const writerRef = messages.doc();
+  const museRef = messages.doc();
+
+  return db.runTransaction(async (transaction) => {
+    const lastMessage = await transaction.get(messages.orderBy("order", "desc").limit(1));
+    const nextOrder = lastMessage.empty ? 0 : (lastMessage.docs[0]?.data().order as number) + 1;
+    const createdAt = FieldValue.serverTimestamp();
+    const writer: ChatMessage = {
+      type: "user",
+      text: writerMessage,
+      order: nextOrder,
+      createdAt,
+    };
+    const muse: ChatMessage = {
+      type: "structural_note",
+      text: museReply,
+      order: nextOrder + 1,
+      createdAt,
+    };
+    transaction.set(writerRef, writer);
+    transaction.set(museRef, muse);
+    return { writer, muse };
+  });
 }
 
 export async function getActiveChapter(

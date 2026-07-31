@@ -20,12 +20,12 @@ export function TopBar({
   }
 
   return (
-    <header className="grid h-14 shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-border bg-background px-4 lg:px-6">
+    <header className="grid h-14 shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-b border-border bg-background px-4 md:px-6">
       <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={onOpenMobileSidebar}
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-foreground/5 lg:hidden"
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-foreground/5 md:hidden"
           aria-label="Open menu"
         >
           <Menu className="size-4" />
@@ -33,7 +33,7 @@ export function TopBar({
         <button
           type="button"
           onClick={onToggleSidebar}
-          className="hidden rounded-md p-1.5 text-muted-foreground hover:bg-foreground/5 lg:inline-flex"
+          className="hidden rounded-md p-1.5 text-muted-foreground hover:bg-foreground/5 md:inline-flex"
           aria-label="Toggle sidebar"
         >
           <PanelLeft className="size-4" />

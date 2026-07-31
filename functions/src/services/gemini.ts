@@ -3,7 +3,7 @@ import { getApps, initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 
 import type { ModelRegistry, TextModelConfig } from "../types/modelRegistry.js";
-import type { SceneUsageTask, UsageTask } from "../types/usage.js";
+import type { UsageTask } from "../types/usage.js";
 import type { VisionDocument } from "../types/vision.js";
 import { composeWritingProfileInstruction } from "./writingProfiles.js";
 
@@ -326,7 +326,7 @@ export async function generateScene(
   bookId: string,
   prompt: string,
   apiKeys: AIProviderKeys,
-  task: SceneUsageTask = "generate",
+  task: UsageTask = "generate",
 ): Promise<{ text: string; provider: "openai" | "gemini"; model: string }> {
   const registry = await readModelRegistry();
   const result = await callWithFallback(registry.generate, apiKeys, prompt);

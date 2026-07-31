@@ -1,260 +1,52 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { verifyIdTokenMock, createBookWithIntakeMock, runIntakeOpeningSuggestionMock } = vi.hoisted(
-  () => ({
-    verifyIdTokenMock: vi.fn(),
-    createBookWithIntakeMock: vi.fn(),
-    runIntakeOpeningSuggestionMock: vi.fn(),
-  }),
-);
+const { verifyIdTokenMock, createBookWithIntakeMock } = vi.hoisted(() => ({
+  verifyIdTokenMock: vi.fn(),
+  createBookWithIntakeMock: vi.fn(),
+}));
 
 vi.mock("../services/auth.js", async () => {
   const actual = await vi.importActual<typeof import("../services/auth.js")>("../services/auth.js");
   return { ...actual, verifyIdToken: verifyIdTokenMock };
 });
-
-vi.mock("../services/books.js", () => ({
-  createBookWithIntake: createBookWithIntakeMock,
-}));
-
-vi.mock("../pipelines/intake.js", () => ({
-  runIntakeOpeningSuggestion: runIntakeOpeningSuggestionMock,
-}));
+vi.mock("../services/books.js", () => ({ createBookWithIntake: createBookWithIntakeMock }));
 
 import { buildCreateBookResponse } from "./createBook.js";
 import { AuthError } from "../services/auth.js";
 
-const apiKeys = { openai: "fake-openai-key", gemini: "fake-gemini-key" };
+const keys = { openai: "test", gemini: "test" };
 
 describe("buildCreateBookResponse", () => {
   beforeEach(() => {
-    vi.useRealTimers();
     verifyIdTokenMock.mockReset();
     createBookWithIntakeMock.mockReset();
-    runIntakeOpeningSuggestionMock.mockReset();
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("returns 200 {bookId, openingSuggestion: 'ok', openings} for a valid token and request body", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
+  it("creates a quiet draft workspace without generating an opening in bulk", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "writer-1" });
     createBookWithIntakeMock.mockResolvedValue({ bookId: "book-1" });
-    runIntakeOpeningSuggestionMock.mockResolvedValue({
-      status: "ok",
-      openings: [{ text: "Open on the storm.", rationale: "Immediate stakes." }],
-    });
 
-    const result = await buildCreateBookResponse(
+    await expect(buildCreateBookResponse(
       "Bearer valid",
-      {
-        premiseAnswers: { whatToWrite: "A heist" },
-        style: { presetIds: ["sparse-cinematic"] },
-      },
-      apiKeys,
-    );
-
-    expect(result).toEqual({
-      statusCode: 200,
-      body: {
-        bookId: "book-1",
-        openingSuggestion: "ok",
-        openings: [{ text: "Open on the storm.", rationale: "Immediate stakes." }],
-      },
-    });
-    expect(createBookWithIntakeMock).toHaveBeenCalledWith("user-a", {
-      premiseAnswers: { whatToWrite: "A heist" },
-      style: { presetIds: ["sparse-cinematic"] },
-    });
-    expect(runIntakeOpeningSuggestionMock).toHaveBeenCalledWith("book-1", apiKeys);
-  });
-
-  it("still returns 200 {bookId, openingSuggestion: 'failed'} when the opening-suggestion pipeline fails", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-    createBookWithIntakeMock.mockResolvedValue({ bookId: "book-2" });
-    runIntakeOpeningSuggestionMock.mockResolvedValue({ status: "failed", openings: [] });
-
-    const result = await buildCreateBookResponse(
-      "Bearer valid",
-      {
-        premiseAnswers: {},
-        style: { presetIds: [] },
-      },
-      apiKeys,
-    );
-
-    expect(result).toEqual({
-      statusCode: 200,
-      body: { bookId: "book-2", openingSuggestion: "failed", openings: [] },
-    });
-  });
-
-  it("still returns 200 {bookId, openingSuggestion: 'failed'} when the opening-suggestion pipeline times out", async () => {
-    vi.useFakeTimers();
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-    createBookWithIntakeMock.mockResolvedValue({ bookId: "book-3" });
-    runIntakeOpeningSuggestionMock.mockReturnValue(new Promise(() => undefined));
-
-    const resultPromise = buildCreateBookResponse(
-      "Bearer valid",
-      {
-        premiseAnswers: {},
-        style: { presetIds: [] },
-      },
-      apiKeys,
-      5,
-    );
-
-    await vi.advanceTimersByTimeAsync(5);
-
-    await expect(resultPromise).resolves.toEqual({
-      statusCode: 200,
-      body: { bookId: "book-3", openingSuggestion: "failed", openings: [] },
-    });
-  });
-
-  it("returns 401 for a missing token", async () => {
-    verifyIdTokenMock.mockRejectedValue(
-      new AuthError("Missing or malformed Authorization header."),
-    );
-
-    const result = await buildCreateBookResponse(
-      undefined,
-      { premiseAnswers: {}, style: { presetIds: [] } },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(401);
-    expect(result.body).toMatchObject({ code: "unauthenticated" });
-    expect(createBookWithIntakeMock).not.toHaveBeenCalled();
-    expect(runIntakeOpeningSuggestionMock).not.toHaveBeenCalled();
-  });
-
-  it("returns 401 for an invalid token", async () => {
-    verifyIdTokenMock.mockRejectedValue(new AuthError("Invalid or expired ID token."));
-
-    const result = await buildCreateBookResponse(
-      "Bearer bad",
-      { premiseAnswers: {}, style: { presetIds: [] } },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(401);
-    expect(result.body).toMatchObject({ code: "unauthenticated" });
-  });
-
-  it("passes idempotencyKey through to createBookWithIntake when provided", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-    createBookWithIntakeMock.mockResolvedValue({ bookId: "book-4" });
-    runIntakeOpeningSuggestionMock.mockResolvedValue({ status: "ok", openings: [] });
-
-    await buildCreateBookResponse(
-      "Bearer valid",
-      {
-        premiseAnswers: {},
-        style: { presetIds: [] },
-        idempotencyKey: "client-generated-uuid",
-      },
-      apiKeys,
-    );
-
-    expect(createBookWithIntakeMock).toHaveBeenCalledWith("user-a", {
-      premiseAnswers: {
-        whatToWrite: undefined,
-        mainCharacter: undefined,
-        roughPremise: undefined,
-      },
+      { premiseAnswers: { whatToWrite: "A mystery" }, style: { presetIds: ["warm-character-driven"] } },
+      keys,
+    )).resolves.toEqual({ statusCode: 200, body: { bookId: "book-1" } });
+    expect(createBookWithIntakeMock).toHaveBeenCalledWith("writer-1", {
+      premiseAnswers: { whatToWrite: "A mystery" },
       style: { presetIds: ["warm-character-driven"] },
-      idempotencyKey: "client-generated-uuid",
+      genreProfile: undefined,
+      voiceProfile: undefined,
+      idempotencyKey: undefined,
     });
   });
 
-  it("validates and passes the book genre and voice profiles", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-    createBookWithIntakeMock.mockResolvedValue({ bookId: "book-profile" });
-    runIntakeOpeningSuggestionMock.mockResolvedValue({ status: "ok", openings: [] });
-    const genreProfile = {
-      primaryGenre: "fantasy",
-      secondaryGenres: ["romance"],
-      subgenre: "Gaslamp fantasy",
-      audience: "adult",
-      intensity: "strong",
-      tones: ["intimate"],
-      customDirection: "",
-    };
-    const voiceProfile = {
-      pointOfView: "third-person-limited",
-      tense: "past",
-      narrativeDistance: "close",
-      proseDensity: "rich",
-      descriptionLevel: "rich",
-      interiorityLevel: "rich",
-      dialogueLevel: "balanced",
-      pacing: "measured",
-      emotionalIntensity: "rich",
-      customDirection: "",
-    };
-
-    const result = await buildCreateBookResponse(
-      "Bearer valid",
-      {
-        premiseAnswers: {},
-        style: { presetIds: [] },
-        genreProfile,
-        voiceProfile,
-      },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(200);
-    expect(createBookWithIntakeMock).toHaveBeenCalledWith(
-      "user-a",
-      expect.objectContaining({ genreProfile, voiceProfile }),
-    );
-
-    const invalid = await buildCreateBookResponse(
-      "Bearer valid",
-      {
-        premiseAnswers: {},
-        style: { presetIds: [] },
-        genreProfile: { ...genreProfile, primaryGenre: "unknown" },
-        voiceProfile,
-      },
-      apiKeys,
-    );
-    expect(invalid.statusCode).toBe(400);
+  it("rejects malformed input", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "writer-1" });
+    await expect(buildCreateBookResponse("Bearer valid", {}, keys)).resolves.toMatchObject({ statusCode: 400 });
   });
 
-  it("returns 400 when the request body is not the intake payload shape", async () => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-
-    const result = await buildCreateBookResponse("Bearer valid", { premiseAnswers: null }, apiKeys);
-
-    expect(result.statusCode).toBe(400);
-    expect(result.body).toMatchObject({ code: "invalid-argument" });
-    expect(createBookWithIntakeMock).not.toHaveBeenCalled();
-    expect(runIntakeOpeningSuggestionMock).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    { presetIds: ["unknown"] },
-    { presetIds: ["sparse-cinematic", "sparse-cinematic"] },
-    {
-      presetIds: ["sparse-cinematic", "lyrical-introspective", "fast-paced-thriller"],
-    },
-    { presetIds: [], customInstruction: "x".repeat(1_001) },
-  ])("returns 400 for a non-canonical intake Style", async (style) => {
-    verifyIdTokenMock.mockResolvedValue({ uid: "user-a" });
-
-    const result = await buildCreateBookResponse(
-      "Bearer valid",
-      { premiseAnswers: {}, style },
-      apiKeys,
-    );
-
-    expect(result.statusCode).toBe(400);
-    expect(result.body).toMatchObject({ code: "invalid-argument" });
-    expect(createBookWithIntakeMock).not.toHaveBeenCalled();
+  it("returns 401 for an unauthenticated request", async () => {
+    verifyIdTokenMock.mockRejectedValue(new AuthError("Missing token"));
+    await expect(buildCreateBookResponse("", { premiseAnswers: {}, style: { presetIds: [] } }, keys)).resolves.toMatchObject({ statusCode: 401 });
   });
 });

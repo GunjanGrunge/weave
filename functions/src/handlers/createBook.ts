@@ -2,10 +2,9 @@ import { onRequest } from "firebase-functions/v2/https";
 
 import { allowedOrigins } from "../config/cors.js";
 import { GOOGLE_API_KEY, OPENAI_API_KEY } from "../config/secrets.js";
-import { runIntakeOpeningSuggestion } from "../pipelines/intake.js";
 import { verifyIdToken, AuthError } from "../services/auth.js";
 import { createBookWithIntake, type CreateBookInput } from "../services/books.js";
-import type { AIProviderKeys, OpeningSuggestion } from "../services/gemini.js";
+import type { AIProviderKeys } from "../services/gemini.js";
 import { parseStyleInput, StyleValidationError } from "../services/styles.js";
 import {
   parseGenreProfile,
@@ -13,12 +12,8 @@ import {
   WritingProfileValidationError,
 } from "../services/writingProfiles.js";
 
-const OPENING_SUGGESTION_TIMEOUT_MS = 12_000;
-
 export type CreateBookSuccess = {
   bookId: string;
-  openingSuggestion: "ok" | "failed";
-  openings: OpeningSuggestion[];
 };
 export type CreateBookError = { code: string; message: string };
 
@@ -59,31 +54,11 @@ function parseCreateBookInput(body: unknown): CreateBookInput | undefined {
   };
 }
 
-function runOpeningSuggestionWithTimeout(
-  bookId: string,
-  apiKeys: AIProviderKeys,
-  timeoutMs: number,
-): Promise<{ status: "ok" | "failed"; openings: OpeningSuggestion[] }> {
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => resolve({ status: "failed", openings: [] }), timeoutMs);
-
-    runIntakeOpeningSuggestion(bookId, apiKeys)
-      .then((result) => {
-        clearTimeout(timeout);
-        resolve(result);
-      })
-      .catch(() => {
-        clearTimeout(timeout);
-        resolve({ status: "failed", openings: [] });
-      });
-  });
-}
-
 export async function buildCreateBookResponse(
   authorizationHeader: string | undefined,
   body: unknown,
-  apiKeys: AIProviderKeys,
-  openingSuggestionTimeoutMs = OPENING_SUGGESTION_TIMEOUT_MS,
+  _apiKeys: AIProviderKeys,
+  _legacyOpeningSuggestionTimeoutMs?: number,
 ): Promise<CreateBookResult> {
   try {
     const decoded = await verifyIdToken(authorizationHeader);
@@ -99,20 +74,7 @@ export async function buildCreateBookResponse(
     }
 
     const { bookId } = await createBookWithIntake(decoded.uid, input);
-    const openingSuggestion = await runOpeningSuggestionWithTimeout(
-      bookId,
-      apiKeys,
-      openingSuggestionTimeoutMs,
-    );
-
-    return {
-      statusCode: 200,
-      body: {
-        bookId,
-        openingSuggestion: openingSuggestion.status,
-        openings: openingSuggestion.openings,
-      },
-    };
+    return { statusCode: 200, body: { bookId } };
   } catch (error) {
     if (error instanceof AuthError) {
       return { statusCode: 401, body: { code: error.code, message: error.message } };

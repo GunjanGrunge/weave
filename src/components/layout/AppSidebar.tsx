@@ -49,16 +49,16 @@ export function AppSidebar({
     <>
       {mobileOpen && (
         <div
-          className="fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm md:hidden"
           onClick={onCloseMobile}
         />
       )}
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex h-full shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground transition-all duration-300",
-          "lg:static lg:z-auto",
-          collapsed ? "lg:w-16" : "lg:w-64",
-          mobileOpen ? "w-72 translate-x-0" : "-translate-x-full lg:translate-x-0",
+          "md:static md:z-auto",
+          collapsed ? "md:w-16" : "md:w-64",
+          mobileOpen ? "w-72 translate-x-0" : "-translate-x-full md:translate-x-0",
         )}
       >
         <div className="flex h-14 shrink-0 items-center justify-between px-4">
@@ -71,7 +71,7 @@ export function AppSidebar({
             )}
           </Link>
           <button
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-foreground/5 lg:hidden"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-foreground/5 md:hidden"
             onClick={onCloseMobile}
             aria-label="Close menu"
           >
