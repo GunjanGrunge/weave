@@ -9,16 +9,14 @@ const {
   usageDocIds,
   serverTimestampMock,
   usageWriteFailure,
-} = vi.hoisted(
-  () => ({
-    fetchMock: vi.fn(),
-    generateContentMock: vi.fn(),
-    usageWrites: [] as unknown[],
-    usageDocIds: [] as Array<string | undefined>,
-    serverTimestampMock: vi.fn(() => "server-time"),
-    usageWriteFailure: { current: undefined as Error | undefined },
-  }),
-);
+} = vi.hoisted(() => ({
+  fetchMock: vi.fn(),
+  generateContentMock: vi.fn(),
+  usageWrites: [] as unknown[],
+  usageDocIds: [] as Array<string | undefined>,
+  serverTimestampMock: vi.fn(() => "server-time"),
+  usageWriteFailure: { current: undefined as Error | undefined },
+}));
 
 let registryData: unknown;
 
@@ -379,7 +377,11 @@ describe("generateScene", () => {
       gemini: "fake-gemini-key",
     });
 
-    expect(result).toEqual({ text: "Fallback scene text.", provider: "gemini", model: "gemini-2.5-pro" });
+    expect(result).toEqual({
+      text: "Fallback scene text.",
+      provider: "gemini",
+      model: "gemini-2.5-pro",
+    });
   });
 
   it("throws GeminiError when both primary and fallback fail", async () => {
@@ -427,9 +429,7 @@ describe("generateScene", () => {
       gemini: "fake-gemini-key",
     });
 
-    expect(usageWrites).toEqual([
-      expect.objectContaining({ inputTokens: 0, outputTokens: 0 }),
-    ]);
+    expect(usageWrites).toEqual([expect.objectContaining({ inputTokens: 0, outputTokens: 0 })]);
   });
 
   it("records regeneration with its distinct task identity", async () => {

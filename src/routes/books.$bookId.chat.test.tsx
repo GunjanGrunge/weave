@@ -125,21 +125,19 @@ describe("ChatPage", () => {
   });
 
   it("renders an actionable scene draft directly from a conversational turn when Muse classifies readiness as draft", async () => {
-    authenticatedFetchMock
-      .mockResolvedValueOnce(response({ messages: [] }))
-      .mockResolvedValueOnce(
-        response({
-          mode: "draft",
-          sessionId: "session-1",
-          messageId: "message-1",
-          text: "The party was already loud when Eric arrived.",
-          provider: "openai",
-          model: "gpt-test",
-          revision: 0,
-          status: "active",
-          actionable: true,
-        }),
-      );
+    authenticatedFetchMock.mockResolvedValueOnce(response({ messages: [] })).mockResolvedValueOnce(
+      response({
+        mode: "draft",
+        sessionId: "session-1",
+        messageId: "message-1",
+        text: "The party was already loud when Eric arrived.",
+        provider: "openai",
+        model: "gpt-test",
+        revision: 0,
+        status: "active",
+        actionable: true,
+      }),
+    );
     render(<ChatPage bookId="book-1" />);
     await screen.findByLabelText(/scene description/i);
     fireEvent.change(screen.getByLabelText(/scene description/i), {
@@ -152,20 +150,18 @@ describe("ChatPage", () => {
   });
 
   it("shows a non-actionable draft as plain prose when the pipeline could not persist a review session", async () => {
-    authenticatedFetchMock
-      .mockResolvedValueOnce(response({ messages: [] }))
-      .mockResolvedValueOnce(
-        response({
-          mode: "draft",
-          sessionId: "",
-          messageId: "",
-          text: "The party was already loud when Eric arrived.",
-          provider: "openai",
-          model: "gpt-test",
-          revision: 0,
-          actionable: false,
-        }),
-      );
+    authenticatedFetchMock.mockResolvedValueOnce(response({ messages: [] })).mockResolvedValueOnce(
+      response({
+        mode: "draft",
+        sessionId: "",
+        messageId: "",
+        text: "The party was already loud when Eric arrived.",
+        provider: "openai",
+        model: "gpt-test",
+        revision: 0,
+        actionable: false,
+      }),
+    );
     render(<ChatPage bookId="book-1" />);
     await screen.findByLabelText(/scene description/i);
     fireEvent.change(screen.getByLabelText(/scene description/i), {

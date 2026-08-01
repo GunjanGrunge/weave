@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { parseCandidate, parseChatMessages, parseGeneratedScene, parseConsultMuseResponse } from "./scene-api";
+import {
+  parseCandidate,
+  parseChatMessages,
+  parseGeneratedScene,
+  parseConsultMuseResponse,
+} from "./scene-api";
 
 const candidate = {
   sessionId: "session-1",

@@ -223,7 +223,10 @@ export function parseConsultMuseResponse(value: unknown): ConsultMuseResponse | 
   if (!item) return undefined;
   if (item.mode === "clarify") {
     const parsedProvider = provider(item.provider);
-    return typeof item.text === "string" && item.text.length > 0 && parsedProvider && typeof item.model === "string"
+    return typeof item.text === "string" &&
+      item.text.length > 0 &&
+      parsedProvider &&
+      typeof item.model === "string"
       ? { mode: "clarify", text: item.text, provider: parsedProvider, model: item.model }
       : undefined;
   }
