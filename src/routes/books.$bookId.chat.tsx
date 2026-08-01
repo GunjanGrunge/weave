@@ -248,7 +248,12 @@ export function ChatPage({ bookId }: { bookId: string }) {
       setGenerationState({ status: "loading" });
       const requestBookId = bookId;
       const requestRouteVersion = routeVersionRef.current;
-      const inputSnapshot = JSON.stringify({ bookId, message: trimmedDescription });
+      const preferences = {
+        length: sceneLength,
+        quality: deepWrite ? "deep" : "standard",
+        ...(sceneDirection.trim() ? { customDirection: sceneDirection.trim() } : {}),
+      };
+      const inputSnapshot = JSON.stringify({ bookId, message: trimmedDescription, preferences });
       if (generationRequestRef.current?.inputSnapshot !== inputSnapshot) {
         generationRequestRef.current = { key: `consult-${crypto.randomUUID()}`, inputSnapshot };
       }
@@ -257,7 +262,12 @@ export function ChatPage({ bookId }: { bookId: string }) {
         const response = await authenticatedFetch("/consultMuse", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bookId, message: trimmedDescription, idempotencyKey }),
+          body: JSON.stringify({
+            bookId,
+            message: trimmedDescription,
+            idempotencyKey,
+            preferences,
+          }),
         });
         const body = await response.json().catch(() => undefined);
         const result = response.ok ? parseConsultMuseResponse(body) : undefined;
@@ -303,6 +313,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
         });
         generationRequestRef.current = null;
         setDescription("");
+        setSceneDirection("");
         setGenerationState({ status: "idle" });
       } catch {
         if (
@@ -723,7 +734,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
         </div>
       </div>
 
-      {inputMode !== "polish" && inputMode !== "conversation" && (
+      {inputMode !== "polish" && (
         <div className="mt-2 flex flex-wrap items-center gap-3 border-y border-border py-2">
           <div
             className="flex overflow-hidden rounded-md border border-border"

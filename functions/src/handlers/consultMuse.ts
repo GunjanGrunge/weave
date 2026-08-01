@@ -14,8 +14,18 @@ import {
 } from "../services/books.js";
 import { classifyMuseReadiness, type AIProviderKeys } from "../services/gemini.js";
 import { getCanonicalRoster } from "../services/storyBible.js";
+import { parsePreferences } from "./generateScene.js";
+import type { ScenePreferences } from "../types/sceneInput.js";
 
 const MAX_MESSAGE_LENGTH = 4_000;
+
+// Budgets chosen so the two sequential model calls in the draft path
+// (classification + generation) always finish inside the 70s generation
+// lease (functions/src/services/scenes.ts LEASE_MS) — a run that hit the
+// old 180s function timeout instead would leave the idempotency claim
+// stranded past the lease, letting a retry double-bill the same turn.
+const CLASSIFY_TIMEOUT_MS = 20_000;
+const DRAFT_TIMEOUT_MS = 40_000;
 
 export type ConsultMuseSuccess =
   | { mode: "clarify"; text: string; provider: "openai" | "gemini"; model: string }
@@ -37,7 +47,10 @@ export type ConsultMuseResult =
 
 function parseRequest(
   body: unknown,
-): { bookId: string; message: string; idempotencyKey: string } | undefined {
+): (
+  | { bookId: string; message: string; idempotencyKey: string; preferences?: ScenePreferences }
+  | undefined
+) {
   if (typeof body !== "object" || body === null) return undefined;
   const record = body as Record<string, unknown>;
   const bookId = record.bookId;
@@ -62,11 +75,58 @@ function parseRequest(
   ) {
     return undefined;
   }
+  const preferences = parsePreferences(record.preferences);
+  if (record.preferences !== undefined && !preferences) {
+    return undefined;
+  }
   return {
     bookId: bookId.trim(),
     message: message.trim(),
     idempotencyKey: typeof suppliedKey === "string" ? suppliedKey : randomUUID(),
+    ...(preferences ? { preferences } : {}),
   };
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+// Mirrors generateScene.ts's runGenerateWithTimeout: resolve a safe
+// { status: "failed" } on timeout instead of letting the promise hang,
+// so the handler always returns its own response rather than being cut
+// off by the platform's outer function timeout.
+function runGenerateWithBudget(
+  bookId: string,
+  input: Parameters<typeof runGenerate>[1],
+  apiKeys: AIProviderKeys,
+  operation: { idempotencyKey: string; userMessage: string },
+  timeoutMs: number,
+): Promise<Awaited<ReturnType<typeof runGenerate>>> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve({ status: "failed" }), timeoutMs);
+    runGenerate(bookId, input, apiKeys, operation)
+      .then((result) => {
+        clearTimeout(timeout);
+        resolve(result);
+      })
+      .catch((error) => {
+        console.error("consultMuse: runGenerate rejected", { bookId, error });
+        clearTimeout(timeout);
+        resolve({ status: "failed" });
+      });
+  });
 }
 
 function buildMusePrompt(input: {
@@ -129,18 +189,31 @@ export async function buildConsultMuseResponse(
           `${message.type === "user" ? "WRITER" : "MUSE"}: ${message.text.slice(0, 800)}`,
       )
       .join("\n");
-    const classification = await classifyMuseReadiness(
-      request.bookId,
-      buildMusePrompt({
-        message: request.message,
-        vision,
-        roster: roster.text,
-        recentConversation,
-      }),
-      apiKeys,
+    const classification = await withTimeout(
+      classifyMuseReadiness(
+        request.bookId,
+        buildMusePrompt({
+          message: request.message,
+          vision,
+          roster: roster.text,
+          recentConversation,
+        }),
+        apiKeys,
+      ),
+      CLASSIFY_TIMEOUT_MS,
+      "Muse readiness classification timed out.",
     );
 
     if (classification.readiness === "clarify") {
+      if (!classification.note.trim()) {
+        console.error("consultMuse: clarify classification returned an empty note", {
+          bookId: request.bookId,
+        });
+        return {
+          statusCode: 502,
+          body: { code: "muse-unavailable", message: "The Muse is unavailable right now." },
+        };
+      }
       await appendMuseConversation(request.bookId, request.message, classification.note);
       return {
         statusCode: 200,
@@ -153,11 +226,16 @@ export async function buildConsultMuseResponse(
       };
     }
 
-    const result = await runGenerate(
+    const result = await runGenerateWithBudget(
       request.bookId,
-      { mode: "free-text", description: request.message },
+      {
+        mode: "free-text",
+        description: request.message,
+        ...(request.preferences ? { preferences: request.preferences } : {}),
+      },
       apiKeys,
       { idempotencyKey: request.idempotencyKey, userMessage: request.message },
+      DRAFT_TIMEOUT_MS,
     );
     if (result.status === "in-progress") {
       return {
@@ -204,7 +282,7 @@ export const consultMuse = onRequest(
   {
     cors: allowedOrigins(),
     region: "us-central1",
-    timeoutSeconds: 180,
+    timeoutSeconds: 90,
     secrets: [GOOGLE_API_KEY, OPENAI_API_KEY],
   },
   async (request, response) => {

@@ -42,7 +42,7 @@ describe("ChatPage", () => {
     navigateMock.mockReset();
   });
 
-  it("defaults to an editorial conversation rather than drafting prose", async () => {
+  it("asks a clarifying question when Muse classifies readiness as clarify", async () => {
     authenticatedFetchMock
       .mockResolvedValueOnce(
         response({ messages: [{ type: "system", text: "New room", order: 0 }] }),
@@ -171,5 +171,43 @@ describe("ChatPage", () => {
 
     expect(await screen.findByText(/party was already loud/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
+  });
+
+  it("reuses the same idempotency key when retrying the same unchanged message", async () => {
+    authenticatedFetchMock
+      .mockResolvedValueOnce(response({ messages: [] }))
+      .mockResolvedValueOnce(response({ code: "muse-unavailable" }, 502))
+      .mockResolvedValueOnce(
+        response({
+          mode: "clarify",
+          text: "That gives us a strong pressure point. What does Eric stand to lose?",
+          provider: "openai",
+          model: "gpt-test",
+        }),
+      );
+    render(<ChatPage bookId="book-1" />);
+    await screen.findByLabelText(/scene description/i);
+
+    fireEvent.change(screen.getByLabelText(/scene description/i), {
+      target: { value: "Eric should feel guilty before the crime." },
+    });
+    fireEvent.click(screen.getByLabelText("Send"));
+    await screen.findByText(/could not respond/i);
+
+    // The textarea value is untouched (submitScene only clears it on success),
+    // so retrying should reuse the same idempotency key rather than minting a
+    // new one and risking a duplicate-billed generation.
+    fireEvent.click(screen.getByLabelText("Send"));
+    await screen.findByText(/strong pressure point/i);
+
+    const consultCalls = authenticatedFetchMock.mock.calls.filter(
+      ([path]) => path === "/consultMuse",
+    );
+    expect(consultCalls).toHaveLength(2);
+    const keys = consultCalls.map(
+      ([, init]) =>
+        (JSON.parse((init as { body: string }).body) as { idempotencyKey: string }).idempotencyKey,
+    );
+    expect(keys[0]).toEqual(keys[1]);
   });
 });

@@ -151,6 +151,20 @@ describe("buildConsultMuseResponse", () => {
     ).resolves.toMatchObject({ statusCode: 502 });
   });
 
+  it("reports the generation as in progress when the draft pipeline is still claimed", async () => {
+    classifyMuseReadinessMock.mockResolvedValue({
+      readiness: "draft",
+      note: "",
+      provider: "openai",
+      model: "gpt-test",
+    });
+    runGenerateMock.mockResolvedValue({ status: "in-progress" });
+
+    await expect(
+      buildConsultMuseResponse("Bearer valid", { bookId: "book-1", message: "Go." }, keys),
+    ).resolves.toMatchObject({ statusCode: 202 });
+  });
+
   it("does not call the model for invalid input or unauthenticated requests", async () => {
     await expect(
       buildConsultMuseResponse("Bearer valid", { bookId: "book-1", message: "" }, keys),
