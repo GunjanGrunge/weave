@@ -322,6 +322,64 @@ export async function generateOpeningSuggestions(
   return { openings };
 }
 
+export type MuseReadiness = {
+  readiness: "draft" | "clarify";
+  note: string;
+  provider: "openai" | "gemini";
+  model: string;
+};
+
+const MUSE_READINESS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    readiness: { type: "string", enum: ["draft", "clarify"] },
+    note: { type: "string" },
+  },
+  required: ["readiness", "note"],
+};
+
+function parseMuseReadiness(
+  responseText: string | undefined,
+  provider = "AI",
+): { readiness: "draft" | "clarify"; note: string } {
+  if (!responseText) {
+    throw new GeminiError(`${provider} response had no text content.`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(responseText);
+  } catch {
+    throw new GeminiError(`${provider} response was not valid JSON.`);
+  }
+  const record = parsed as { readiness?: unknown; note?: unknown };
+  if (
+    (record.readiness !== "draft" && record.readiness !== "clarify") ||
+    typeof record.note !== "string"
+  ) {
+    throw new GeminiError(`${provider} response did not contain a valid readiness classification.`);
+  }
+  return { readiness: record.readiness, note: record.note };
+}
+
+export async function classifyMuseReadiness(
+  bookId: string,
+  prompt: string,
+  apiKeys: AIProviderKeys,
+): Promise<MuseReadiness> {
+  const registry = await readModelRegistry();
+  const result = await callWithFallback(registry.generate, apiKeys, prompt, {
+    name: "muse_readiness",
+    schema: MUSE_READINESS_SCHEMA,
+  });
+  await recordUsageBestEffort(bookId, "museConversation", result);
+  const classified = parseMuseReadiness(
+    result.text,
+    result.provider === "openai" ? "OpenAI" : "Gemini",
+  );
+  return { ...classified, provider: result.provider, model: result.model };
+}
+
 export async function generateScene(
   bookId: string,
   prompt: string,
