@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, BookOpen, Eye, Loader2, Send, Sparkles } from "lucide-react";
 
 import { BookTools } from "@/components/book/BookTools";
+import { WriteWorkspace } from "@/components/book/WriteWorkspace";
 import { SceneReviewCard } from "@/components/scene/SceneReviewCard";
 import { StyleControl } from "@/components/book/StyleControl";
 import { UsageIndicator } from "@/components/book/UsageIndicator";
@@ -82,7 +83,7 @@ function summarizePolishRequest(draftText: string, aspects: PolishAspectId[]): s
 
 function ChatRoute() {
   const { bookId } = Route.useParams();
-  return <ChatPage bookId={bookId} />;
+  return <WriteWorkspace bookId={bookId} />;
 }
 
 function messageStyles(type: ChatMessageType): string {
@@ -113,7 +114,17 @@ function reconcileMessages(current: ChatMessage[], incoming: ChatMessage[]): Cha
   });
 }
 
-export function ChatPage({ bookId }: { bookId: string }) {
+export function ChatPage({
+  bookId,
+  manuscriptOpen,
+  onToggleManuscript,
+  onSceneAccepted,
+}: {
+  bookId: string;
+  manuscriptOpen?: boolean;
+  onToggleManuscript?: () => void;
+  onSceneAccepted?: () => void;
+}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const activeBookIdRef = useRef(bookId);
@@ -524,12 +535,25 @@ export function ChatPage({ bookId }: { bookId: string }) {
       <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
         <h1 className="font-display text-4xl italic">Book Chat</h1>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button type="button" variant="outline" size="sm" asChild>
-            <Link to="/books/$bookId/manuscript" params={{ bookId }}>
+          {onToggleManuscript ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-pressed={manuscriptOpen}
+              onClick={onToggleManuscript}
+            >
               <BookOpen className="size-4" />
               Manuscript
-            </Link>
-          </Button>
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" size="sm" asChild>
+              <Link to="/books/$bookId/manuscript" params={{ bookId }}>
+                <BookOpen className="size-4" />
+                Manuscript
+              </Link>
+            </Button>
+          )}
           <Button type="button" variant="outline" size="sm" asChild>
             <Link to="/books/$bookId/vision" params={{ bookId }}>
               <Eye className="size-4" />
@@ -566,6 +590,7 @@ export function ChatPage({ bookId }: { bookId: string }) {
                 message={message}
                 onAccepted={() => {
                   void refreshMessages();
+                  onSceneAccepted?.();
                 }}
               />
             ) : (

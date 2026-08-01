@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { BookTools } from "@/components/book/BookTools";
+import { WriteWorkspace } from "@/components/book/WriteWorkspace";
 import { Button } from "@/components/ui/button";
 import {
   enhanceManuscriptChapter,
@@ -40,7 +41,7 @@ export const Route = createFileRoute("/books/$bookId/manuscript")({
 
 function ManuscriptRoute() {
   const { bookId } = Route.useParams();
-  return <ManuscriptPage bookId={bookId} />;
+  return <WriteWorkspace bookId={bookId} initialManuscriptOpen />;
 }
 
 function pageEstimate(wordCount: number): number {
@@ -283,7 +284,15 @@ function ChapterEditor({
   );
 }
 
-export function ManuscriptPage({ bookId }: { bookId: string }) {
+export function ManuscriptPage({
+  bookId,
+  embedded,
+  onClose,
+}: {
+  bookId: string;
+  embedded?: boolean;
+  onClose?: () => void;
+}) {
   const manuscriptQuery = useManuscript(bookId);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -337,11 +346,23 @@ export function ManuscriptPage({ bookId }: { bookId: string }) {
       >
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-3 sm:px-8">
           <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto">
-            <Button type="button" variant="ghost" size="icon" asChild>
-              <Link to="/books/$bookId/chat" params={{ bookId }} aria-label="Back to Book Chat">
-                <ArrowLeft className="size-4" />
-              </Link>
-            </Button>
+            {embedded ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+                aria-label="Close manuscript"
+              >
+                <X className="size-4" />
+              </Button>
+            ) : (
+              <Button type="button" variant="ghost" size="icon" asChild>
+                <Link to="/books/$bookId/chat" params={{ bookId }} aria-label="Back to Book Chat">
+                  <ArrowLeft className="size-4" />
+                </Link>
+              </Button>
+            )}
             <div className="min-w-0">
               <h1 className="truncate text-sm font-semibold">{manuscript.title}</h1>
               <p className="text-xs text-muted-foreground">
@@ -352,12 +373,14 @@ export function ManuscriptPage({ bookId }: { bookId: string }) {
           </div>
 
           <div className="flex w-full max-w-full flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
-            <Button type="button" variant="outline" size="sm" asChild>
-              <Link to="/books/$bookId/chat" params={{ bookId }}>
-                <MessageSquareText className="size-4" />
-                Chat
-              </Link>
-            </Button>
+            {!embedded && (
+              <Button type="button" variant="outline" size="sm" asChild>
+                <Link to="/books/$bookId/chat" params={{ bookId }}>
+                  <MessageSquareText className="size-4" />
+                  Chat
+                </Link>
+              </Button>
+            )}
             <Button type="button" variant="outline" size="sm" asChild>
               <Link to="/books/$bookId/vision" params={{ bookId }}>
                 <Eye className="size-4" />
