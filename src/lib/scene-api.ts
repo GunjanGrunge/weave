@@ -214,6 +214,26 @@ export function parseGeneratedScene(
     : undefined;
 }
 
+export type ConsultMuseResponse =
+  | { mode: "clarify"; text: string; provider: "openai" | "gemini"; model: string }
+  | { mode: "draft"; scene: GeneratedScene | DegradedGeneratedScene };
+
+export function parseConsultMuseResponse(value: unknown): ConsultMuseResponse | undefined {
+  const item = record(value);
+  if (!item) return undefined;
+  if (item.mode === "clarify") {
+    const parsedProvider = provider(item.provider);
+    return typeof item.text === "string" && item.text.length > 0 && parsedProvider && typeof item.model === "string"
+      ? { mode: "clarify", text: item.text, provider: parsedProvider, model: item.model }
+      : undefined;
+  }
+  if (item.mode === "draft") {
+    const scene = parseGeneratedScene(item);
+    return scene ? { mode: "draft", scene } : undefined;
+  }
+  return undefined;
+}
+
 async function post(path: string, payload: Record<string, unknown>): Promise<unknown> {
   const response = await authenticatedFetch(path, {
     method: "POST",
