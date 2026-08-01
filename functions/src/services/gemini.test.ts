@@ -260,6 +260,80 @@ function geminiTextResponseFor(text: string, promptTokenCount = 5, candidatesTok
   return { text, usageMetadata: { promptTokenCount, candidatesTokenCount } };
 }
 
+describe("classifyMuseReadiness", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    generateContentMock.mockReset();
+    usageWrites.length = 0;
+    usageDocIds.length = 0;
+    registryData = validRegistry;
+    usageWriteFailure.current = undefined;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("requests JSON-schema output from the registry's generate model and records usage as museConversation", async () => {
+    const { classifyMuseReadiness } = await import("./gemini.js");
+    fetchMock.mockResolvedValue(
+      openAIResponseFor({ readiness: "draft", note: "Opening the farewell party." }),
+    );
+
+    const result = await classifyMuseReadiness("book-1", "some prompt", {
+      openai: "fake-openai-key",
+      gemini: "fake-gemini-key",
+    });
+
+    expect(result).toEqual({
+      readiness: "draft",
+      note: "Opening the farewell party.",
+      provider: "openai",
+      model: "gpt-5.6-terra",
+    });
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(request.body as string)).toMatchObject({
+      model: "gpt-5.6-terra",
+      text: { format: { type: "json_schema", name: "muse_readiness" } },
+    });
+    expect(usageWrites).toEqual([
+      expect.objectContaining({ task: "museConversation", provider: "openai" }),
+    ]);
+  });
+
+  it("returns a clarify classification with its note", async () => {
+    const { classifyMuseReadiness } = await import("./gemini.js");
+    fetchMock.mockResolvedValue(
+      openAIResponseFor({
+        readiness: "clarify",
+        note: "You mention a reunion, but the Story Bible has no such event yet — is this canon?",
+      }),
+    );
+
+    const result = await classifyMuseReadiness("book-1", "some prompt", {
+      openai: "fake-openai-key",
+      gemini: "fake-gemini-key",
+    });
+
+    expect(result.readiness).toBe("clarify");
+    expect(result.note).toContain("Story Bible");
+  });
+
+  it("throws GeminiError when the model returns an invalid readiness value", async () => {
+    const { classifyMuseReadiness, GeminiError } = await import("./gemini.js");
+    fetchMock.mockResolvedValue(openAIResponseFor({ readiness: "maybe", note: "hm" }));
+
+    await expect(
+      classifyMuseReadiness("book-1", "some prompt", {
+        openai: "fake-openai-key",
+        gemini: "fake-gemini-key",
+      }),
+    ).rejects.toBeInstanceOf(GeminiError);
+  });
+});
+
 describe("generateScene", () => {
   beforeEach(() => {
     vi.resetModules();
