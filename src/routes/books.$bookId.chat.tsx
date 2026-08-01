@@ -11,7 +11,12 @@ import { Button } from "@/components/ui/button";
 import { authenticatedFetch } from "@/lib/api";
 import { POLISH_ASPECTS } from "@/lib/polish-aspects";
 import type { PolishAspectId } from "@/lib/polish-aspects";
-import { parseChatMessages, parseGeneratedScene, type ChatMessage } from "@/lib/scene-api";
+import {
+  parseChatMessages,
+  parseConsultMuseResponse,
+  parseGeneratedScene,
+  type ChatMessage,
+} from "@/lib/scene-api";
 
 export const Route = createFileRoute("/books/$bookId/chat")({
   head: () => ({
@@ -243,16 +248,20 @@ export function ChatPage({ bookId }: { bookId: string }) {
       setGenerationState({ status: "loading" });
       const requestBookId = bookId;
       const requestRouteVersion = routeVersionRef.current;
+      const inputSnapshot = JSON.stringify({ bookId, message: trimmedDescription });
+      if (generationRequestRef.current?.inputSnapshot !== inputSnapshot) {
+        generationRequestRef.current = { key: `consult-${crypto.randomUUID()}`, inputSnapshot };
+      }
+      const idempotencyKey = generationRequestRef.current.key;
       try {
         const response = await authenticatedFetch("/consultMuse", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bookId, message: trimmedDescription }),
+          body: JSON.stringify({ bookId, message: trimmedDescription, idempotencyKey }),
         });
-        const result = (await response.json().catch(() => undefined)) as
-          | { text?: unknown }
-          | undefined;
-        if (!response.ok || typeof result?.text !== "string") {
+        const body = await response.json().catch(() => undefined);
+        const result = response.ok ? parseConsultMuseResponse(body) : undefined;
+        if (!result) {
           throw new Error("Muse conversation failed.");
         }
         if (
@@ -264,15 +273,35 @@ export function ChatPage({ bookId }: { bookId: string }) {
         setLoadState((current) => {
           const priorMessages = current.status === "ready" ? current.messages : [];
           const nextOrder = priorMessages.length;
+          const assistantMessage: ChatMessage =
+            result.mode === "clarify"
+              ? { type: "structural_note", text: result.text, order: nextOrder + 1 }
+              : result.scene.actionable
+                ? {
+                    id: result.scene.messageId,
+                    type: "assistant_scene",
+                    text: result.scene.text,
+                    order: nextOrder + 1,
+                    sessionId: result.scene.sessionId,
+                    revision: result.scene.revision,
+                    status: result.scene.status,
+                    provider: result.scene.provider,
+                    model: result.scene.model,
+                    ...(result.scene.previousAttempt
+                      ? { previousAttempt: result.scene.previousAttempt }
+                      : {}),
+                  }
+                : { type: "assistant_scene", text: result.scene.text, order: nextOrder + 1 };
           return {
             status: "ready",
             messages: [
               ...priorMessages,
               { type: "user", text: trimmedDescription, order: nextOrder },
-              { type: "structural_note", text: result.text, order: nextOrder + 1 },
+              assistantMessage,
             ],
           };
         });
+        generationRequestRef.current = null;
         setDescription("");
         setGenerationState({ status: "idle" });
       } catch {
