@@ -12,7 +12,12 @@ import { Button } from "@/components/ui/button";
 import { authenticatedFetch } from "@/lib/api";
 import { POLISH_ASPECTS } from "@/lib/polish-aspects";
 import type { PolishAspectId } from "@/lib/polish-aspects";
-import { parseChatMessages, parseGeneratedScene, type ChatMessage } from "@/lib/scene-api";
+import {
+  parseChatMessages,
+  parseConsultMuseResponse,
+  parseGeneratedScene,
+  type ChatMessage,
+} from "@/lib/scene-api";
 
 export const Route = createFileRoute("/books/$bookId/chat")({
   head: () => ({
@@ -254,16 +259,30 @@ export function ChatPage({
       setGenerationState({ status: "loading" });
       const requestBookId = bookId;
       const requestRouteVersion = routeVersionRef.current;
+      const preferences = {
+        length: sceneLength,
+        quality: deepWrite ? "deep" : "standard",
+        ...(sceneDirection.trim() ? { customDirection: sceneDirection.trim() } : {}),
+      };
+      const inputSnapshot = JSON.stringify({ bookId, message: trimmedDescription, preferences });
+      if (generationRequestRef.current?.inputSnapshot !== inputSnapshot) {
+        generationRequestRef.current = { key: `consult-${crypto.randomUUID()}`, inputSnapshot };
+      }
+      const idempotencyKey = generationRequestRef.current.key;
       try {
         const response = await authenticatedFetch("/consultMuse", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bookId, message: trimmedDescription }),
+          body: JSON.stringify({
+            bookId,
+            message: trimmedDescription,
+            idempotencyKey,
+            preferences,
+          }),
         });
-        const result = (await response.json().catch(() => undefined)) as
-          | { text?: unknown }
-          | undefined;
-        if (!response.ok || typeof result?.text !== "string") {
+        const body = await response.json().catch(() => undefined);
+        const result = response.ok ? parseConsultMuseResponse(body) : undefined;
+        if (!result) {
           throw new Error("Muse conversation failed.");
         }
         if (
@@ -275,16 +294,37 @@ export function ChatPage({
         setLoadState((current) => {
           const priorMessages = current.status === "ready" ? current.messages : [];
           const nextOrder = priorMessages.length;
+          const assistantMessage: ChatMessage =
+            result.mode === "clarify"
+              ? { type: "structural_note", text: result.text, order: nextOrder + 1 }
+              : result.scene.actionable
+                ? {
+                    id: result.scene.messageId,
+                    type: "assistant_scene",
+                    text: result.scene.text,
+                    order: nextOrder + 1,
+                    sessionId: result.scene.sessionId,
+                    revision: result.scene.revision,
+                    status: result.scene.status,
+                    provider: result.scene.provider,
+                    model: result.scene.model,
+                    ...(result.scene.previousAttempt
+                      ? { previousAttempt: result.scene.previousAttempt }
+                      : {}),
+                  }
+                : { type: "assistant_scene", text: result.scene.text, order: nextOrder + 1 };
           return {
             status: "ready",
             messages: [
               ...priorMessages,
               { type: "user", text: trimmedDescription, order: nextOrder },
-              { type: "structural_note", text: result.text, order: nextOrder + 1 },
+              assistantMessage,
             ],
           };
         });
+        generationRequestRef.current = null;
         setDescription("");
+        setSceneDirection("");
         setGenerationState({ status: "idle" });
       } catch {
         if (
@@ -719,7 +759,7 @@ export function ChatPage({
         </div>
       </div>
 
-      {inputMode !== "polish" && inputMode !== "conversation" && (
+      {inputMode !== "polish" && (
         <div className="mt-2 flex flex-wrap items-center gap-3 border-y border-border py-2">
           <div
             className="flex overflow-hidden rounded-md border border-border"

@@ -42,13 +42,18 @@ describe("ChatPage", () => {
     navigateMock.mockReset();
   });
 
-  it("defaults to an editorial conversation rather than drafting prose", async () => {
+  it("asks a clarifying question when Muse classifies readiness as clarify", async () => {
     authenticatedFetchMock
       .mockResolvedValueOnce(
         response({ messages: [{ type: "system", text: "New room", order: 0 }] }),
       )
       .mockResolvedValueOnce(
-        response({ text: "That gives us a strong pressure point. What does Eric stand to lose?" }),
+        response({
+          mode: "clarify",
+          text: "That gives us a strong pressure point. What does Eric stand to lose?",
+          provider: "openai",
+          model: "gpt-test",
+        }),
       );
     render(<ChatPage bookId="book-1" />);
     await screen.findByText("New room");
@@ -66,10 +71,9 @@ describe("ChatPage", () => {
     expect(authenticatedFetchMock).toHaveBeenCalledWith(
       "/consultMuse",
       expect.objectContaining({
-        body: JSON.stringify({
-          bookId: "book-1",
-          message: "Eric should feel guilty before the crime.",
-        }),
+        body: expect.stringContaining(
+          '"bookId":"book-1","message":"Eric should feel guilty before the crime."',
+        ),
       }),
     );
     expect(authenticatedFetchMock.mock.calls.some(([path]) => path === "/generateScene")).toBe(
@@ -118,5 +122,92 @@ describe("ChatPage", () => {
 
     expect(await screen.findByText(/could not respond/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/scene description/i)).toHaveValue("Keep the setting fictional.");
+  });
+
+  it("renders an actionable scene draft directly from a conversational turn when Muse classifies readiness as draft", async () => {
+    authenticatedFetchMock.mockResolvedValueOnce(response({ messages: [] })).mockResolvedValueOnce(
+      response({
+        mode: "draft",
+        sessionId: "session-1",
+        messageId: "message-1",
+        text: "The party was already loud when Eric arrived.",
+        provider: "openai",
+        model: "gpt-test",
+        revision: 0,
+        status: "active",
+        actionable: true,
+      }),
+    );
+    render(<ChatPage bookId="book-1" />);
+    await screen.findByLabelText(/scene description/i);
+    fireEvent.change(screen.getByLabelText(/scene description/i), {
+      target: { value: "A young guy celebrating his farewell, settled in." },
+    });
+    fireEvent.click(screen.getByLabelText("Send"));
+
+    expect(await screen.findByText(/party was already loud/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument();
+  });
+
+  it("shows a non-actionable draft as plain prose when the pipeline could not persist a review session", async () => {
+    authenticatedFetchMock.mockResolvedValueOnce(response({ messages: [] })).mockResolvedValueOnce(
+      response({
+        mode: "draft",
+        sessionId: "",
+        messageId: "",
+        text: "The party was already loud when Eric arrived.",
+        provider: "openai",
+        model: "gpt-test",
+        revision: 0,
+        actionable: false,
+      }),
+    );
+    render(<ChatPage bookId="book-1" />);
+    await screen.findByLabelText(/scene description/i);
+    fireEvent.change(screen.getByLabelText(/scene description/i), {
+      target: { value: "A young guy celebrating his farewell, settled in." },
+    });
+    fireEvent.click(screen.getByLabelText("Send"));
+
+    expect(await screen.findByText(/party was already loud/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
+  });
+
+  it("reuses the same idempotency key when retrying the same unchanged message", async () => {
+    authenticatedFetchMock
+      .mockResolvedValueOnce(response({ messages: [] }))
+      .mockResolvedValueOnce(response({ code: "muse-unavailable" }, 502))
+      .mockResolvedValueOnce(
+        response({
+          mode: "clarify",
+          text: "That gives us a strong pressure point. What does Eric stand to lose?",
+          provider: "openai",
+          model: "gpt-test",
+        }),
+      );
+    render(<ChatPage bookId="book-1" />);
+    await screen.findByLabelText(/scene description/i);
+
+    fireEvent.change(screen.getByLabelText(/scene description/i), {
+      target: { value: "Eric should feel guilty before the crime." },
+    });
+    fireEvent.click(screen.getByLabelText("Send"));
+    await screen.findByText(/could not respond/i);
+
+    // The textarea value is untouched (submitScene only clears it on success),
+    // so retrying should reuse the same idempotency key rather than minting a
+    // new one and risking a duplicate-billed generation.
+    fireEvent.click(screen.getByLabelText("Send"));
+    await screen.findByText(/strong pressure point/i);
+
+    const consultCalls = authenticatedFetchMock.mock.calls.filter(
+      ([path]) => path === "/consultMuse",
+    );
+    expect(consultCalls).toHaveLength(2);
+    const keys = consultCalls.map(
+      ([, init]) =>
+        (JSON.parse((init as { body: string }).body) as { idempotencyKey: string }).idempotencyKey,
+    );
+    expect(keys[0]).toEqual(keys[1]);
   });
 });

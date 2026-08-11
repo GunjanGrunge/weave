@@ -99,7 +99,7 @@ function parsePolishAspects(rawAspects: unknown): PolishAspectId[] | undefined {
   return rawAspects as PolishAspectId[];
 }
 
-function parsePreferences(value: unknown): ScenePreferences | undefined {
+export function parsePreferences(value: unknown): ScenePreferences | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return undefined;

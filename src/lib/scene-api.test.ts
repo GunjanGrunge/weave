@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { parseCandidate, parseChatMessages, parseGeneratedScene } from "./scene-api";
+import {
+  parseCandidate,
+  parseChatMessages,
+  parseGeneratedScene,
+  parseConsultMuseResponse,
+} from "./scene-api";
 
 const candidate = {
   sessionId: "session-1",
@@ -77,5 +82,57 @@ describe("scene API runtime validation", () => {
       model: "gpt-test",
       actionable: false,
     });
+  });
+});
+
+describe("parseConsultMuseResponse", () => {
+  it("parses a clarify response", () => {
+    const result = parseConsultMuseResponse({
+      mode: "clarify",
+      text: "What does Eric stand to lose?",
+      provider: "openai",
+      model: "gpt-test",
+    });
+    expect(result).toEqual({
+      mode: "clarify",
+      text: "What does Eric stand to lose?",
+      provider: "openai",
+      model: "gpt-test",
+    });
+  });
+
+  it("parses an actionable draft response using the same shape as generateScene", () => {
+    const result = parseConsultMuseResponse({
+      mode: "draft",
+      sessionId: "session-1",
+      messageId: "message-1",
+      text: "The party was already loud when Eric arrived.",
+      provider: "openai",
+      model: "gpt-test",
+      revision: 0,
+      status: "active",
+      actionable: true,
+    });
+    expect(result).toEqual({
+      mode: "draft",
+      scene: {
+        sessionId: "session-1",
+        messageId: "message-1",
+        text: "The party was already loud when Eric arrived.",
+        provider: "openai",
+        model: "gpt-test",
+        revision: 0,
+        status: "active",
+        actionable: true,
+      },
+    });
+  });
+
+  it("returns undefined for an unrecognized mode", () => {
+    expect(parseConsultMuseResponse({ mode: "unknown" })).toBeUndefined();
+  });
+
+  it("returns undefined for a malformed clarify response", () => {
+    expect(parseConsultMuseResponse({ mode: "clarify", text: "" })).toBeUndefined();
   });
 });
